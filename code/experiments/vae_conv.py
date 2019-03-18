@@ -8,11 +8,11 @@ from pprint import pformat
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
-from .examples.utils import (MLResults,
-                             save_images_collection,
-                             bernoulli_as_pixel,
-                             bernoulli_flow,
-                             print_with_title)
+from tfsnippet.examples.utils import (MLResults,
+                                      save_images_collection,
+                                      bernoulli_as_pixel,
+                                      bernoulli_flow,
+                                      print_with_title)
 
 
 class ExpConfig(spt.Config):
@@ -29,7 +29,7 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = False
-    max_epoch = 3000
+    max_epoch = 100
     max_step = None
     batch_size = 128
     initial_lr = 0.001
