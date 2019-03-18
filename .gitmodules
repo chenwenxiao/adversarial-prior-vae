@@ -1,0 +1,3 @@
+[submodule "code/tfsnippet"]
+	path = code/tfsnippet
+	url = https://github.com/haowen-xu/tfsnippet.git
