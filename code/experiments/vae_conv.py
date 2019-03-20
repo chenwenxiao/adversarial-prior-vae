@@ -3,11 +3,13 @@ import functools
 import sys
 from argparse import ArgumentParser
 
+import six
 import tensorflow as tf
 from pprint import pformat
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
+from tfsnippet import resolve_feed_dict, merge_feed_dict
 from tfsnippet.examples.auto_encoders.energy_distribution import \
     EnergyDistribution
 from tfsnippet.examples.utils import (MLResults,
@@ -17,6 +19,8 @@ from tfsnippet.examples.utils import (MLResults,
                                       print_with_title)
 import numpy as np
 from scipy.misc import logsumexp
+
+from tfsnippet.utils import is_tensor_object
 
 
 class ExpConfig(spt.Config):
@@ -45,9 +49,11 @@ class ExpConfig(spt.Config):
     gradient_penalty_weight = 0.1
     kl_balance_weight = 1.0
 
+    n_critical = 5
     # evaluation parameters
     test_n_z = 500
     test_batch_size = 64
+    test_epoch_freq = 100
 
     @property
     def x_shape(self):
@@ -227,9 +233,7 @@ def adv_prior_loss(q_net, pz_net, pw_net):
         adv_omega_loss = tf.reduce_mean(
             tf.log(T_omega(Gw, Gw.z)) - tf.log(1 - T_omega(Gw, Gw.z_))
         )
-        adv_phi_loss = adv_omega_loss + energy_Gw + config.kl_balance_weight * (
-            z.log_prob() - log_px_z + energy_z
-        )
+        adv_phi_loss = adv_omega_loss + energy_Gw + config.kl_balance_weight * (z.log_prob() - log_px_z + energy_z)
     return adv_theta_loss, adv_phi_loss, adv_omega_loss
 
 
@@ -240,11 +244,9 @@ def compute_partition_function(train_flow, q_net, pz_net, pw_net):
         qz_x = []
         z_energy = []
         for [batch_x] in train_flow:
-            batch_qz_x_mean, batch_qz_x_std, batch_qz_x, batch_z_energy = \
-                session.run(
-                    [q_net['z'].distribution.mean, q_net['z'].distribution.std,
-                     q_net['z'], pz_net['z'].log_prob().energy],
-                    feed_dict={'input_x': batch_x})
+            batch_qz_x_mean, batch_qz_x_std, batch_qz_x, batch_z_energy = session.run(
+                [q_net['z'].distribution.mean, q_net['z'].distribution.std, q_net['z'], pz_net['z'].log_prob().energy],
+                feed_dict={'input_x': batch_x})
             qz_x_mean.append(batch_qz_x_mean)
             qz_x_std.append(batch_qz_x_std)
             qz_x.append(batch_qz_x)
@@ -257,13 +259,15 @@ def compute_partition_function(train_flow, q_net, pz_net, pw_net):
         qz_x_mean = np.expand_dims(qz_x_mean, axis=2)
         # [z_samples, x_size, 1, z_dim]
 
-        log_qz_x_ = np.sum(-np.square(qz_x - qz_x_mean) / 2 / np.square(
-            qz_x_std) - np.log(qz_x_std) - 0.5 * np.log(2 * np.pi), axis=-1)
+        log_qz_x_ = np.sum(
+            -np.square(qz_x - qz_x_mean) / 2 / np.square(qz_x_std) - np.log(qz_x_std) - 0.5 * np.log(2 * np.pi),
+            axis=-1)
         log_qz = logsumexp(log_qz_x_, axis=2)
         # [z_samples, x_size, z_dim]
         Z = np.mean(-z_energy - log_qz)
         print('Z=%f', Z)
     tf.assign(get_Z, Z)
+
 
 def main():
     # parse the arguments
@@ -302,15 +306,11 @@ def main():
         train_q_net = q_net(input_x)
         train_pz_net = p_net(observed={'x': input_x, 'z': train_q_net['z']})
         train_pw_net = p_net(observed={'x': input_x})
-        # train_chain = train_q_net.chain(p_net, observed={'x': input_x})
 
-        train_loss = adv_prior_loss(train_q_net, train_pz_net, train_pw_net)
-        train_loss += tf.losses.get_regularization_loss()
-
-        # train_loss = (
-        #     tf.reduce_mean(train_chain.vi.training.sgvb()) +
-        #     tf.losses.get_regularization_loss()
-        # )
+        adv_theta_loss, adv_phi_loss, adv_omega_loss = adv_prior_loss(train_q_net, train_pz_net, train_pw_net)
+        adv_theta_loss += tf.losses.get_regularization_loss()
+        adv_phi_loss += tf.losses.get_regularization_loss()
+        adv_omega_loss += tf.losses.get_regularization_loss()
 
     # derive the nll and logits output for testing
     with tf.name_scope('testing'):
@@ -323,12 +323,20 @@ def main():
 
     # derive the optimizer
     with tf.name_scope('optimizing'):
-        params = tf.trainable_variables()
-        optimizer = tf.train.AdamOptimizer(learning_rate)
-        grads = optimizer.compute_gradients(train_loss, params)
+        phi_params = tf.trainable_variables('G_phi') + tf.trainable_variables('q_net')
+        theta_params = tf.trainable_variables('U_theta') + tf.trainable_variables('p_net')
+        omega_params = tf.trainable_variables('T_omega')
+        phi_optimizer = tf.train.AdamOptimizer(learning_rate)
+        theta_optimizer = tf.train.AdamOptimizer(learning_rate)
+        omega_optimizer = tf.train.AdamOptimizer(learning_rate)
+        phi_grads = phi_optimizer.compute_gradients(adv_phi_loss, phi_params)
+        theta_grads = theta_optimizer.compute_gradients(adv_theta_loss, theta_params)
+        omega_grads = omega_optimizer.compute_gradients(adv_omega_loss, omega_params)
         with tf.control_dependencies(
                 tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
-            train_op = optimizer.apply_gradients(grads)
+            phi_train_op = phi_optimizer.apply_gradients(phi_grads)
+            theta_train_op = theta_optimizer.apply_gradients(theta_grads)
+            omega_train_op = omega_optimizer.apply_gradients(omega_grads)
 
     # derive the plotting function
     with tf.name_scope('plotting'):
@@ -367,7 +375,7 @@ def main():
             break
 
         # train the network
-        with spt.TrainLoop(params,
+        with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net'],
                            max_epoch=config.max_epoch,
                            max_step=config.max_step,
@@ -375,16 +383,45 @@ def main():
                                         if config.write_summary else None),
                            summary_graph=tf.get_default_graph(),
                            early_stopping=False) as loop:
-            trainer = spt.Trainer(
-                loop, train_op, [input_x], train_flow,
-                metrics={'loss': train_loss},
-                summaries=tf.summary.merge_all(spt.GraphKeys.AUTO_HISTOGRAM)
-            )
-            trainer.anneal_after(
-                learning_rate,
-                epochs=config.lr_anneal_epoch_freq,
-                steps=config.lr_anneal_step_freq
-            )
+
+            def do_evaluate():
+                compute_partition_function(Z_train_flow, train_q_net, train_pz_net, train_pw_net)
+                evaluator.run()
+                plot_samples(loop)
+
+            for epoch in loop.iter_epochs():
+                step_iterator = loop.iter_steps(train_flow)
+
+                try:
+                    while True:
+                        # discriminator training
+                        for i in range(config.n_critical):
+                            step, [x] = next(step_iterator)
+                            session.run(theta_train_op, feed_dict={
+                                input_x: x
+                            })
+
+                        # generator training
+                        step, [x] = next(step_iterator)
+                        session.run(phi_train_op, feed_dict={
+                            input_x: x
+                        })
+
+                        # assistant trainnig
+                        step, [x] = next(step_iterator)
+                        session.run(omega_train_op, feed_dict={
+                            input_x: x
+                        })
+                except StopIteration:
+                    pass
+
+                if epoch % config.lr_anneal_epoch_freq == 0:
+                    learning_rate.anneal()
+                loop.print_logs()
+
+                if epoch % config.test_epoch_freq:
+                    do_evaluate()
+
             evaluator = spt.Evaluator(
                 loop,
                 metrics={'test_nll': test_nll, 'test_lb': test_lb},
@@ -396,15 +433,6 @@ def main():
                 spt.EventKeys.AFTER_EXECUTION,
                 lambda e: results.update_metrics(evaluator.last_metrics_dict)
             )
-
-            def do_evaluate():
-                compute_partition_function(Z_train_flow)
-                evaluator.run()
-                plot_samples(loop)
-
-            trainer.evaluate_after_epochs(do_evaluate, freq=10)
-            trainer.log_after_epochs(freq=1)
-            trainer.run()
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')
