@@ -8,11 +8,15 @@ from pprint import pformat
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
+from tfsnippet.examples.auto_encoders.energy_distribution import \
+    EnergyDistribution
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
                                       bernoulli_as_pixel,
                                       bernoulli_flow,
                                       print_with_title)
+import numpy as np
+from scipy.misc import logsumexp
 
 
 class ExpConfig(spt.Config):
@@ -22,6 +26,7 @@ class ExpConfig(spt.Config):
     # model parameters
     z_dim = 40
     act_norm = True
+    weight_norm = True
     l2_reg = 0.0001
     kernel_size = 3
     shortcut_kernel_size = 1
@@ -36,6 +41,9 @@ class ExpConfig(spt.Config):
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = 300
     lr_anneal_step_freq = None
+
+    gradient_penalty_weight = 0.1
+    kl_balance_weight = 1.0
 
     # evaluation parameters
     test_n_z = 500
@@ -89,8 +97,16 @@ def q_net(x, observed=None, n_z=None, is_training=False, is_initializing=False):
 
 
 @spt.global_reuse
+def get_Z():
+    return spt.model_variable('Z', dtype=tf.float32, initializer=1.,
+                              trainable=False)
+
+
+@spt.global_reuse
 @add_arg_scope
-def p_net(observed=None, n_z=None, is_training=False, is_initializing=False):
+def p_net(observed=None, n_z=None, mcmc_on_z=False,
+          mcmc_on_w=False, is_training=False,
+          is_initializing=False):
     net = spt.BayesianNet(observed=observed)
 
     normalizer_fn = None if not config.act_norm else functools.partial(
@@ -101,9 +117,12 @@ def p_net(observed=None, n_z=None, is_training=False, is_initializing=False):
     )
 
     # sample z ~ p(z)
-    z = net.add('z', spt.Normal(mean=tf.zeros([1, config.z_dim]),
-                                logstd=tf.zeros([1, config.z_dim])),
-                group_ndims=1, n_samples=n_z)
+    normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
+                        logstd=tf.zeros([1, config.z_dim]))
+    pz = EnergyDistribution(
+        normal.batch_ndims_to_value(1), G=G_phi, U=U_theta, Z=get_Z(),
+        mcmc_on_z=mcmc_on_w, mcmc_on_x=mcmc_on_z)
+    z = net.add('z', pz, n_samples=n_z)
 
     # compute the hidden features
     with arg_scope([spt.layers.resnet_deconv2d_block],
@@ -132,9 +151,119 @@ def p_net(observed=None, n_z=None, is_training=False, is_initializing=False):
         channels_last=config.channels_last
     )  # output: (1, 28, 28)
     x = net.add('x', spt.Bernoulli(logits=x_logits), group_ndims=3)
-
     return net
 
+
+@spt.global_reuse
+@add_arg_scope
+def G_phi(w, is_training=False, is_initializing=False):
+    normalizer_fn = functools.partial(
+        spt.layers.act_norm, initializing=is_initializing)
+
+    with arg_scope([spt.layers.dense],
+                   activation_fn=tf.nn.leaky_relu,
+                   normalizer_fn=normalizer_fn,
+                   weight_norm=config.weight_norm,
+                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
+        h_w = tf.to_float(w)
+        h_w = spt.layers.dense(h_w, 500)
+        h_w = spt.layers.dense(h_w, 500)
+
+    h_w = spt.layers.dense(h_w, config.z_dim)
+    return h_w
+
+
+@spt.global_reuse
+@add_arg_scope
+def U_theta(z, is_training=False, is_initializing=False):
+    normalizer_fn = functools.partial(
+        spt.layers.act_norm, initializing=is_initializing)
+
+    with arg_scope([spt.layers.dense],
+                   activation_fn=tf.nn.leaky_relu,
+                   normalizer_fn=normalizer_fn,
+                   weight_norm=config.weight_norm,
+                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
+        h_u = tf.to_float(z)
+        h_u = spt.layers.dense(h_u, 500)
+        h_u = spt.layers.dense(h_u, 500)
+    h_u = spt.layers.dense(h_u, 1)
+    return tf.squeeze(h_u, axis=-1)
+
+
+@spt.global_reuse
+@add_arg_scope
+def T_omega(z, w, is_training=False, is_initializing=False):
+    normalizer_fn = functools.partial(
+        spt.layers.act_norm, initializing=is_initializing)
+
+    with arg_scope([spt.layers.dense],
+                   activation_fn=tf.nn.leaky_relu,
+                   normalizer_fn=normalizer_fn,
+                   weight_norm=config.weight_norm,
+                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
+        h_t = tf.concat([tf.to_float(z), tf.to_float(w)], axis=-1)
+        h_t = spt.layers.dense(h_t, 500)
+        h_t = spt.layers.dense(h_t, 500)
+    h_t = spt.layers.dense(h_t, 1, activation_fn=tf.nn.sigmoid)
+    return tf.squeeze(h_t, axis=-1)
+
+
+def adv_prior_loss(q_net, pz_net, pw_net):
+    with tf.name_scope('adv_prior_loss'):
+        z = q_net['z']
+        Gw = pw_net['z']
+        log_px_z = pz_net['x'].log_prob()
+
+        energy_z = pz_net['z'].log_prob().energy
+        energy_Gw = pw_net['z'].log_prob().energy
+        gradient_penalty = tf.reduce_sum(
+            tf.square(tf.gradients(energy_z, [z])[0]), axis=-1
+        )
+        adv_theta_loss = -tf.reduce_mean(energy_Gw) + tf.reduce_mean(
+            -log_px_z + energy_z +
+            config.gradient_penalty_weight * gradient_penalty
+        )
+        adv_omega_loss = tf.reduce_mean(
+            tf.log(T_omega(Gw, Gw.z)) - tf.log(1 - T_omega(Gw, Gw.z_))
+        )
+        adv_phi_loss = adv_omega_loss + energy_Gw + config.kl_balance_weight * (
+            z.log_prob() - log_px_z + energy_z
+        )
+    return adv_theta_loss, adv_phi_loss, adv_omega_loss
+
+
+def compute_partition_function(train_flow, q_net, pz_net, pw_net):
+    with spt.utils.create_session().as_default() as session:
+        qz_x_mean = []
+        qz_x_std = []
+        qz_x = []
+        z_energy = []
+        for [batch_x] in train_flow:
+            batch_qz_x_mean, batch_qz_x_std, batch_qz_x, batch_z_energy = \
+                session.run(
+                    [q_net['z'].distribution.mean, q_net['z'].distribution.std,
+                     q_net['z'], pz_net['z'].log_prob().energy],
+                    feed_dict={'input_x': batch_x})
+            qz_x_mean.append(batch_qz_x_mean)
+            qz_x_std.append(batch_qz_x_std)
+            qz_x.append(batch_qz_x)
+            z_energy.append(batch_z_energy)
+        qz_x_mean = np.concatenate(qz_x_mean, axis=0)  # [x_size, z_dim]
+        qz_x_std = np.concatenate(qz_x_std, axis=0)  # [x_size, z_dim]
+        qz_x = np.concatenate(qz_x, axis=1)  # [z_samples, x_size, z_dim]
+        z_energy = np.concatenate(z_energy, axis=1)
+        # [z_samples, x_size, z_dim]
+        qz_x_mean = np.expand_dims(qz_x_mean, axis=2)
+        # [z_samples, x_size, 1, z_dim]
+
+        log_qz_x_ = np.sum(-np.square(qz_x - qz_x_mean) / 2 / np.square(
+            qz_x_std) - np.log(qz_x_std) - 0.5 * np.log(2 * np.pi), axis=-1)
+        log_qz = logsumexp(log_qz_x_, axis=2)
+        # [z_samples, x_size, z_dim]
+        Z = np.mean(-z_energy - log_qz)
+        print('Z=%f', Z)
+    tf.assign(get_Z, Z)
 
 def main():
     # parse the arguments
@@ -171,17 +300,24 @@ def main():
     with tf.name_scope('training'), \
          arg_scope([p_net, q_net], is_training=True):
         train_q_net = q_net(input_x)
-        train_chain = train_q_net.chain(p_net, observed={'x': input_x})
-        train_loss = (
-            tf.reduce_mean(train_chain.vi.training.sgvb()) +
-            tf.losses.get_regularization_loss()
-        )
+        train_pz_net = p_net(observed={'x': input_x, 'z': train_q_net['z']})
+        train_pw_net = p_net(observed={'x': input_x})
+        # train_chain = train_q_net.chain(p_net, observed={'x': input_x})
+
+        train_loss = adv_prior_loss(train_q_net, train_pz_net, train_pw_net)
+        train_loss += tf.losses.get_regularization_loss()
+
+        # train_loss = (
+        #     tf.reduce_mean(train_chain.vi.training.sgvb()) +
+        #     tf.losses.get_regularization_loss()
+        # )
 
     # derive the nll and logits output for testing
     with tf.name_scope('testing'):
         test_q_net = q_net(input_x, n_z=config.test_n_z)
-        test_chain = test_q_net.chain(
-            p_net, latent_axis=0, observed={'x': input_x})
+        test_p_net = p_net(observed={'x': input_x, 'z': test_q_net['z']},
+                           n_z=config.test_n_z)
+        test_chain = test_q_net.chain(test_p_net)
         test_nll = -tf.reduce_mean(test_chain.vi.evaluation.is_loglikelihood())
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
 
@@ -215,6 +351,8 @@ def main():
         spt.datasets.load_mnist(x_shape=config.x_shape)
     train_flow = bernoulli_flow(
         x_train, config.batch_size, shuffle=True, skip_incomplete=True)
+    Z_train_flow = bernoulli_flow(
+        x_train, config.batch_size, shuffle=False, skip_incomplete=False)
     test_flow = bernoulli_flow(
         x_test, config.test_batch_size, sample_now=True)
 
@@ -258,9 +396,13 @@ def main():
                 spt.EventKeys.AFTER_EXECUTION,
                 lambda e: results.update_metrics(evaluator.last_metrics_dict)
             )
-            trainer.evaluate_after_epochs(evaluator, freq=10)
-            trainer.evaluate_after_epochs(
-                functools.partial(plot_samples, loop), freq=10)
+
+            def do_evaluate():
+                compute_partition_function(Z_train_flow)
+                evaluator.run()
+                plot_samples(loop)
+
+            trainer.evaluate_after_epochs(do_evaluate, freq=10)
             trainer.log_after_epochs(freq=1)
             trainer.run()
 
