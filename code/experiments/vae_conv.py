@@ -3,17 +3,12 @@ import functools
 import sys
 from argparse import ArgumentParser
 from contextlib import contextmanager
-from functools import partial
-
-import six
 import tensorflow as tf
 from pprint import pformat
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
-from tfsnippet import resolve_feed_dict, merge_feed_dict
-from tfsnippet.examples.auto_encoders.energy_distribution import \
-    EnergyDistribution
+from code.experiments.energy_distribution import EnergyDistribution
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
                                       bernoulli_as_pixel,
@@ -21,9 +16,6 @@ from tfsnippet.examples.utils import (MLResults,
                                       print_with_title)
 import numpy as np
 from scipy.misc import logsumexp
-
-from tfsnippet.utils import is_tensor_object
-
 
 class ExpConfig(spt.Config):
     # data options
