@@ -65,8 +65,8 @@ class ExpConfig(spt.Config):
 config = ExpConfig()
 
 
-@spt.global_reuse
 @add_arg_scope
+@spt.global_reuse
 def q_net(x, observed=None, n_z=None, is_training=False, is_initializing=False):
     net = spt.BayesianNet(observed=observed)
 
@@ -109,8 +109,8 @@ def get_Z():
                               trainable=False)
 
 
-@spt.global_reuse
 @add_arg_scope
+@spt.global_reuse
 def p_net(observed=None, n_z=None, mcmc_on_z=False,
           mcmc_on_w=False, is_training=False,
           is_initializing=False):
@@ -160,8 +160,8 @@ def p_net(observed=None, n_z=None, mcmc_on_z=False,
     return net
 
 
-@spt.global_reuse
 @add_arg_scope
+@spt.global_reuse
 def G_phi(w, is_training=False, is_initializing=False):
     normalizer_fn = functools.partial(
         spt.layers.act_norm, initializing=is_initializing)
@@ -179,8 +179,8 @@ def G_phi(w, is_training=False, is_initializing=False):
     return h_w
 
 
-@spt.global_reuse
 @add_arg_scope
+@spt.global_reuse
 def U_theta(z, is_training=False, is_initializing=False):
     normalizer_fn = functools.partial(
         spt.layers.act_norm, initializing=is_initializing)
@@ -197,8 +197,8 @@ def U_theta(z, is_training=False, is_initializing=False):
     return tf.squeeze(h_u, axis=-1)
 
 
-@spt.global_reuse
 @add_arg_scope
+@spt.global_reuse
 def T_omega(z, w, is_training=False, is_initializing=False):
     normalizer_fn = functools.partial(
         spt.layers.act_norm, initializing=is_initializing)
@@ -224,7 +224,7 @@ def adv_prior_loss(q_net, pz_net, pw_net):
         energy_z = pz_net['z'].log_prob().energy
         energy_Gw = pw_net['z'].log_prob().energy
         gradient_penalty = tf.reduce_sum(
-            tf.square(tf.gradients(energy_z, [z])[0]), axis=-1
+            tf.square(tf.gradients(energy_z, [z.tensor])[0]), axis=-1
         )
         adv_theta_loss = -tf.reduce_mean(energy_Gw) + tf.reduce_mean(
             -log_px_z + energy_z +
@@ -233,7 +233,9 @@ def adv_prior_loss(q_net, pz_net, pw_net):
         adv_omega_loss = tf.reduce_mean(
             tf.log(T_omega(Gw, Gw.z)) - tf.log(1 - T_omega(Gw, Gw.z_))
         )
-        adv_phi_loss = adv_omega_loss + energy_Gw + config.kl_balance_weight * (z.log_prob() - log_px_z + energy_z)
+        adv_phi_loss = adv_omega_loss + tf.reduce_mean(
+            energy_Gw + config.kl_balance_weight * (z.log_prob() - log_px_z + energy_z)
+        )
     return adv_theta_loss, adv_phi_loss, adv_omega_loss
 
 
@@ -322,8 +324,9 @@ def main():
          arg_scope([p_net, q_net], is_initializing=True), \
          spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
         init_q_net = q_net(input_x)
-        init_chain = init_q_net.chain(p_net, observed={'x': input_x})
-        init_loss = tf.reduce_mean(init_chain.vi.training.sgvb())
+        init_pw_net = p_net(observed={'x': input_x})
+        init_pz_net = p_net(observed={'x': input_x, 'z': init_q_net['z']})
+        init_loss = sum(adv_prior_loss(init_q_net, init_pz_net, init_pw_net))
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
@@ -340,9 +343,9 @@ def main():
     # derive the nll and logits output for testing
     with tf.name_scope('testing'):
         test_q_net = q_net(input_x, n_z=config.test_n_z)
-        test_p_net = p_net(observed={'x': input_x, 'z': test_q_net['z']},
-                           n_z=config.test_n_z)
-        test_chain = test_q_net.chain(test_p_net)
+        # test_p_net = p_net(observed={'x': input_x, 'z': test_q_net['z']},
+        #                    n_z=config.test_n_z)
+        test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_z, latent_axis=0)
         test_nll = -tf.reduce_mean(test_chain.vi.evaluation.is_loglikelihood())
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
 
