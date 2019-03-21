@@ -3,6 +3,7 @@ import functools
 import sys
 from argparse import ArgumentParser
 from contextlib import contextmanager
+from functools import partial
 
 import six
 import tensorflow as tf
@@ -71,6 +72,7 @@ def q_net(x, observed=None, n_z=None, is_training=False, is_initializing=False):
 
     normalizer_fn = None if not config.act_norm else functools.partial(
         spt.layers.act_norm,
+        scope='act_norm',
         axis=-1 if config.channels_last else -3,
         initializing=is_initializing,
         value_ndims=3,
@@ -85,18 +87,16 @@ def q_net(x, observed=None, n_z=None, is_training=False, is_initializing=False):
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
                    channels_last=config.channels_last):
         h_x = tf.to_float(x)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16)  # output: (16, 28, 28)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32,
-                                             strides=2)  # output: (32, 14, 14)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32)  # output: (32, 14, 14)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64,
-                                             strides=2)  # output: (64, 7, 7)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64)  # output: (64, 7, 7)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (16, 28, 28)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 32, strides=2, scope='level_1')  # output: (32, 14, 14)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (32, 14, 14)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_3')  # output: (64, 7, 7)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_4')  # output: (64, 7, 7)
 
     # sample z ~ q(z|x)
     h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
-    z_mean = spt.layers.dense(h_x, config.z_dim, name='z_mean')
-    z_logstd = spt.layers.dense(h_x, config.z_dim, name='z_logstd')
+    z_mean = spt.layers.dense(h_x, config.z_dim, scope='z_mean')
+    z_logstd = spt.layers.dense(h_x, config.z_dim, scope='z_logstd')
     z = net.add('z', spt.Normal(mean=z_mean, logstd=z_logstd), n_samples=n_z,
                 group_ndims=1)
 
@@ -118,6 +118,7 @@ def p_net(observed=None, n_z=None, mcmc_on_z=False,
 
     normalizer_fn = None if not config.act_norm else functools.partial(
         spt.layers.act_norm,
+        scope='act_norm',
         axis=-1 if config.channels_last else -3,
         initializing=is_initializing,
         value_ndims=3,
@@ -139,22 +140,20 @@ def p_net(observed=None, n_z=None, mcmc_on_z=False,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
                    channels_last=config.channels_last):
-        h_z = spt.layers.dense(z, 64 * 7 * 7)
+        h_z = spt.layers.dense(z, 64 * 7 * 7, scope='level_0')
         h_z = spt.ops.reshape_tail(
             h_z,
             ndims=1,
             shape=(7, 7, 64) if config.channels_last else (64, 7, 7)
         )
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64)  # output: (64, 7, 7)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32,
-                                               strides=2)  # output: (32, 14, 14)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32)  # output: (32, 14, 14)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 16,
-                                               strides=2)  # output: (16, 28, 28)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_1')  # output: (64, 7, 7)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, strides=2, scope='level_2')  # output: (32, 14, 14)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_3')  # output: (32, 14, 14)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 16, strides=2, scope='level_4')  # output: (16, 28, 28)
 
     # sample x ~ p(x|z)
     x_logits = spt.layers.conv2d(
-        h_z, 1, (1, 1), padding='same', name='feature_map_to_pixel',
+        h_z, 1, (1, 1), padding='same', scope='feature_map_to_pixel',
         channels_last=config.channels_last
     )  # output: (1, 28, 28)
     x = net.add('x', spt.Bernoulli(logits=x_logits), group_ndims=3)
@@ -173,10 +172,10 @@ def G_phi(w, is_training=False, is_initializing=False):
                    weight_norm=config.weight_norm,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_w = tf.to_float(w)
-        h_w = spt.layers.dense(h_w, 500)
-        h_w = spt.layers.dense(h_w, 500)
+        h_w = spt.layers.dense(h_w, 500, scope='level_0')
+        h_w = spt.layers.dense(h_w, 500, scope='level_1')
 
-    h_w = spt.layers.dense(h_w, config.z_dim)
+    h_w = spt.layers.dense(h_w, config.z_dim, scope='level_2')
     return h_w
 
 
@@ -192,9 +191,9 @@ def U_theta(z, is_training=False, is_initializing=False):
                    weight_norm=config.weight_norm,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_u = tf.to_float(z)
-        h_u = spt.layers.dense(h_u, 500)
-        h_u = spt.layers.dense(h_u, 500)
-    h_u = spt.layers.dense(h_u, 1)
+        h_u = spt.layers.dense(h_u, 500, scope='level_0')
+        h_u = spt.layers.dense(h_u, 500, scope='level_1')
+    h_u = spt.layers.dense(h_u, 1, scope='level_2')
     return tf.squeeze(h_u, axis=-1)
 
 
@@ -210,9 +209,9 @@ def T_omega(z, w, is_training=False, is_initializing=False):
                    weight_norm=config.weight_norm,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_t = tf.concat([tf.to_float(z), tf.to_float(w)], axis=-1)
-        h_t = spt.layers.dense(h_t, 500)
-        h_t = spt.layers.dense(h_t, 500)
-    h_t = spt.layers.dense(h_t, 1, activation_fn=tf.nn.sigmoid)
+        h_t = spt.layers.dense(h_t, 500, scope='level_0')
+        h_t = spt.layers.dense(h_t, 500, scope='level_1')
+    h_t = spt.layers.dense(h_t, 1, activation_fn=tf.nn.sigmoid, scope='level_2')
     return tf.squeeze(h_t, axis=-1)
 
 
@@ -261,12 +260,13 @@ def compute_partition_function(train_flow, q_net, pz_net, pw_net):
         # [z_samples, x_size, 1, z_dim]
 
         log_qz_x_ = np.sum(
-            -np.square(qz_x - qz_x_mean) / 2 / np.square(qz_x_std) - np.log(qz_x_std) - 0.5 * np.log(2 * np.pi),
+            -np.square(qz_x - qz_x_mean) / 2.0 / np.square(qz_x_std) - np.log(qz_x_std) - 0.5 * np.log(2.0 * np.pi),
             axis=-1)
         log_qz = logsumexp(log_qz_x_, axis=2)
         # [z_samples, x_size, z_dim]
-        Z = np.mean(-z_energy - log_qz)
-        print('Z=%f', Z)
+        Z = np.exp(logsumexp(-z_energy - log_qz))
+        Z_var = (np.exp(logsumexp((-z_energy - log_qz) * 2.0)) - np.square(Z)) / (z_energy.shape[0] * z_energy.shape[1])
+        print('Z=%f±%f', Z, np.sqrt(Z_var))
     tf.assign(get_Z, Z)
 
 
