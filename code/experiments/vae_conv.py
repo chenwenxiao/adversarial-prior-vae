@@ -2,6 +2,7 @@
 import functools
 import sys
 from argparse import ArgumentParser
+from contextlib import contextmanager
 
 import six
 import tensorflow as tf
@@ -269,6 +270,30 @@ def compute_partition_function(train_flow, q_net, pz_net, pw_net):
     tf.assign(get_Z, Z)
 
 
+@contextmanager
+def copy_gradients(gradients):
+    gradients = list(gradients)
+
+    with tf.variable_scope('copy_gradients'):
+        ret = []
+        copied_grads = []
+        control_ops = []
+
+        for grad, var in gradients:
+            copied_grad = tf.get_variable(
+                var.name.rsplit(':', 1)[0].replace('/', '_'),
+                dtype=grad.dtype,
+                shape=grad.get_shape()
+            )
+            copied_grads.append(copied_grad)
+            control_ops.append(tf.assign(copied_grad, var))
+
+        with tf.control_dependencies(control_ops):
+            for grad, (_, var) in zip(copied_grads, gradients):
+                ret.append((tf.identity(grad), var))
+            yield ret
+
+
 def main():
     # parse the arguments
     arg_parser = ArgumentParser()
@@ -329,14 +354,19 @@ def main():
         phi_optimizer = tf.train.AdamOptimizer(learning_rate)
         theta_optimizer = tf.train.AdamOptimizer(learning_rate)
         omega_optimizer = tf.train.AdamOptimizer(learning_rate)
-        phi_grads = phi_optimizer.compute_gradients(adv_phi_loss, phi_params)
+
         theta_grads = theta_optimizer.compute_gradients(adv_theta_loss, theta_params)
-        omega_grads = omega_optimizer.compute_gradients(adv_omega_loss, omega_params)
+
+        with copy_gradients(phi_optimizer.compute_gradients(adv_theta_loss, phi_params)) as phi_grads:
+            with copy_gradients(omega_optimizer.compute_gradients(adv_omega_loss, omega_params)) as omega_grads:
+                with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
+                    phi_train_op = theta_optimizer.apply_gradients(phi_grads)
+                    with tf.control_dependencies([phi_train_op]):
+                        omega_train_op = omega_optimizer.apply_gradients(omega_grads)
+
         with tf.control_dependencies(
                 tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
-            phi_train_op = phi_optimizer.apply_gradients(phi_grads)
             theta_train_op = theta_optimizer.apply_gradients(theta_grads)
-            omega_train_op = omega_optimizer.apply_gradients(omega_grads)
 
     # derive the plotting function
     with tf.name_scope('plotting'):
@@ -403,13 +433,7 @@ def main():
 
                         # generator training
                         step, [x] = next(step_iterator)
-                        session.run(phi_train_op, feed_dict={
-                            input_x: x
-                        })
-
-                        # assistant trainnig
-                        step, [x] = next(step_iterator)
-                        session.run(omega_train_op, feed_dict={
+                        session.run([phi_train_op, omega_train_op], feed_dict={
                             input_x: x
                         })
                 except StopIteration:
