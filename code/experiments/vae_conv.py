@@ -44,10 +44,13 @@ class ExpConfig(spt.Config):
     kl_balance_weight = 1.0
 
     n_critical = 5
+    Z_compute_epochs = 10
     # evaluation parameters
-    test_n_z = 500
+    test_n_z = 100
     test_batch_size = 64
     test_epoch_freq = 100
+
+    Z_batch_limit = 10
 
     @property
     def x_shape(self):
@@ -95,10 +98,14 @@ def q_net(x, observed=None, n_z=None, is_training=False, is_initializing=False):
     return net
 
 
+__Z = None
+
 @spt.global_reuse
 def get_Z():
-    return spt.model_variable('Z', dtype=tf.float32, initializer=1.,
-                              trainable=False)
+    global __Z
+    if __Z is None:
+        __Z = spt.ScheduledVariable('Z', dtype=tf.float32, initial_value=1., model_var=True)
+    return __Z
 
 
 @add_arg_scope
@@ -164,8 +171,8 @@ def G_phi(w, is_training=False, is_initializing=False):
                    weight_norm=config.weight_norm,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_w = tf.to_float(w)
-        h_w = spt.layers.dense(h_w, 500, scope='level_0')
-        h_w = spt.layers.dense(h_w, 500, scope='level_1')
+        h_w = spt.layers.dense(h_w, 100, scope='level_0')
+        h_w = spt.layers.dense(h_w, 100, scope='level_1')
 
     h_w = spt.layers.dense(h_w, config.z_dim, scope='level_2')
     return h_w
@@ -183,8 +190,8 @@ def U_theta(z, is_training=False, is_initializing=False):
                    weight_norm=config.weight_norm,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_u = tf.to_float(z)
-        h_u = spt.layers.dense(h_u, 500, scope='level_0')
-        h_u = spt.layers.dense(h_u, 500, scope='level_1')
+        h_u = spt.layers.dense(h_u, 100, scope='level_0')
+        h_u = spt.layers.dense(h_u, 100, scope='level_1')
     h_u = spt.layers.dense(h_u, 1, scope='level_2')
     return tf.squeeze(h_u, axis=-1)
 
@@ -201,8 +208,8 @@ def T_omega(z, w, is_training=False, is_initializing=False):
                    weight_norm=config.weight_norm,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_t = tf.concat([tf.to_float(z), tf.to_float(w)], axis=-1)
-        h_t = spt.layers.dense(h_t, 500, scope='level_0')
-        h_t = spt.layers.dense(h_t, 500, scope='level_1')
+        h_t = spt.layers.dense(h_t, 100, scope='level_0')
+        h_t = spt.layers.dense(h_t, 100, scope='level_1')
     h_t = spt.layers.dense(h_t, 1, activation_fn=tf.nn.sigmoid, scope='level_2')
     return tf.squeeze(h_t, axis=-1)
 
@@ -222,8 +229,8 @@ def adv_prior_loss(q_net, pz_net, pw_net):
             -log_px_z + energy_z +
             config.gradient_penalty_weight * gradient_penalty
         )
-        adv_omega_loss = tf.reduce_mean(
-            tf.log(T_omega(Gw, Gw.z)) - tf.log(1 - T_omega(Gw, Gw.z_))
+        adv_omega_loss = -tf.reduce_mean(
+            tf.log(T_omega(Gw, Gw.z)) + tf.log(1 - T_omega(Gw, Gw.z_))
         )
         adv_phi_loss = adv_omega_loss + tf.reduce_mean(
             energy_Gw + config.kl_balance_weight * (z.log_prob() - log_px_z + energy_z)
@@ -231,16 +238,19 @@ def adv_prior_loss(q_net, pz_net, pw_net):
     return adv_theta_loss, adv_phi_loss, adv_omega_loss
 
 
-def compute_partition_function(train_flow, q_net, pz_net, pw_net):
-    with spt.utils.create_session().as_default() as session:
+def compute_partition_function(train_flow, input_x, q_net, pz_net, pw_net):
+    session = spt.utils.get_default_session_or_error()
+    Z = []
+    Z_var = []
+    for __ in range(config.Z_compute_epochs):
         qz_x_mean = []
         qz_x_std = []
         qz_x = []
         z_energy = []
-        for [batch_x] in train_flow:
+        for _, [batch_x] in zip(range(config.Z_batch_limit), train_flow):
             batch_qz_x_mean, batch_qz_x_std, batch_qz_x, batch_z_energy = session.run(
                 [q_net['z'].distribution.mean, q_net['z'].distribution.std, q_net['z'], pz_net['z'].log_prob().energy],
-                feed_dict={'input_x': batch_x})
+                feed_dict={input_x: batch_x})
             qz_x_mean.append(batch_qz_x_mean)
             qz_x_std.append(batch_qz_x_std)
             qz_x.append(batch_qz_x)
@@ -250,18 +260,25 @@ def compute_partition_function(train_flow, q_net, pz_net, pw_net):
         qz_x = np.concatenate(qz_x, axis=1)  # [z_samples, x_size, z_dim]
         z_energy = np.concatenate(z_energy, axis=1)
         # [z_samples, x_size, z_dim]
-        qz_x_mean = np.expand_dims(qz_x_mean, axis=2)
+        qz_x = np.expand_dims(qz_x, axis=2)
         # [z_samples, x_size, 1, z_dim]
+        print(qz_x_mean.shape, qz_x_std.shape, qz_x.shape, z_energy.shape)
 
         log_qz_x_ = np.sum(
             -np.square(qz_x - qz_x_mean) / 2.0 / np.square(qz_x_std) - np.log(qz_x_std) - 0.5 * np.log(2.0 * np.pi),
             axis=-1)
         log_qz = logsumexp(log_qz_x_, axis=2)
         # [z_samples, x_size, z_dim]
-        Z = np.exp(logsumexp(-z_energy - log_qz))
-        Z_var = (np.exp(logsumexp((-z_energy - log_qz) * 2.0)) - np.square(Z)) / (z_energy.shape[0] * z_energy.shape[1])
-        print('Z=%f±%f', Z, np.sqrt(Z_var))
-    tf.assign(get_Z, Z)
+        Z.append(np.exp(logsumexp(-z_energy - log_qz)))
+        Z_var.append(
+            (np.exp(logsumexp((-z_energy - log_qz) * 2.0)) - Z[-1]) / (z_energy.shape[0] * z_energy.shape[1])
+        )
+    print(Z, Z_var)
+    Z = np.mean(np.asarray(Z))
+    Z_var = np.mean(np.asarray(Z_var))
+
+    print('Z=%f±%f', Z, np.sqrt(Z_var))
+    get_Z().set(Z)
 
 
 @contextmanager
@@ -335,8 +352,8 @@ def main():
     # derive the nll and logits output for testing
     with tf.name_scope('testing'):
         test_q_net = q_net(input_x, n_z=config.test_n_z)
-        # test_p_net = p_net(observed={'x': input_x, 'z': test_q_net['z']},
-        #                    n_z=config.test_n_z)
+        test_pz_net = p_net(observed={'x': input_x, 'z': test_q_net['z']}, n_z=config.test_n_z)
+        test_pw_net = p_net(observed={'x': input_x}, n_z=config.test_n_z)
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_z, latent_axis=0)
         test_nll = -tf.reduce_mean(test_chain.vi.evaluation.is_loglikelihood())
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
@@ -385,7 +402,7 @@ def main():
     train_flow = bernoulli_flow(
         x_train, config.batch_size, shuffle=True, skip_incomplete=True)
     Z_train_flow = bernoulli_flow(
-        x_train, config.batch_size, shuffle=False, skip_incomplete=False)
+        x_train, config.batch_size, shuffle=True, skip_incomplete=True)
     test_flow = bernoulli_flow(
         x_test, config.test_batch_size, sample_now=True)
 
@@ -409,38 +426,6 @@ def main():
                            summary_graph=tf.get_default_graph(),
                            early_stopping=False) as loop:
 
-            def do_evaluate():
-                compute_partition_function(Z_train_flow, train_q_net, train_pz_net, train_pw_net)
-                evaluator.run()
-                plot_samples(loop)
-
-            for epoch in loop.iter_epochs():
-                step_iterator = loop.iter_steps(train_flow)
-
-                try:
-                    while True:
-                        # discriminator training
-                        for i in range(config.n_critical):
-                            step, [x] = next(step_iterator)
-                            session.run(theta_train_op, feed_dict={
-                                input_x: x
-                            })
-
-                        # generator training
-                        step, [x] = next(step_iterator)
-                        session.run([phi_train_op, omega_train_op], feed_dict={
-                            input_x: x
-                        })
-                except StopIteration:
-                    pass
-
-                if epoch % config.lr_anneal_epoch_freq == 0:
-                    learning_rate.anneal()
-                loop.print_logs()
-
-                if epoch % config.test_epoch_freq:
-                    do_evaluate()
-
             evaluator = spt.Evaluator(
                 loop,
                 metrics={'test_nll': test_nll, 'test_lb': test_lb},
@@ -452,6 +437,50 @@ def main():
                 spt.EventKeys.AFTER_EXECUTION,
                 lambda e: results.update_metrics(evaluator.last_metrics_dict)
             )
+
+            def do_evaluate():
+                evaluator.run()
+                plot_samples(loop)
+
+            loop.print_training_summary()
+            spt.utils.ensure_variables_initialized()
+
+            for epoch in loop.iter_epochs():
+                step_iterator = loop.iter_steps(train_flow)
+
+                try:
+                    while True:
+                        # discriminator training
+                        for i in range(config.n_critical):
+                            step, [x] = next(step_iterator)
+                            [_, batch_theta_loss] = session.run([theta_train_op, adv_theta_loss], feed_dict={
+                                input_x: x
+                            })
+                            loop.collect_metrics(adv_theta_loss=batch_theta_loss)
+
+                        # generator training
+                        step, [x] = next(step_iterator)
+                        [_, __, batch_phi_loss, batch_omega_loss] = session.run(
+                            [phi_train_op, omega_train_op, adv_phi_loss, adv_omega_loss], feed_dict={
+                            input_x: x
+                        })
+                        loop.collect_metrics(adv_phi_loss=batch_phi_loss)
+                        loop.collect_metrics(adv_omega_loss=batch_omega_loss)
+                except StopIteration:
+                    pass
+
+                if epoch % config.lr_anneal_epoch_freq == 0:
+                    learning_rate.anneal()
+
+                if epoch % config.test_epoch_freq == 0:
+                    with loop.timeit('eval_time'):
+                        do_evaluate()
+
+                if epoch == config.max_epoch:
+                    compute_partition_function(Z_train_flow, input_x, test_q_net, test_pz_net, test_pw_net)
+                    do_evaluate()
+
+                loop.print_logs()
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')
