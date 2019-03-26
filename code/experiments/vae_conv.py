@@ -109,15 +109,15 @@ def q_net(x, observed=None, n_z=None, is_training=False, is_initializing=False):
     return net
 
 
-__Z = None
+__log_Z = None
 
 
 @spt.global_reuse
-def get_Z():
-    global __Z
-    if __Z is None:
-        __Z = spt.ScheduledVariable('Z', dtype=tf.float32, initial_value=1., model_var=True)
-    return __Z
+def get_log_Z():
+    global __log_Z
+    if __log_Z is None:
+        __log_Z = spt.ScheduledVariable('log_Z', dtype=tf.float32, initial_value=1., model_var=True)
+    return __log_Z
 
 
 @add_arg_scope
@@ -139,7 +139,7 @@ def p_net(observed=None, n_z=None, gaussian_prior=False, mcmc_on_z=False,
     normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
                         logstd=tf.zeros([1, config.z_dim]))
     normal = normal.batch_ndims_to_value(1)
-    pz = EnergyDistribution(normal, G=G_phi, U=U_psi, Z=get_Z(), mcmc_on_z=mcmc_on_w, mcmc_on_x=mcmc_on_z)
+    pz = EnergyDistribution(normal, G=G_phi, U=U_psi, log_Z=get_log_Z(), mcmc_on_z=mcmc_on_w, mcmc_on_x=mcmc_on_z)
     if gaussian_prior:
         z = net.add('z', normal, n_samples=n_z)
     else:
@@ -300,8 +300,8 @@ def sgvb_loss(p_net, q_net, beta, metrics_dict, prefix='train_', name=None):
 
 def compute_partition_function(train_flow, input_x, q_net, pz_net, pw_net):
     session = spt.utils.get_default_session_or_error()
-    Z = []
-    Z_var = []
+    log_Z = []
+    log_Z_var = []
     for __ in range(config.Z_compute_epochs):
         qz_x_mean = []
         qz_x_std = []
@@ -330,16 +330,16 @@ def compute_partition_function(train_flow, input_x, q_net, pz_net, pw_net):
             axis=-1)
         log_qz = logsumexp(log_qz_x_, axis=2)
         # [z_samples, x_size, z_dim]
-        Z.append(np.exp(logsumexp(-z_energy - log_qz)))
-        Z_var.append(
-            (np.exp(logsumexp((-z_energy - log_qz) * 2.0)) - Z[-1]) / (z_energy.shape[0] * z_energy.shape[1])
-        )
-    print(Z, Z_var)
-    Z = np.mean(np.asarray(Z))
-    Z_var = np.mean(np.asarray(Z_var))
+        log_Z.append(logsumexp(-z_energy - log_qz))
+        # log_Z_var.append(
+        #     (np.exp(logsumexp((-z_energy - log_qz) * 2.0)) - Z[-1]) / (z_energy.shape[0] * z_energy.shape[1])
+        # )
+    print(log_Z)
+    log_Z = np.mean(np.asarray(log_Z))
+    # log_Z_var = np.mean(np.asarray(log_Z_var))
 
-    print('Z=%f±%f', Z, np.sqrt(Z_var))
-    get_Z().set(Z)
+    print('log_Z=%f±%f', log_Z, np.sqrt(log_Z_var))
+    get_log_Z().set(log_Z)
 
 
 @contextmanager

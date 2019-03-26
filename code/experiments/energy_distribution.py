@@ -11,7 +11,7 @@ class EnergyDistribution(spt.Distribution):
     function `x = G(z)`, where `p(x) = exp(-U(x)) / Z`.
     """
 
-    def __init__(self, pz, G, U, Z=1., mcmc_on_z=False, mcmc_on_x=False):
+    def __init__(self, pz, G, U, log_Z=0., mcmc_on_z=False, mcmc_on_x=False):
         """
         Construct a new :class:`EnergyDistribution`.
 
@@ -33,14 +33,13 @@ class EnergyDistribution(spt.Distribution):
             batch_static_shape=pz.get_batch_shape(),
             value_ndims=pz.value_ndims
         )
-        Z = spt.ops.convert_to_tensor_and_cast(Z, dtype=pz.dtype)
+        log_Z = spt.ops.convert_to_tensor_and_cast(log_Z, dtype=pz.dtype)
 
         self._pz = pz
         self._G = G
         self._U = U
-        self._Z = Z
-        with tf.name_scope('log_Z', values=[Z]):
-            self._log_Z = tf.log(tf.maximum(Z, 1e-7))
+        with tf.name_scope('log_Z', values=[log_Z]):
+            self._log_Z = tf.maximum(log_Z, -20)
 
     @property
     def pz(self):
