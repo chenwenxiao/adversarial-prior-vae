@@ -25,7 +25,7 @@ class ExpConfig(spt.Config):
     channels_last = True
 
     # model parameters
-    z_dim = 2
+    z_dim = 40
     act_norm = False
     weight_norm = False
     l2_reg = 0.0001
@@ -53,7 +53,7 @@ class ExpConfig(spt.Config):
     n_critical = 1
     Z_compute_epochs = 10
     # evaluation parameters
-    train_n_w = 100
+    train_n_w = 1000
     train_n_z = 10
     test_n_z = 100
     test_batch_size = 64
@@ -631,9 +631,9 @@ def main():
             # adversarial training
             for epoch in epoch_iterator:
                 step_iterator = MyIterator(loop.iter_steps(train_flow))
-                episode_epoch = (epoch - config.pretrain_epoch) % config.episode_epoch
+                episode_epoch = (epoch - config.pretrain_epoch - 1) % config.episode_epoch
 
-                if episode_epoch <= config.adv_train_epoch:
+                if episode_epoch < config.adv_train_epoch:
                     while step_iterator.has_next:
                         # energy training
                         for step, [x] in limited(step_iterator, config.n_critical):
