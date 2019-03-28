@@ -35,8 +35,8 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 4800
-    pretrain_epoch = 2400
+    max_epoch = 5100
+    pretrain_epoch = 300
     episode_epoch = 4800
     adv_train_epoch = 2400
 
@@ -237,6 +237,27 @@ def T_omega(z, w, is_training=False, is_initializing=False):
     return tf.squeeze(h_t, axis=-1)
 
 
+@add_arg_scope
+@spt.global_reuse
+def R_gamma(z, x, is_training=False, is_initializing=False):
+    if config.act_norm:
+        normalizer_fn = functools.partial(
+            spt.layers.act_norm, initializing=is_initializing)
+    else:
+        normalizer_fn = None
+
+    with arg_scope([spt.layers.dense],
+                   activation_fn=tf.nn.leaky_relu,
+                   normalizer_fn=normalizer_fn,
+                   weight_norm=config.weight_norm,
+                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
+        h_r = tf.concat([tf.to_float(z), tf.to_float(x)], axis=-1)
+        h_r = spt.layers.dense(h_r, 500, scope='level_0')
+        h_r = spt.layers.dense(h_r, 500, scope='level_1')
+    h_r = spt.layers.dense(h_r, 1, scope='level_2')
+    return tf.squeeze(h_r, axis=-1)
+
+
 debug_energy_z = None
 debug_energy_Gw = None
 debug_qz_mean = None
@@ -263,25 +284,34 @@ def adv_prior_loss(q_net, pz_net, pw_net):
         )
         adv_psi_loss = -tf.reduce_mean(energy_Gw) + tf.reduce_mean(
             energy_z + config.gradient_penalty_weight * gradient_penalty)
-        adv_theta_loss = -tf.reduce_mean(energy_Gw) + tf.reduce_mean(
-            -log_px_z + energy_z + z.log_prob()
-        ) + tf.reduce_mean(tf.square(z_mean)) + tf.reduce_mean(tf.square(z_variance - 1.0))
         global debug_energy_z
         debug_energy_z = tf.reduce_mean(energy_z)
         global debug_energy_Gw
         debug_energy_Gw = tf.reduce_mean(energy_Gw)
 
-        # tf.nn.sigmoid_cross_entropy_with_logits
+        # I(G(w), w)
         logits_T = T_omega(Gw, Gw.z)
         logits_T_ = T_omega(Gw, Gw.z_)
         concat_logits = tf.concat([logits_T, logits_T_], axis=0)
         concat_label = tf.concat([tf.ones_like(logits_T), tf.zeros_like(logits_T_)], axis=0)
-
         adv_omega_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
             logits=concat_logits, labels=concat_label
         ))
         adv_phi_loss = adv_omega_loss + tf.reduce_mean(energy_Gw)
-    return adv_psi_loss, adv_theta_loss, adv_phi_loss, adv_omega_loss
+
+        # I(x, z)
+        logits_R = R_gamma(pz_net['x'], z)
+        logits_R_ = R_gamma(tf.random_shuffle(pz_net['x']), z)
+        concat_logits = tf.concat([logits_R, logits_R_], axis=0)
+        concat_label = tf.concat([tf.ones_like(logits_R), tf.zeros_like(logits_R_)], axis=0)
+        adv_gamma_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+            logits=concat_logits, labels=concat_label
+        ))
+
+        adv_theta_loss = -adv_gamma_loss + tf.reduce_mean(
+            -log_px_z
+        ) + tf.reduce_mean(tf.square(z_mean)) + tf.reduce_mean(tf.square(z_variance - 1.0))
+    return adv_psi_loss, adv_theta_loss, adv_phi_loss, adv_omega_loss, adv_gamma_loss
 
 
 @spt.utils.add_name_arg_doc
@@ -460,12 +490,13 @@ def main():
         train_pz_net = p_net(observed={'x': input_x, 'z': train_q_net['z']}, n_z=config.train_n_z)
         train_pw_net = p_net(observed={'x': input_x}, n_z=config.train_n_w)
 
-        adv_psi_loss, adv_theta_loss, adv_phi_loss, adv_omega_loss = adv_prior_loss(
+        adv_psi_loss, adv_theta_loss, adv_phi_loss, adv_omega_loss, adv_gamma_loss = adv_prior_loss(
             train_q_net, train_pz_net, train_pw_net)
         adv_psi_loss += tf.losses.get_regularization_loss()
         adv_theta_loss += tf.losses.get_regularization_loss()
         adv_phi_loss += tf.losses.get_regularization_loss()
         adv_omega_loss += tf.losses.get_regularization_loss()
+        adv_gamma_loss += tf.losses.get_regularization_loss()
 
     # derive the nll and logits output for testing
     with tf.name_scope('testing'):
@@ -482,6 +513,7 @@ def main():
         psi_params = tf.trainable_variables('U_psi')
         theta_params = tf.trainable_variables('p_net') + tf.trainable_variables('q_net')
         omega_params = tf.trainable_variables('T_omega')
+        gamma_params = tf.trainable_variables('R_gamma')
         print("========phi=========")
         print(phi_params)
         print("========theta=========")
@@ -492,6 +524,7 @@ def main():
         psi_optimizer = tf.train.AdamOptimizer(learning_rate)
         theta_optimizer = tf.train.AdamOptimizer(learning_rate)
         omega_optimizer = tf.train.AdamOptimizer(learning_rate)
+        gamma_optimizer = tf.train.AdamOptimizer(learning_rate)
         theta_pretrain_optimizer = tf.train.AdamOptimizer(learning_rate)
 
         theta_grads = theta_optimizer.compute_gradients(adv_theta_loss, theta_params)
@@ -501,6 +534,9 @@ def main():
         theta_pretrain_grads = theta_optimizer.compute_gradients(pretrain_theta_loss, theta_params)
         theta_pretrain_grads = [
             (spt.utils.maybe_check_numerics(grad, grad.name), var) for grad, var in theta_pretrain_grads]
+        gamma_grads = theta_optimizer.compute_gradients(adv_gamma_loss, gamma_params)
+        gamma_grads = [
+            (spt.utils.maybe_check_numerics(grad, grad.name), var) for grad, var in gamma_grads]
         # omega_grads = omega_optimizer.compute_gradients(adv_omega_loss, omega_params)
         # phi_grads = phi_optimizer.compute_gradients(adv_theta_loss, phi_params)
 
@@ -515,6 +551,8 @@ def main():
             theta_train_op = theta_optimizer.apply_gradients(theta_grads)
             psi_train_op = psi_optimizer.apply_gradients(psi_grads)
             theta_pretrain_op = theta_pretrain_optimizer.apply_gradients(theta_pretrain_grads)
+            gamma_train_op = gamma_optimizer.apply_gradients(gamma_grads)
+
             # phi_train_op = theta_optimizer.apply_gradients(phi_grads)
             # omega_train_op = omega_optimizer.apply_gradients(omega_grads)
 
@@ -637,7 +675,7 @@ def main():
                 if episode_epoch == 0 or episode_epoch == config.adv_train_epoch:
                     learning_rate.set(config.initial_lr)
 
-                if episode_epoch < config.adv_train_epoch:
+                if episode_epoch >= config.adv_train_epoch:
                     while step_iterator.has_next:
                         # energy training
                         for step, [x] in limited(step_iterator, config.n_critical):
@@ -657,15 +695,26 @@ def main():
                         loop.collect_metrics(adv_phi_loss=batch_phi_loss)
                         loop.collect_metrics(adv_omega_loss=batch_omega_loss)
                 else:
-                    for step, [x] in step_iterator:
-                        # vae training
-                        [_, batch_theta_loss, _z, _w] = session.run(
-                            [theta_train_op, adv_theta_loss, debug_energy_z, debug_energy_Gw], feed_dict={
-                                input_x: x
-                            })
-                        loop.collect_metrics(energy_z=_z)
-                        loop.collect_metrics(energy_Gw=_w)
-                        loop.collect_metrics(adv_theta_loss=batch_theta_loss)
+                    while step_iterator.has_next:
+                        for step, [x] in step_iterator:
+                            # vae training
+                            [_, batch_theta_loss, _z, _w] = session.run(
+                                [theta_train_op, adv_theta_loss, debug_energy_z, debug_energy_Gw], feed_dict={
+                                    input_x: x
+                                })
+                            loop.collect_metrics(energy_z=_z)
+                            loop.collect_metrics(energy_Gw=_w)
+                            loop.collect_metrics(adv_theta_loss=batch_theta_loss)
+
+                        for step, [x] in step_iterator:
+                            # vae training
+                            [_, batch_gamma_loss, _z, _w] = session.run(
+                                [theta_train_op, adv_gamma_loss, debug_energy_z, debug_energy_Gw], feed_dict={
+                                    input_x: x
+                                })
+                            loop.collect_metrics(energy_z=_z)
+                            loop.collect_metrics(energy_Gw=_w)
+                            loop.collect_metrics(adv_theta_loss=batch_gamma_loss)
 
                 if epoch % config.lr_anneal_epoch_freq == 0:
                     learning_rate.anneal()
