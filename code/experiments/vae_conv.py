@@ -54,10 +54,10 @@ class ExpConfig(spt.Config):
     Z_compute_epochs = 10
     # evaluation parameters
     train_n_w = 1000
-    train_n_z = 1
+    train_n_z = 10
     test_n_z = 100
     test_batch_size = 64
-    test_epoch_freq = 100
+    test_epoch_freq = 200
     plot_epoch_freq = 10
 
     epsilon = -20
@@ -69,6 +69,37 @@ class ExpConfig(spt.Config):
 
 
 config = ExpConfig()
+
+
+def get_z_moments(z, value_ndims, name=None):
+    """
+    Get the per-dimensional mean and variance of `z`.
+
+    Args:
+        z (Tensor): The `z` tensor.
+        value_ndims (int): Number of value dimensions, must be `1` or `3`.
+            `1` indicates `z` is a dense latent variable, otherwise `3`
+            indicates `z` is a convolutional latent variable.
+
+    Returns:
+        (tf.Tensor, tf.Tensor): The `(mean, variance)` of `z`.
+    """
+    value_ndims = spt.utils.validate_enum_arg(
+        'value_ndims', value_ndims, [1, 3])
+
+    if value_ndims == 1:
+        z = spt.utils.InputSpec(shape=['...', '*']).validate('z', z)
+    else:
+        z = spt.utils.InputSpec(shape=['...', '?', '?', '*']).validate('z', z)
+
+    with tf.name_scope(name, default_name='get_z_moments', values=[z]):
+        rank = len(spt.utils.get_static_shape(z))
+        if value_ndims == 1:
+            axes = list(range(0, rank - 1))
+        else:
+            axes = list(range(0, rank - 3))
+        mean, variance = tf.nn.moments(z, axes=axes)
+        return mean, variance
 
 
 @add_arg_scope
@@ -85,9 +116,9 @@ def q_net(x, observed=None, n_z=None, is_training=False, is_initializing=False):
     )
 
     # compute the hidden features
-    with arg_scope([spt.layers.resnet_conv2d_block],
+    with arg_scope([spt.layers.conv2d],
                    kernel_size=config.kernel_size,
-                   shortcut_kernel_size=config.shortcut_kernel_size,
+                   # shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
@@ -146,9 +177,9 @@ def p_net(observed=None, n_z=None, gaussian_prior=False, mcmc_on_z=False,
         z = net.add('z', pz, n_samples=n_z)
 
     # compute the hidden features
-    with arg_scope([spt.layers.resnet_deconv2d_block],
+    with arg_scope([spt.layers.deconv2d],
                    kernel_size=config.kernel_size,
-                   shortcut_kernel_size=config.shortcut_kernel_size,
+                   # shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
@@ -159,10 +190,10 @@ def p_net(observed=None, n_z=None, gaussian_prior=False, mcmc_on_z=False,
             ndims=1,
             shape=(7, 7, 64) if config.channels_last else (64, 7, 7)
         )
-        h_z = spt.layers.conv2d(h_z, 64, scope='level_1')  # output: (64, 7, 7)
-        h_z = spt.layers.conv2d(h_z, 32, strides=2, scope='level_2')  # output: (32, 14, 14)
-        h_z = spt.layers.conv2d(h_z, 32, scope='level_3')  # output: (32, 14, 14)
-        h_z = spt.layers.conv2d(h_z, 16, strides=2, scope='level_4')  # output: (16, 28, 28)
+        h_z = spt.layers.deconv2d(h_z, 64, scope='level_1')  # output: (64, 7, 7)
+        h_z = spt.layers.deconv2d(h_z, 32, strides=2, scope='level_2')  # output: (32, 14, 14)
+        h_z = spt.layers.deconv2d(h_z, 32, scope='level_3')  # output: (32, 14, 14)
+        h_z = spt.layers.deconv2d(h_z, 16, strides=2, scope='level_4')  # output: (16, 28, 28)
 
     # sample x ~ p(x|z)
     x_logits = spt.layers.conv2d(
@@ -188,10 +219,14 @@ def G_phi(w, is_training=False, is_initializing=False):
                    weight_norm=config.weight_norm,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_w = tf.to_float(w)
-        h_w = spt.layers.dense(h_w, 100, scope='level_0')
-        h_w = spt.layers.dense(h_w, 100, scope='level_1')
+        h_w = spt.layers.dense(h_w, 200, scope='level_0')
+        h_w = spt.layers.dense(h_w, 200, scope='level_1')
+        h_w = spt.layers.dense(h_w, 200, scope='level_2')
+        h_w = spt.layers.dense(h_w, 200, scope='level_3')
+        h_w = spt.layers.dense(h_w, 200, scope='level_4')
+        h_w = spt.layers.dense(h_w, 200, scope='level_5')
 
-    h_w = spt.layers.dense(h_w, config.z_dim, scope='level_2')
+    h_w = spt.layers.dense(h_w, config.z_dim, scope='level_6')
     return h_w
 
 
@@ -210,9 +245,13 @@ def U_psi(z, is_training=False, is_initializing=False):
                    weight_norm=config.weight_norm,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_u = tf.to_float(z)
-        h_u = spt.layers.dense(h_u, 100, scope='level_0')
-        h_u = spt.layers.dense(h_u, 100, scope='level_1')
-    h_u = spt.layers.dense(h_u, 1, scope='level_2')
+        h_u = spt.layers.dense(h_u, 200, scope='level_0')
+        h_u = spt.layers.dense(h_u, 200, scope='level_1')
+        h_u = spt.layers.dense(h_u, 200, scope='level_2')
+        h_u = spt.layers.dense(h_u, 200, scope='level_3')
+        h_u = spt.layers.dense(h_u, 200, scope='level_4')
+        h_u = spt.layers.dense(h_u, 200, scope='level_5')
+    h_u = spt.layers.dense(h_u, 1, scope='level_6')
     return tf.squeeze(h_u, axis=-1)
 
 
@@ -231,9 +270,13 @@ def T_omega(z, w, is_training=False, is_initializing=False):
                    weight_norm=config.weight_norm,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_t = tf.concat([tf.to_float(z), tf.to_float(w)], axis=-1)
-        h_t = spt.layers.dense(h_t, 100, scope='level_0')
-        h_t = spt.layers.dense(h_t, 100, scope='level_1')
-    h_t = spt.layers.dense(h_t, 1, scope='level_2')
+        h_t = spt.layers.dense(h_t, 200, scope='level_0')
+        h_t = spt.layers.dense(h_t, 200, scope='level_1')
+        h_t = spt.layers.dense(h_t, 200, scope='level_2')
+        h_t = spt.layers.dense(h_t, 200, scope='level_3')
+        h_t = spt.layers.dense(h_t, 200, scope='level_4')
+        h_t = spt.layers.dense(h_t, 200, scope='level_5')
+    h_t = spt.layers.dense(h_t, 1, scope='level_6')
     return tf.squeeze(h_t, axis=-1)
 
 
@@ -248,8 +291,9 @@ def adv_prior_loss(q_net, pz_net, pw_net):
         z = q_net['z']
         Gw = pw_net['z']
 
-        z_mean, z_variance = tf.nn.moments(z, axes=[0, 1])
+        z_mean, z_variance = get_z_moments(z, value_ndims=1)
         log_px_z = pz_net['x'].log_prob(name='log_px_z')
+        energy_mean_z = pw_net['z'].distribution.log_prob(q_net['z'].distribution.mean).energy
 
         global debug_qz_mean
         debug_qz_mean = z_mean
@@ -259,10 +303,13 @@ def adv_prior_loss(q_net, pz_net, pw_net):
         energy_z = pz_net['z'].log_prob(name='log_pz').energy
         energy_Gw = pw_net['z'].log_prob(name='log_pGw').energy
         gradient_penalty = tf.reduce_sum(
-            tf.square(tf.gradients(energy_z, [z.tensor])[0]), axis=-1
+            tf.square(tf.gradients(energy_mean_z, [q_net['z'].distribution.mean])[0])
         )
+        # gradient_penalty = tf.reduce_sum(
+        #     tf.square(tf.gradients(energy_z, [z.tensor])[0])
+        # )
         adv_psi_loss = -tf.reduce_mean(energy_Gw) + tf.reduce_mean(
-            energy_z + config.gradient_penalty_weight * gradient_penalty)
+            energy_z) + config.gradient_penalty_weight * gradient_penalty
         adv_theta_loss = -tf.reduce_mean(energy_Gw) + tf.reduce_mean(
             -log_px_z + energy_z + z.log_prob()
         ) + tf.reduce_mean(tf.square(z_mean)) + tf.reduce_mean(tf.square(z_variance - 1.0))
