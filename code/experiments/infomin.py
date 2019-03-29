@@ -782,7 +782,7 @@ def main():
                                 })
                             loop.collect_metrics(energy_z=_z)
                             loop.collect_metrics(energy_Gw=_w)
-                            loop.collect_metrics(adv_theta_loss=batch_gamma_loss)
+                            loop.collect_metrics(adv_gamma_loss=batch_gamma_loss)
 
                 if epoch % config.lr_anneal_epoch_freq == 0:
                     learning_rate.anneal()
