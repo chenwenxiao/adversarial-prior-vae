@@ -309,7 +309,7 @@ def adv_prior_loss(q_net, pz_net, pw_net):
         #     tf.square(tf.gradients(energy_z, [z.tensor])[0])
         # )
         adv_psi_loss = -tf.reduce_mean(energy_Gw) + tf.reduce_mean(
-            energy_z) + config.gradient_penalty_weight * gradient_penalty
+                energy_z) + config.gradient_penalty_weight * gradient_penalty
         adv_theta_loss = -tf.reduce_mean(energy_Gw) + tf.reduce_mean(
             -log_px_z + energy_z + z.log_prob()
         ) + tf.reduce_mean(tf.square(z_mean)) + tf.reduce_mean(tf.square(z_variance - 1.0))
