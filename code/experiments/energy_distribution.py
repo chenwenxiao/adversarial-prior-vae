@@ -1,6 +1,7 @@
 import tensorflow as tf
 import tfsnippet as spt
 from tfsnippet.distributions.utils import compute_density_immediately
+import numpy as np
 
 __all__ = ['EnergyDistribution']
 
@@ -11,7 +12,7 @@ class EnergyDistribution(spt.Distribution):
     function `x = G(z)`, where `p(x) = exp(-U(x)) / Z`.
     """
 
-    def __init__(self, pz, G, U, log_Z=0., mcmc_on_z=False, mcmc_on_x=False):
+    def __init__(self, pz, G, U, log_Z=0., mcmc_iterator=0, mcmc_alpha=0.01, mcmc_algorithm='mala', mcmc_space='z'):
         """
         Construct a new :class:`EnergyDistribution`.
 
@@ -40,6 +41,8 @@ class EnergyDistribution(spt.Distribution):
         self._U = U
         with tf.name_scope('log_Z', values=[log_Z]):
             self._log_Z = tf.maximum(log_Z, -20)
+        self._mcmc_iterator = mcmc_iterator
+        self._mcmc_alpha = mcmc_alpha
 
     @property
     def pz(self):
@@ -84,10 +87,40 @@ class EnergyDistribution(spt.Distribution):
         with tf.name_scope(name,
                            default_name=spt.utils.get_default_scope_name(
                                'sample', self)):
-            z = self.pz.sample(
+            origin_z = self.pz.sample(
                 n_samples=n_samples, is_reparameterized=is_reparameterized,
                 compute_density=False
             )
+            z = origin_z
+            for i in range(self._mcmc_iterator):
+                e_z, grad_e_z, z_prime = self.get_sgld_proposal(z)
+                e_z_prime, grad_e_z_prime, _ = self.get_sgld_proposal(z_prime)
+
+                log_q_zprime_z = tf.reduce_sum(
+                    tf.square(z_prime - z + self._mcmc_alpha * grad_e_z), axis=-1
+                )
+                log_q_zprime_z *= -1. / (4 * self._mcmc_alpha)
+
+                log_q_z_zprime = tf.reduce_sum(
+                    tf.square(z - z_prime + self._mcmc_alpha * grad_e_z_prime), axis=-1
+                )
+                log_q_z_zprime *= -1. / (4 * self._mcmc_alpha)
+
+                log_ratio_1 = -e_z_prime + e_z  # log [p(z_prime) / p(z)]
+                log_ratio_2 = log_q_z_zprime - log_q_zprime_z  # log [q(z | z_prime) / q(z_prime | z)]
+                # print(log_ratio_1.mean().item(), log_ratio_2.mean().item())
+
+                ratio = tf.clip_by_value(
+                    tf.exp(log_ratio_1 + log_ratio_2), 0.0, 1.0
+                )
+                # print(ratio.mean().item())
+                rnd_u = tf.random.normal(
+                    shape=ratio.shape
+                )
+                mask = tf.cast(tf.less(rnd_u, ratio), tf.float32)
+                mask = tf.expand_dims(mask, axis=-1)
+                z = (z_prime * mask + z * (1 - mask))
+
             x = self.G(z)
 
             if self.is_reparameterized and not is_reparameterized:
@@ -102,9 +135,19 @@ class EnergyDistribution(spt.Distribution):
             )
             if compute_density:
                 compute_density_immediately(t)
-            t.z = z
+            t.z = origin_z
             t.z_ = self.pz.sample(
                 n_samples=n_samples, is_reparameterized=is_reparameterized,
                 compute_density=False
             )
         return t
+
+    def get_sgld_proposal(self, z):
+        energy_z = self.U(self.G(z))
+        grad_energy_z = tf.gradients(energy_z, [z.tensor if hasattr(z, 'tensor') else z])[0]
+        grad_energy_z = tf.reshape(grad_energy_z, shape=z.shape)
+        eps = tf.random.normal(
+            shape=z.shape
+        ) * np.sqrt(self._mcmc_alpha * 2)
+        z_prime = z - self._mcmc_alpha * grad_energy_z + eps
+        return energy_z, grad_energy_z, z_prime

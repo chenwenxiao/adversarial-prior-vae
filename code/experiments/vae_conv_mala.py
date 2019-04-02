@@ -35,10 +35,10 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 4800
+    max_epoch = 3400
     pretrain_epoch = 2400
-    episode_epoch = 4800
-    adv_train_epoch = 2400
+    episode_epoch = 3400
+    adv_train_epoch = 1000
 
     max_step = None
     batch_size = 128
@@ -47,9 +47,9 @@ class ExpConfig(spt.Config):
     lr_anneal_epoch_freq = 800
     lr_anneal_step_freq = None
 
-    initial_lr_adv = 0.0001
+    initial_lr_adv = 0.001
     lr_adv_anneal_factor = 0.1
-    lr_adv_anneal_epoch_freq = 100
+    lr_adv_anneal_epoch_freq = 200
     lr_adv_anneal_step_freq = None
 
     gradient_penalty_weight = 0.1
@@ -158,8 +158,7 @@ def get_log_Z():
 
 @add_arg_scope
 @spt.global_reuse
-def p_net(observed=None, n_z=None, gaussian_prior=False, mcmc_on_z=False,
-          mcmc_on_w=False, is_training=False,
+def p_net(observed=None, n_z=None, gaussian_prior=False, mcmc_iterator=0, is_training=False,
           is_initializing=False):
     net = spt.BayesianNet(observed=observed)
 
@@ -175,7 +174,7 @@ def p_net(observed=None, n_z=None, gaussian_prior=False, mcmc_on_z=False,
     normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
                         logstd=tf.zeros([1, config.z_dim]))
     normal = normal.batch_ndims_to_value(1)
-    pz = EnergyDistribution(normal, G=G_phi, U=U_psi, log_Z=get_log_Z(), mcmc_on_z=mcmc_on_w, mcmc_on_x=mcmc_on_z)
+    pz = EnergyDistribution(normal, G=G_phi, U=U_psi, log_Z=get_log_Z(), mcmc_iterator=mcmc_iterator)
     if gaussian_prior:
         z = net.add('z', normal, n_samples=n_z)
     else:
@@ -321,7 +320,7 @@ def adv_prior_loss(q_net, pz_net, pw_net):
         #     tf.square(tf.gradients(energy_mean_z, [q_net['z'].distribution.mean])[0])
         # )
         gradient_penalty = tf.reduce_sum(
-            tf.square(tf.gradients(energy_z, [z.tensor if z.tensor is not None else z])[0])
+            tf.square(tf.gradients(energy_z, [z.tensor if hasattr(z, 'tensor') else z])[0])
         )
         adv_psi_loss = -tf.reduce_mean(energy_Gw) + tf.reduce_mean(
             energy_z) + config.gradient_penalty_weight * gradient_penalty
@@ -388,12 +387,13 @@ def compute_partition_function(train_flow, input_x, q_net, pz_net, pw_net):
         # [z_samples, x_size, 1, z_dim]
         # print(qz_x_mean.shape, qz_x_std.shape, qz_x.shape, z_energy.shape)
 
-        log_qz_x_ = np.mean(
+        log_qz_x_ = np.sum(
             -np.square(qz_x - qz_x_mean) / 2.0 / np.square(qz_x_std) - np.log(qz_x_std) - 0.5 * np.log(2.0 * np.pi),
             axis=-1)
-        log_qz = logsumexp(log_qz_x_, axis=2)
-        # [z_samples, x_size, z_dim]
-        log_Z.append(logsumexp(-z_energy - log_qz))
+        log_qz = logsumexp(log_qz_x_, axis=2) - np.log(log_qz_x_.shape[2])
+        # TODO: logmeanexp
+        # [z_samples, x_size]
+        log_Z.append(logsumexp(-z_energy - log_qz) - np.log(z_energy.shape[0] * z_energy.shape[1]))
         kl.append(z_energy + log_qz)
         # log_Z_var.append(
         #     (np.exp(logsumexp((-z_energy - log_qz) * 2.0)) - Z[-1]) / (z_energy.shape[0] * z_energy.shape[1])
@@ -547,7 +547,7 @@ def main():
     with tf.name_scope('testing'):
         test_q_net = q_net(input_x, n_z=config.test_n_z)
         test_pz_net = p_net(observed={'x': input_x, 'z': test_q_net['z']}, n_z=config.test_n_z)
-        test_pw_net = p_net(observed={'x': input_x}, n_z=config.test_n_z)
+        test_pw_net = p_net(observed={'x': input_x}, n_z=config.test_n_z, mcmc_iterator=10)
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_z, latent_axis=0)
         test_nll = -tf.reduce_mean(test_chain.vi.evaluation.is_loglikelihood())
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
@@ -597,9 +597,9 @@ def main():
     # derive the plotting function
     with tf.name_scope('plotting'):
         x_plots = 255.0 * tf.reshape(
-            p_net(n_z=100)['x'], (-1,) + config.x_shape)
+            p_net(n_z=100, mcmc_iterator=10)['x'], (-1,) + config.x_shape)
         z_plots = tf.reshape(
-            p_net(n_z=1000)['z'], (-1, config.z_dim)
+            p_net(n_z=1000, mcmc_iterator=10)['z'], (-1, config.z_dim)
         )
         reconstruct_q_net = q_net(input_x)
         reconstruct_z = reconstruct_q_net['z']
