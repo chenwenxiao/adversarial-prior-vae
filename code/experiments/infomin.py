@@ -102,7 +102,6 @@ def get_z_moments(z, value_ndims, name=None):
         return mean, variance
 
 
-
 @add_arg_scope
 @spt.global_reuse
 def q_net(x, observed=None, n_z=None, is_training=False, is_initializing=False):
@@ -197,11 +196,26 @@ def p_net(observed=None, n_z=None, gaussian_prior=False, mcmc_on_z=False,
         h_z = spt.layers.deconv2d(h_z, 16, strides=2, scope='level_4')  # output: (16, 28, 28)
 
     # sample x ~ p(x|z)
-    x_logits = spt.layers.conv2d(
-        h_z, 1, (1, 1), padding='same', scope='feature_map_to_pixel',
+    x_mean = spt.layers.conv2d(
+        h_z, 1, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         channels_last=config.channels_last
-    )  # output: (1, 28, 28)
-    x = net.add('x', spt.Bernoulli(logits=x_logits), group_ndims=3)
+    )
+    x_logstd = spt.layers.conv2d(
+        h_z, 1, (1, 1), padding='same', scope='feature_map_std_to_pixel',
+        channels_last=config.channels_last
+    )
+    x = net.add('x', spt.DiscretizedLogistic(
+        mean=x_mean,
+        log_scale=spt.ops.maybe_clip_value(x_logstd, min_val=config.epsilon),
+        bin_size=1 / 255.,
+        min_val=0.,
+        max_val=1.
+    ), group_ndims=3)
+    # x_logits = spt.layers.conv2d(
+    #     h_z, 1, (1, 1), padding='same', scope='feature_map_to_pixel',
+    #     channels_last=config.channels_last
+    # )  # output: (1, 28, 28)
+    # x = net.add('x', spt.Bernoulli(logits=x_logits), group_ndims=3)
     return net
 
 
@@ -528,7 +542,7 @@ def main():
 
     # input placeholders
     input_x = tf.placeholder(
-        dtype=tf.int32, shape=(None,) + config.x_shape, name='input_x')
+        dtype=tf.float32, shape=(None,) + config.x_shape, name='input_x')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
     beta = tf.placeholder(dtype=tf.float32, shape=(), name='beta')
@@ -626,18 +640,19 @@ def main():
 
     # derive the plotting function
     with tf.name_scope('plotting'):
-        x_plots = tf.reshape(
-            bernoulli_as_pixel(p_net(n_z=100)['x']), (-1,) + config.x_shape)
+        x_plots = 255.0 * tf.reshape(
+            p_net(n_z=100)['x'], (-1,) + config.x_shape)
         z_plots = tf.reshape(
             p_net(n_z=1000)['z'], (-1, config.z_dim)
         )
         reconstruct_q_net = q_net(input_x)
         reconstruct_z = reconstruct_q_net['z']
-        reconstruct_plots = tf.reshape(
-            bernoulli_as_pixel(
-                p_net(observed={'z': reconstruct_z})['x']),
+        reconstruct_plots = 255.0 * tf.reshape(
+            p_net(observed={'z': reconstruct_z})['x'],
             (-1,) + config.x_shape
         )
+        x_plots = tf.clip_by_value(x_plots, 0, 255)
+        reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
 
     def plot_samples(loop):
         with loop.timeit('plot_time'):
@@ -657,14 +672,16 @@ def main():
 
             # plot reconstructs
             for [x] in reconstruct_train_flow:
-                x_samples = reconstruct_sampler.sample(x)
-                images = np.zeros((100,) + config.x_shape, dtype=np.uint8)
-                images[::2, ...] = x.astype(np.uint8)
-                images[1::2, ...] = session.run(reconstruct_plots, feed_dict={input_x: x_samples})
+                # x_samples = reconstruct_sampler.sample(x / 255.)
+                x_samples = x
+                images = np.zeros((150,) + config.x_shape, dtype=np.uint8)
+                images[::3, ...] = (x * 255.0).astype(np.uint8)
+                images[1::3, ...] = (x_samples * 255.0).astype(np.uint8)
+                images[2::3, ...] = session.run(reconstruct_plots, feed_dict={input_x: x_samples})
                 save_images_collection(
                     images=images,
                     filename='plotting/train.reconstruct/{}.png'.format(loop.epoch),
-                    grid_size=(10, 10),
+                    grid_size=(10, 15),
                     results=results,
                     channels_last=config.channels_last,
                 )
@@ -673,15 +690,15 @@ def main():
     # prepare for training and testing data
     (x_train, y_train), (x_test, y_test) = \
         spt.datasets.load_mnist(x_shape=config.x_shape)
-    train_flow = bernoulli_flow(
-        x_train, config.batch_size, shuffle=True, skip_incomplete=True)
-    Z_train_flow = bernoulli_flow(
-        x_train, config.batch_size, shuffle=True, skip_incomplete=True)
+    # train_flow = bernoulli_flow(
+    #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
+    train_flow = spt.DataFlow.arrays([x_train / 255.0], config.batch_size, shuffle=True, skip_incomplete=True)
+    Z_train_flow = spt.DataFlow.arrays(
+        [x_train / 255.0], config.batch_size, shuffle=True, skip_incomplete=True)
     reconstruct_train_flow = spt.DataFlow.arrays(
-        [x_train], 50, shuffle=True, skip_incomplete=False)
-    reconstruct_sampler = spt.preprocessing.BernoulliSampler()
-    test_flow = bernoulli_flow(
-        x_test, config.test_batch_size, sample_now=True)
+        [x_train / 255.0], 50, shuffle=True, skip_incomplete=False)
+    test_flow = spt.DataFlow.arrays(
+        [x_test / 255.0], config.test_batch_size)
 
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
