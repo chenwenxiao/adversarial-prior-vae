@@ -35,10 +35,10 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 4000
+    max_epoch = 4800
     pretrain_epoch = 2400
-    episode_epoch = 4000
-    adv_train_epoch = 1600
+    episode_epoch = 4800
+    adv_train_epoch = 2400
 
     max_step = None
     batch_size = 128
@@ -528,15 +528,15 @@ def main():
         train_q_net = q_net(input_x, n_z=config.train_n_z)
         train_pz_net = p_net(observed={'x': input_x, 'z': train_q_net['z']}, n_z=config.train_n_z)
         train_pw_net = p_net(observed={'x': input_x}, n_z=config.train_n_w)
-        adv_psi_loss, adv_theta_loss, adv_phi_loss, adv_omega_loss = adv_prior_loss(
+        _, adv_theta_loss, __, ___ = adv_prior_loss(
             train_q_net, train_pz_net, train_pw_net)
 
-        # input_qz = tf.placeholder(
-        #     dtype=tf.float32, shape=(None, config.z_dim), name='input_qz'
-        # )
-        # train_pz_net = p_net(observed={'z': input_qz}, n_z=config.train_n_z)
-        # adv_psi_loss, _, adv_phi_loss, adv_omega_loss = adv_prior_loss(
-        #     train_q_net, train_pz_net, train_pw_net)
+        input_qz = tf.placeholder(
+            dtype=tf.float32, shape=(None, config.z_dim), name='input_qz'
+        )
+        train_pz_net = p_net(observed={'z': input_qz}, n_z=config.train_n_z)
+        adv_psi_loss, _, adv_phi_loss, adv_omega_loss = adv_prior_loss(
+            train_q_net, train_pz_net, train_pw_net)
 
         adv_psi_loss += tf.losses.get_regularization_loss()
         adv_theta_loss += tf.losses.get_regularization_loss()
@@ -735,13 +735,13 @@ def main():
                     learning_rate.set(config.initial_lr)
 
                 if episode_epoch < config.adv_train_epoch:
-                    step_iterator = MyIterator(loop.iter_steps(train_flow))
+                    step_iterator = MyIterator(loop.iter_steps(qz_train_flow))
                     while step_iterator.has_next:
                         # energy training
-                        for step, [x] in limited(step_iterator, config.n_critical):
+                        for step, [z] in limited(step_iterator, config.n_critical):
                             [_, batch_psi_loss, _z, _w] = session.run(
                                 [psi_train_op, adv_psi_loss, debug_energy_z, debug_energy_Gw], feed_dict={
-                                    input_x: x
+                                    input_qz: z
                                 })
                             loop.collect_metrics(energy_z=_z)
                             loop.collect_metrics(energy_Gw=_w)
