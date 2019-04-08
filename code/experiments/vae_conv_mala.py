@@ -718,7 +718,7 @@ def main():
                 if episode_epoch == 0:
                     learning_rate_adv.set(config.initial_lr_adv)
                     [qz_samples] = spt.evaluation.collect_outputs(
-                        [test_pz_net['z']],
+                        [test_q_net['z'].distribution.mean],
                         [input_x],
                         train_flow,
                         mode='concat',
@@ -727,7 +727,7 @@ def main():
                     # print(qz_samples.shape)
                     qz_samples = np.reshape(qz_samples, (-1, config.z_dim))
                     np.random.shuffle(qz_samples)
-                    qz_samples = qz_samples[:len(qz_samples) // 10]
+                    # qz_samples = qz_samples[:len(qz_samples) // 10]
                     qz_train_flow = spt.DataFlow.arrays([qz_samples], batch_size=config.batch_size,
                                                         shuffle=True,
                                                         skip_incomplete=True)
