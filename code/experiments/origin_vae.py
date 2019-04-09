@@ -31,17 +31,17 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = False
-    max_epoch = 3000
+    max_epoch = 2100
     warm_up_epoch = 300
     converge_epoch_begin = 1500
-    converge_epoch_length = 1000
+    converge_epoch_length = 300
     max_step = None
     batch_size = 128
     initial_lr = 0.001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = 300
     lr_anneal_step_freq = None
-    train_n_x = 20
+    train_n_x = 10
 
     # evaluation parameters
     test_n_z = 100
@@ -71,19 +71,19 @@ def q_net(x, observed=None, n_z=None, is_training=False, is_initializing=False):
     )
 
     # compute the hidden features
-    with arg_scope([spt.layers.resnet_conv2d_block],
+    with arg_scope([spt.layers.conv2d],
                    kernel_size=config.kernel_size,
-                   shortcut_kernel_size=config.shortcut_kernel_size,
+                   # shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
                    channels_last=config.channels_last):
         h_x = tf.to_float(x)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16)  # output: (16, 28, 28)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, strides=2)  # output: (32, 14, 14)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32)  # output: (32, 14, 14)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2)  # output: (64, 7, 7)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64)  # output: (64, 7, 7)
+        h_x = spt.layers.conv2d(h_x, 16)  # output: (16, 28, 28)
+        h_x = spt.layers.conv2d(h_x, 32, strides=2)  # output: (32, 14, 14)
+        h_x = spt.layers.conv2d(h_x, 32)  # output: (32, 14, 14)
+        h_x = spt.layers.conv2d(h_x, 64, strides=2)  # output: (64, 7, 7)
+        h_x = spt.layers.conv2d(h_x, 64)  # output: (64, 7, 7)
 
     # sample z ~ q(z|x)
     h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
@@ -113,9 +113,9 @@ def p_net(observed=None, n_z=None, n_x=None, is_training=False, is_initializing=
                 group_ndims=1, n_samples=n_z)
 
     # compute the hidden features
-    with arg_scope([spt.layers.resnet_deconv2d_block],
+    with arg_scope([spt.layers.deconv2d],
                    kernel_size=config.kernel_size,
-                   shortcut_kernel_size=config.shortcut_kernel_size,
+                   # shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
@@ -126,10 +126,10 @@ def p_net(observed=None, n_z=None, n_x=None, is_training=False, is_initializing=
             ndims=1,
             shape=(7, 7, 64) if config.channels_last else (64, 7, 7)
         )
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64)  # output: (64, 7, 7)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, strides=2)  # output: (32, 14, 14)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32)  # output: (32, 14, 14)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 16, strides=2)  # output: (16, 28, 28)
+        h_z = spt.layers.deconv2d(h_z, 64)  # output: (64, 7, 7)
+        h_z = spt.layers.deconv2d(h_z, 32, strides=2)  # output: (32, 14, 14)
+        h_z = spt.layers.deconv2d(h_z, 32)  # output: (32, 14, 14)
+        h_z = spt.layers.deconv2d(h_z, 16, strides=2)  # output: (16, 28, 28)
 
     # sample x ~ p(x|z)
     x_logits = spt.layers.conv2d(
@@ -140,7 +140,7 @@ def p_net(observed=None, n_z=None, n_x=None, is_training=False, is_initializing=
         x_logits = tf.expand_dims(x_logits, 0)
         multiples = [1 for i in range(len(x_logits.shape))]
         multiples[0] = n_x
-        print(multiples)
+        # print(multiples)
         x_logits = tf.tile(x_logits, multiples=multiples)
     x = net.add('x', spt.Bernoulli(logits=x_logits), group_ndims=3)
 
@@ -260,7 +260,7 @@ def main():
         # [batch_size]
         vi = VariationalInference(
             log_joint=train_p_net['x'].log_prob() + log_p_z,
-            latent_log_probs=[log_p_z]
+            latent_log_probs=[train_q_net['z'].log_prob()]
         )
         train_loss = (
             tf.reduce_mean(vi.training.sgvb()) +
@@ -279,7 +279,7 @@ def main():
         # [test_n_z, batch_size]
         vi = VariationalInference(
             log_joint=test_p_net['x'].log_prob() + log_p_z,
-            latent_log_probs=[log_p_z],
+            latent_log_probs=[train_q_net['z'].log_prob()],
             axis=0
         )
         test_nll = -tf.reduce_mean(vi.evaluation.is_loglikelihood())
@@ -398,7 +398,8 @@ def main():
                            summary_graph=tf.get_default_graph(),
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
-                           checkpoint_epoch_freq=100, ) as loop:
+                           checkpoint_epoch_freq=100,
+                           ) as loop:
 
             evaluator = spt.Evaluator(
                 loop,
@@ -423,7 +424,7 @@ def main():
                     _, batch_loss = session.run(
                         [pretrain_op, pretrain_loss], feed_dict={
                             input_x: x,
-                            beta: np.min(1., 1.0 * loop.epoch / config.warm_up_epoch)
+                            beta: min(1., 1.0 * epoch / config.warm_up_epoch)
                         })
                     loop.collect_metrics(train_loss=batch_loss)
                 if epoch % config.lr_anneal_epoch_freq == 0:
@@ -439,12 +440,14 @@ def main():
             for epoch in epoch_iterator:
                 step_iterator = MyIterator(loop.iter_steps(train_flow))
                 for step, [x] in step_iterator:
+                    gamma_value = min(1.0, 1.0 * (epoch - config.converge_epoch_begin) / config.converge_epoch_length)
                     _, batch_loss = session.run(
                         [train_op, train_loss], feed_dict={
                             input_x: x,
-                            gamma: np.clip(1.0 * (loop.epoch - config.converge_epoch_end) / config.converge_epoch_length)
+                            gamma: gamma_value
                         })
                     loop.collect_metrics(train_loss=batch_loss)
+                    loop.collect_metrics(gamma=gamma_value)
                 if epoch % config.lr_anneal_epoch_freq == 0:
                     learning_rate.anneal()
                 if epoch % config.plot_epoch_freq == 0:
