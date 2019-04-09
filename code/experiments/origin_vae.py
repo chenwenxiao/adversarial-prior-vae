@@ -31,9 +31,9 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = False
-    max_epoch = 2100
+    max_epoch = 2400
     warm_up_epoch = 300
-    converge_epoch_begin = 1500
+    converge_epoch_begin = 1200
     converge_epoch_length = 300
     max_step = None
     batch_size = 128
@@ -45,8 +45,8 @@ class ExpConfig(spt.Config):
 
     # evaluation parameters
     test_n_z = 100
-    test_n_x = 20
-    test_batch_size = 16
+    test_n_x = 40
+    test_batch_size = 4
     test_epoch_freq = 100
     plot_epoch_freq = 10
 
@@ -447,7 +447,6 @@ def main():
                             gamma: gamma_value
                         })
                     loop.collect_metrics(train_loss=batch_loss)
-                    loop.collect_metrics(gamma=gamma_value)
                 if epoch % config.lr_anneal_epoch_freq == 0:
                     learning_rate.anneal()
                 if epoch % config.plot_epoch_freq == 0:
