@@ -46,9 +46,12 @@ class ExpConfig(spt.Config):
     # evaluation parameters
     test_n_z = 100
     test_n_x = 40
-    test_batch_size = 4
+    test_batch_size = 1
     test_epoch_freq = 100
     plot_epoch_freq = 10
+
+    final_test_n_z = 500
+    final_test_n_x = 100
 
     @property
     def x_shape(self):
@@ -279,11 +282,29 @@ def main():
         # [test_n_z, batch_size]
         vi = VariationalInference(
             log_joint=test_p_net['x'].log_prob() + log_p_z,
-            latent_log_probs=[train_q_net['z'].log_prob()],
+            latent_log_probs=[test_q_net['z'].log_prob()],
             axis=0
         )
         test_nll = -tf.reduce_mean(vi.evaluation.is_loglikelihood())
         test_lb = tf.reduce_mean(vi.lower_bound.elbo())
+
+    # derive the final nll and logits output for testing
+    with tf.name_scope('testing'):
+        final_test_q_net = q_net(input_x, n_z=config.final_test_n_z)
+        final_test_p_net = p_net(observed={'x': input_x, 'z': final_test_q_net['z']})
+        final_test_another_p_net = p_net(observed={'z': final_test_q_net['z']}, n_x=config.final_test_n_x)
+        final_test_another_pq_net = q_net(final_test_another_p_net['x'], observed={'z': final_test_q_net['z']})
+        log_p_z = final_test_another_pq_net['z'].log_prob()
+        if config.final_test_n_x is not None:
+            log_p_z = -spt.ops.log_mean_exp(-log_p_z, axis=0)
+        # [final_test_n_z, batch_size]
+        vi = VariationalInference(
+            log_joint=final_test_p_net['x'].log_prob() + log_p_z,
+            latent_log_probs=[final_test_q_net['z'].log_prob()],
+            axis=0
+        )
+        final_test_nll = -tf.reduce_mean(vi.evaluation.is_loglikelihood())
+        final_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
 
     # derive the optimizer
     with tf.name_scope('optimizing'):
@@ -455,6 +476,20 @@ def main():
                     with loop.timeit('eval_time'):
                         evaluator.run()
                 loop.print_logs()
+
+            evaluator = spt.Evaluator(
+                loop,
+                metrics={'test_nll': final_test_nll, 'test_lb': final_test_lb},
+                inputs=[input_x],
+                data_flow=test_flow,
+                time_metric_name='test_time'
+            )
+            evaluator.events.on(
+                spt.EventKeys.AFTER_EXECUTION,
+                lambda e: results.update_metrics(evaluator.last_metrics_dict)
+            )
+            evaluator.run()
+            loop.print_logs()
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')
