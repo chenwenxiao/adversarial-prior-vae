@@ -390,7 +390,7 @@ def main():
 
     # prepare for training and testing data
     (x_train, y_train), (x_test, y_test) = \
-        spt.datasets.load_mnist(x_shape=config.x_shape)
+        spt.datasets.load_fashion_mnist(x_shape=config.x_shape)
     train_flow = bernoulli_flow(
         x_train, config.batch_size, shuffle=True, skip_incomplete=True)
     reconstruct_train_flow = spt.DataFlow.arrays(
@@ -419,8 +419,7 @@ def main():
                            summary_graph=tf.get_default_graph(),
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
-                           checkpoint_epoch_freq=100,
-                           restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/0f/d5/71f000f2602f7106cac5/checkpoint/checkpoint/checkpoint.dat-1076400') as loop:
+                           checkpoint_epoch_freq=100,) as loop:
 
             evaluator = spt.Evaluator(
                 loop,
