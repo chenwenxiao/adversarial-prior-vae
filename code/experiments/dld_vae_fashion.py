@@ -53,6 +53,8 @@ class ExpConfig(spt.Config):
     final_test_n_z = 500
     final_test_n_x = 100
 
+    epsilon = -20
+
     @property
     def x_shape(self):
         return (28, 28, 1) if self.channels_last else (1, 28, 28)
@@ -137,18 +139,33 @@ def p_net(observed=None, n_z=None, n_x=None, is_training=False, is_initializing=
         h_z = spt.layers.deconv2d(h_z, 16, strides=2)  # output: (16, 28, 28)
 
     # sample x ~ p(x|z)
-    x_logits = spt.layers.conv2d(
-        h_z, 1, (1, 1), padding='same', name='feature_map_to_pixel',
+    # x_logits = spt.layers.conv2d(
+    #     h_z, 1, (1, 1), padding='same', name='feature_map_to_pixel',
+    #     channels_last=config.channels_last
+    # )  # output: (1, 28, 28)
+    x_mean = spt.layers.conv2d(
+        h_z, 1, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         channels_last=config.channels_last
-    )  # output: (1, 28, 28)
+    )
+    x_logstd = spt.layers.conv2d(
+        h_z, 1, (1, 1), padding='same', scope='feature_map_std_to_pixel',
+        channels_last=config.channels_last
+    )
     if n_x is not None:
-        x_logits = tf.expand_dims(x_logits, 0)
-        multiples = [1 for i in range(len(x_logits.shape))]
+        x_mean = tf.expand_dims(x_mean, 0)
+        x_logstd = tf.expand_dims(x_logstd, 0)
+        multiples = [1 for i in range(len(x_mean.shape))]
         multiples[0] = n_x
         # print(multiples)
-        x_logits = tf.tile(x_logits, multiples=multiples)
-    x = net.add('x', spt.Bernoulli(logits=x_logits), group_ndims=3)
-
+        x_mean = tf.tile(x_mean, multiples=multiples)
+        x_logstd = tf.tile(x_logstd, multiples=multiples)
+    x = net.add('x', spt.DiscretizedLogistic(
+        mean=x_mean,
+        log_scale=spt.ops.maybe_clip_value(x_logstd, min_val=config.epsilon),
+        bin_size=1 / 255.,
+        min_val=0.,
+        max_val=1.
+    ), group_ndims=3)
     return net
 
 
@@ -229,7 +246,7 @@ def main():
 
     # input placeholders
     input_x = tf.placeholder(
-        dtype=tf.int32, shape=(None,) + config.x_shape, name='input_x')
+        dtype=tf.float32, shape=(None,) + config.x_shape, name='input_x')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
     beta = tf.placeholder(dtype=tf.float32, shape=(), name='beta')
@@ -322,19 +339,20 @@ def main():
 
         # derive the plotting function
         with tf.name_scope('plotting'):
-            x_plots = tf.reshape(
-                bernoulli_as_pixel(p_net(n_z=100)['x']), (-1,) + config.x_shape)
+            x_plots = 255.0 * tf.reshape(
+                p_net(n_z=100)['x'], (-1,) + config.x_shape)
             z_plots = tf.reshape(
                 p_net(n_z=1000)['z'], (-1, config.z_dim)
             )
             reconstruct_q_net = q_net(input_x)
             reconstruct_z = reconstruct_q_net['z']
             reconstruct_x = p_net(observed={'z': reconstruct_z})['x']
-            reconstruct_plots = tf.reshape(
-                bernoulli_as_pixel(reconstruct_x),
+            reconstruct_plots = 255.0 * tf.reshape(
+                reconstruct_x,
                 (-1,) + config.x_shape
             )
-            z_ph = tf.placeholder(dtype=tf.float32, shape=(None, config.z_dim), name='input_z')
+            x_plots = tf.clip_by_value(x_plots, 0, 255)
+            reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
 
         def plot_samples(loop):
             with loop.timeit('plot_time'):
@@ -345,7 +363,7 @@ def main():
                 images = np.zeros((100 * max_mcmc_iterator,) + config.x_shape, dtype=np.uint8)
                 for mcmc_iterator in range(max_mcmc_iterator):
                     images[mcmc_iterator::max_mcmc_iterator, ...] = x_0.astype(np.uint8)
-                    x_samples = reconstruct_sampler.sample(x_0 / 255.0)
+                    x_samples = x_0 / 255.0
                     [x_0, z_0] = session.run([reconstruct_plots, reconstruct_z], feed_dict={input_x: x_samples})
 
                 save_images_collection(
@@ -361,7 +379,7 @@ def main():
                 index_mse = np.zeros(shape=100, dtype=np.float) + np.inf
                 for [x] in reconstruct_train_flow:
                     for i in range(len(x)):
-                        train_set_image = x[i]
+                        train_set_image = (255 * x[i]).astype(np.uint8)
                         mse = np.sum(np.reshape(np.square(x_0 - train_set_image), (100, -1)), axis=-1)
                         mask = (mse < index_mse)
                         index_image[mask] = train_set_image
@@ -377,9 +395,9 @@ def main():
 
                 # plot reconstructs
                 for [x] in reconstruct_train_flow:
-                    x_samples = reconstruct_sampler.sample(x / 255.0)
+                    x_samples = x
                     images = np.zeros((100,) + config.x_shape, dtype=np.uint8)
-                    images[::2, ...] = x.astype(np.uint8)
+                    images[::2, ...] = (255.0 * x).astype(np.uint8)
                     images[1::2, ...] = session.run(reconstruct_plots, feed_dict={input_x: x_samples})
                     save_images_collection(
                         images=images,
@@ -393,13 +411,12 @@ def main():
     # prepare for training and testing data
     (x_train, y_train), (x_test, y_test) = \
         spt.datasets.load_fashion_mnist(x_shape=config.x_shape)
-    train_flow = bernoulli_flow(
-        x_train, config.batch_size, shuffle=True, skip_incomplete=True)
+    train_flow = spt.DataFlow.arrays([x_train / 255.0], config.batch_size, shuffle=True, skip_incomplete=True)
     reconstruct_train_flow = spt.DataFlow.arrays(
-        [x_train], 50, shuffle=True, skip_incomplete=True)
-    test_flow = bernoulli_flow(
-        x_test, config.test_batch_size, sample_now=True)
-    reconstruct_sampler = spt.preprocessing.BernoulliSampler()
+        [x_train / 255.0], 50, shuffle=True, skip_incomplete=False)
+    test_flow = spt.DataFlow.arrays(
+        [x_test / 255.0], config.test_batch_size)
+    # reconstruct_sampler = spt.preprocessing.BernoulliSampler()
 
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
@@ -421,7 +438,8 @@ def main():
                            summary_graph=tf.get_default_graph(),
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
-                           checkpoint_epoch_freq=100,) as loop:
+                           checkpoint_epoch_freq=100,
+                           restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/2f/d5/71f000f2602fdaeedac5/checkpoint/checkpoint/checkpoint.dat-936000') as loop:
 
             evaluator = spt.Evaluator(
                 loop,
