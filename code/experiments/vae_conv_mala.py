@@ -25,7 +25,7 @@ class ExpConfig(spt.Config):
     channels_last = True
 
     # model parameters
-    z_dim = 40
+    z_dim = 64
     act_norm = False
     weight_norm = False
     l2_reg = 0.0001
@@ -35,16 +35,16 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 3400
-    pretrain_epoch = 2400
-    episode_epoch = 3400
+    max_epoch = 1600
+    pretrain_epoch = 600
+    episode_epoch = 1600
     adv_train_epoch = 1000
 
     max_step = None
     batch_size = 128
     initial_lr = 0.001
     lr_anneal_factor = 0.1
-    lr_anneal_epoch_freq = 800
+    lr_anneal_epoch_freq = 300
     lr_anneal_step_freq = None
 
     initial_lr_adv = 0.001
@@ -74,6 +74,11 @@ class ExpConfig(spt.Config):
 
 
 config = ExpConfig()
+
+
+@add_arg_scope
+def batch_norm(inputs, training=False, scope=None):
+    return tf.layers.batch_normalization(inputs, training=training, name=scope)
 
 
 def get_z_moments(z, value_ndims, name=None):
@@ -109,14 +114,13 @@ def get_z_moments(z, value_ndims, name=None):
 
 @add_arg_scope
 @spt.global_reuse
-def q_net(x, observed=None, n_z=None, is_training=False, is_initializing=False):
+def q_net(x, observed=None, n_z=None):
     net = spt.BayesianNet(observed=observed)
 
     normalizer_fn = None if not config.act_norm else functools.partial(
         spt.layers.act_norm,
         scope='act_norm',
         axis=-1 if config.channels_last else -3,
-        initializing=is_initializing,
         value_ndims=3,
     )
 
@@ -158,15 +162,13 @@ def get_log_Z():
 
 @add_arg_scope
 @spt.global_reuse
-def p_net(observed=None, n_z=None, gaussian_prior=False, mcmc_iterator=0, is_training=False,
-          is_initializing=False):
+def p_net(observed=None, n_z=None, gaussian_prior=False, mcmc_iterator=0):
     net = spt.BayesianNet(observed=observed)
 
     normalizer_fn = None if not config.act_norm else functools.partial(
         spt.layers.act_norm,
         scope='act_norm',
         axis=-1 if config.channels_last else -3,
-        initializing=is_initializing,
         value_ndims=3,
     )
 
@@ -220,78 +222,109 @@ def p_net(observed=None, n_z=None, gaussian_prior=False, mcmc_iterator=0, is_tra
 
 @add_arg_scope
 @spt.global_reuse
-def G_phi(w, is_training=False, is_initializing=False):
+def G_phi(w):
     if config.act_norm:
-        normalizer_fn = functools.partial(
-            spt.layers.act_norm, initializing=is_initializing)
+        normalizer_fn = spt.layers.act_norm
     else:
         normalizer_fn = None
 
-    with arg_scope([spt.layers.dense],
+    normalizer_fn = batch_norm
+    # compute the hidden features
+    with arg_scope([spt.layers.deconv2d],
+                   kernel_size=config.kernel_size,
+                   # shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
-                   weight_norm=config.weight_norm,
-                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
-        h_w = tf.to_float(w)
-        h_w = spt.layers.dense(h_w, 200, scope='level_0')
-        h_w = spt.layers.dense(h_w, 200, scope='level_1')
-        h_w = spt.layers.dense(h_w, 200, scope='level_2')
-        h_w = spt.layers.dense(h_w, 200, scope='level_3')
-        h_w = spt.layers.dense(h_w, 200, scope='level_4')
-        h_w = spt.layers.dense(h_w, 200, scope='level_5')
+                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
+                   channels_last=config.channels_last):
+        h_w = spt.layers.dense(w, 64 * 2 * 2, scope='level_0')
+        h_w = spt.ops.reshape_tail(
+            h_w,
+            ndims=1,
+            shape=(2, 2, 64) if config.channels_last else (64, 2, 2)
+        )
+        h_w = spt.layers.deconv2d(h_w, 64, scope='level_1')  # output: (64, 2, 2)
+        h_w = spt.layers.deconv2d(h_w, 32, strides=2, scope='level_2')  # output: (32, 4, 4)
+        h_w = spt.layers.deconv2d(h_w, 32, scope='level_3')  # output: (32, 4, 4)
+        h_w = spt.layers.deconv2d(h_w, 16, strides=2, scope='level_4')  # output: (16, 8, 8)
+    h_w = spt.layers.conv2d(h_w, 1, (1, 1), padding='same', scope='level5',
+                            channels_last=config.channels_last)
 
+    # w = spt.ops.reshape_tail(w, 1, [8, 8, 1])
+    # # compute the hidden features
+    # with arg_scope([spt.layers.conv2d],
+    #                kernel_size=config.kernel_size,
+    #                # shortcut_kernel_size=config.shortcut_kernel_size,
+    #                activation_fn=tf.nn.leaky_relu,
+    #                normalizer_fn=normalizer_fn,
+    #                kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
+    #                channels_last=config.channels_last):
+    #     h_w = tf.to_float(w)
+    #     h_w = spt.layers.conv2d(h_w, 16, scope='level_0')  # output: (16, 8, 8)
+    #     h_w = spt.layers.conv2d(h_w, 32, strides=2, scope='level_1')  # output: (32, 4, 4)
+    #     h_w = spt.layers.conv2d(h_w, 32, scope='level_2')  # output: (32, 4, 4)
+    #     h_w = spt.layers.conv2d(h_w, 64, strides=2, scope='level_3')  # output: (64, 2, 2)
+    #     h_w = spt.layers.conv2d(h_w, 64, scope='level_4')  # output: (64, 2, 2)
+    h_w = spt.ops.reshape_tail(h_w, 3, [-1])
     h_w = spt.layers.dense(h_w, config.z_dim, scope='level_6')
     return h_w
 
 
 @add_arg_scope
 @spt.global_reuse
-def U_psi(z, is_training=False, is_initializing=False):
+def U_psi(z):
     if config.act_norm:
-        normalizer_fn = functools.partial(
-            spt.layers.act_norm, initializing=is_initializing)
+        normalizer_fn = spt.layers.act_norm
     else:
         normalizer_fn = None
 
-    with arg_scope([spt.layers.dense],
+    z = spt.ops.reshape_tail(z, 1, [8, 8, 1])
+    # compute the hidden features
+    with arg_scope([spt.layers.conv2d],
+                   kernel_size=config.kernel_size,
+                   # shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
-                   weight_norm=config.weight_norm,
-                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
+                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
+                   channels_last=config.channels_last):
         h_u = tf.to_float(z)
-        h_u = spt.layers.dense(h_u, 200, scope='level_0')
-        h_u = spt.layers.dense(h_u, 200, scope='level_1')
-        h_u = spt.layers.dense(h_u, 200, scope='level_2')
-        h_u = spt.layers.dense(h_u, 200, scope='level_3')
-        h_u = spt.layers.dense(h_u, 200, scope='level_4')
-        h_u = spt.layers.dense(h_u, 200, scope='level_5')
+        h_u = spt.layers.conv2d(h_u, 16, scope='level_0')  # output: (16, 8, 8)
+        h_u = spt.layers.conv2d(h_u, 32, strides=2, scope='level_1')  # output: (32, 4, 4)
+        h_u = spt.layers.conv2d(h_u, 32, scope='level_2')  # output: (32, 4, 4)
+        h_u = spt.layers.conv2d(h_u, 64, strides=2, scope='level_3')  # output: (64, 2, 2)
+        h_u = spt.layers.conv2d(h_u, 64, scope='level_4')  # output: (64, 2, 2)
+    h_u = spt.ops.reshape_tail(h_u, 3, [-1])
     h_u = spt.layers.dense(h_u, 1, scope='level_6', bias_regularizer=spt.layers.l2_regularizer(config.l2_reg))
     return tf.squeeze(h_u, axis=-1)
 
 
 @add_arg_scope
 @spt.global_reuse
-def T_omega(z, w, is_training=False, is_initializing=False):
+def T_omega(z, w):
     if config.act_norm:
-        normalizer_fn = functools.partial(
-            spt.layers.act_norm, initializing=is_initializing)
+        normalizer_fn = spt.layers.act_norm
     else:
         normalizer_fn = None
 
-    with arg_scope([spt.layers.dense],
+    z = tf.concat([tf.to_float(z), tf.to_float(w)], axis=-1)
+    z = spt.ops.reshape_tail(z, 1, [16, 8, 1])
+    # compute the hidden features
+    with arg_scope([spt.layers.conv2d],
+                   kernel_size=config.kernel_size,
+                   # shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
-                   weight_norm=config.weight_norm,
-                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
-        h_t = tf.concat([tf.to_float(z), tf.to_float(w)], axis=-1)
-        h_t = spt.layers.dense(h_t, 200, scope='level_0')
-        h_t = spt.layers.dense(h_t, 200, scope='level_1')
-        h_t = spt.layers.dense(h_t, 200, scope='level_2')
-        h_t = spt.layers.dense(h_t, 200, scope='level_3')
-        h_t = spt.layers.dense(h_t, 200, scope='level_4')
-        h_t = spt.layers.dense(h_t, 200, scope='level_5')
-    h_t = spt.layers.dense(h_t, 1, scope='level_6')
-    return tf.squeeze(h_t, axis=-1)
+                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
+                   channels_last=config.channels_last):
+        h_u = tf.to_float(z)
+        h_u = spt.layers.conv2d(h_u, 16, scope='level_0')  # output: (16, 16, 8)
+        h_u = spt.layers.conv2d(h_u, 32, strides=2, scope='level_1')  # output: (32, 8, 4)
+        h_u = spt.layers.conv2d(h_u, 32, scope='level_2')  # output: (32, 8, 4)
+        h_u = spt.layers.conv2d(h_u, 64, strides=2, scope='level_3')  # output: (64, 4, 2)
+        h_u = spt.layers.conv2d(h_u, 64, scope='level_4')  # output: (64, 4, 2)
+    h_u = spt.ops.reshape_tail(h_u, 3, [-1])
+    h_u = spt.layers.dense(h_u, 1, scope='level_6')
+    return tf.squeeze(h_u, axis=-1)
 
 
 debug_energy_z = None
@@ -320,8 +353,10 @@ def adv_prior_loss(q_net, pz_net, pw_net):
         #     tf.square(tf.gradients(energy_mean_z, [q_net['z'].distribution.mean])[0])
         # )
         gradient_penalty = tf.reduce_sum(
-            tf.square(tf.gradients(energy_z, [z.tensor if hasattr(z, 'tensor') else z])[0])
+            tf.square(tf.gradients(energy_z, [z.tensor if hasattr(z, 'tensor') else z])[0]), axis=-1
         )
+        print(gradient_penalty.shape)
+        gradient_penalty = tf.reduce_mean(gradient_penalty)
         adv_psi_loss = -tf.reduce_mean(energy_Gw) + tf.reduce_mean(
             energy_z) + config.gradient_penalty_weight * gradient_penalty
         adv_theta_loss = -tf.reduce_mean(energy_Gw) + tf.reduce_mean(
@@ -499,15 +534,15 @@ def main():
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_x')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
-    learning_rate_adv = learning_rate
-    # learning_rate_adv = spt.AnnealingVariable(
-    #     'learning_rate_adv', config.initial_lr_adv, config.lr_adv_anneal_factor)
+    # learning_rate_adv = learning_rate
+    learning_rate_adv = spt.AnnealingVariable(
+        'learning_rate_adv', config.initial_lr_adv, config.lr_adv_anneal_factor)
     beta = tf.placeholder(dtype=tf.float32, shape=(), name='beta')
 
     # derive the loss for initializing
     with tf.name_scope('initialization'), \
-         arg_scope([p_net, q_net], is_initializing=True), \
-         spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
+            arg_scope([spt.layers.act_norm], initializing=True), \
+            spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
         init_q_net = q_net(input_x, n_z=config.train_n_z)
         init_pw_net = p_net(observed={'x': input_x}, n_z=config.train_n_w)
         init_pz_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_z)
@@ -515,7 +550,7 @@ def main():
 
     # derive the loss and lower-bound for training
     with tf.name_scope('pretraining'), \
-         arg_scope([p_net, q_net], is_training=True):
+            arg_scope([batch_norm], training=True):
         pretrain_q_net = q_net(input_x)
         pretrain_pz_net = p_net(observed={'x': input_x, 'z': pretrain_q_net['z']},
                                 gaussian_prior=True)
@@ -524,7 +559,7 @@ def main():
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
-         arg_scope([p_net, q_net], is_training=True):
+            arg_scope([batch_norm], training=True):
         train_q_net = q_net(input_x, n_z=config.train_n_z)
         train_pz_net = p_net(observed={'x': input_x, 'z': train_q_net['z']}, n_z=config.train_n_z)
         train_pw_net = p_net(observed={'x': input_x}, n_z=config.train_n_w)
@@ -547,7 +582,7 @@ def main():
     with tf.name_scope('testing'):
         test_q_net = q_net(input_x, n_z=config.test_n_z)
         test_pz_net = p_net(observed={'x': input_x, 'z': test_q_net['z']}, n_z=config.test_n_z)
-        test_pw_net = p_net(observed={'x': input_x}, n_z=config.test_n_z, mcmc_iterator=10)
+        test_pw_net = p_net(observed={'x': input_x}, n_z=config.test_n_z, mcmc_iterator=100)
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_z, latent_axis=0)
         test_nll = -tf.reduce_mean(test_chain.vi.evaluation.is_loglikelihood())
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
@@ -597,9 +632,9 @@ def main():
     # derive the plotting function
     with tf.name_scope('plotting'):
         x_plots = 255.0 * tf.reshape(
-            p_net(n_z=100, mcmc_iterator=10)['x'], (-1,) + config.x_shape)
+            p_net(n_z=100, mcmc_iterator=100)['x'], (-1,) + config.x_shape)
         z_plots = tf.reshape(
-            p_net(n_z=1000, mcmc_iterator=10)['z'], (-1, config.z_dim)
+            p_net(n_z=1000, mcmc_iterator=100)['z'], (-1, config.z_dim)
         )
         reconstruct_q_net = q_net(input_x)
         reconstruct_z = reconstruct_q_net['z']
@@ -617,6 +652,9 @@ def main():
             pyplot.scatter(z_points[:, 0], z_points[:, 1], s=5)
             pyplot.savefig(results.system_path('plotting/z_plot/{}.pdf'.format(loop.epoch)))
             pyplot.close()
+            dis = np.mean(np.square(np.expand_dims(z_points, 0) - np.expand_dims(qz_samples, 1)), axis=-1)
+            dis = np.min(dis, axis=0)
+            print(np.mean(dis))
             # print(images)
             save_images_collection(
                 images=images,
@@ -677,8 +715,7 @@ def main():
                            summary_graph=tf.get_default_graph(),
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
-                           checkpoint_epoch_freq=100,
-                           restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/1d/3c/e9f00010225cc972e9c5/checkpoint/checkpoint/checkpoint.dat-1123200') as loop:
+                           checkpoint_epoch_freq=100, ) as loop:
 
             evaluator = spt.Evaluator(
                 loop,
@@ -717,20 +754,30 @@ def main():
 
                 if episode_epoch == 0:
                     learning_rate_adv.set(config.initial_lr_adv)
-                    [qz_samples] = spt.evaluation.collect_outputs(
-                        [test_q_net['z'].distribution.mean],
+                    [qz_samples, qz_std] = spt.evaluation.collect_outputs(
+                        [test_q_net['z'].distribution.mean, test_q_net['z'].distribution.std],
                         [input_x],
                         train_flow,
                         mode='concat',
                         session=session
                     )
-                    # print(qz_samples.shape)
+                    print(np.mean(qz_std))
                     qz_samples = np.reshape(qz_samples, (-1, config.z_dim))
                     np.random.shuffle(qz_samples)
                     # qz_samples = qz_samples[:len(qz_samples) // 10]
                     qz_train_flow = spt.DataFlow.arrays([qz_samples], batch_size=config.batch_size,
                                                         shuffle=True,
                                                         skip_incomplete=True)
+                    pyplot.scatter(qz_samples[:, 0], qz_samples[:, 1], s=0.1)
+                    pyplot.savefig(results.system_path('plotting/z_plot/qz_samples.pdf'))
+                    pyplot.close()
+
+                    z_points = np.random.normal(0, 1.0, (1000, config.z_dim))
+                    dis = np.mean(np.square(np.expand_dims(z_points, 0) - np.expand_dims(qz_samples, 1)), axis=-1)
+                    dis = np.min(dis, axis=0)
+                    # print(dis)
+                    print(np.mean(dis))
+
                 if episode_epoch == config.adv_train_epoch:
                     learning_rate.set(config.initial_lr)
 
@@ -776,12 +823,12 @@ def main():
                     plot_samples(loop)
 
                 if epoch % config.test_epoch_freq == 0:
-                    compute_partition_function(Z_train_flow, input_x, test_q_net, test_pz_net, test_pw_net)
+                    # compute_partition_function(Z_train_flow, input_x, test_q_net, test_pz_net, test_pw_net)
                     with loop.timeit('eval_time'):
                         evaluator.run()
 
                 if epoch == config.max_epoch:
-                    compute_partition_function(Z_train_flow, input_x, test_q_net, test_pz_net, test_pw_net)
+                    # compute_partition_function(Z_train_flow, input_x, test_q_net, test_pz_net, test_pw_net)
                     evaluator.run()
 
                 loop.collect_metrics(lr=learning_rate.get(), lr_adv=learning_rate_adv.get())

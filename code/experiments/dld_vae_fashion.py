@@ -76,20 +76,20 @@ def q_net(x, observed=None, n_z=None, is_training=False, is_initializing=False):
     )
 
     # compute the hidden features
-    with arg_scope([spt.layers.resnet_conv2d_block],
+    with arg_scope([spt.layers.conv2d],
                    kernel_size=config.kernel_size,
-                   shortcut_kernel_size=config.shortcut_kernel_size,
+                   # shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
                    channels_last=config.channels_last):
         h_x = tf.to_float(x)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16)  # output: (16, 28, 28)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, strides=2)  # output: (32, 14, 14)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32)  # output: (32, 14, 14)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32)  # output: (32, 14, 14)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2)  # output: (64, 7, 7)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64)  # output: (64, 7, 7)
+        h_x = spt.layers.conv2d(h_x, 16)  # output: (16, 28, 28)
+        h_x = spt.layers.conv2d(h_x, 32, strides=2)  # output: (32, 14, 14)
+        h_x = spt.layers.conv2d(h_x, 32)  # output: (32, 14, 14)
+        h_x = spt.layers.conv2d(h_x, 32)  # output: (32, 14, 14)
+        h_x = spt.layers.conv2d(h_x, 64, strides=2)  # output: (64, 7, 7)
+        h_x = spt.layers.conv2d(h_x, 64)  # output: (64, 7, 7)
 
     # sample z ~ q(z|x)
     h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
@@ -119,9 +119,9 @@ def p_net(observed=None, n_z=None, n_x=None, is_training=False, is_initializing=
                 group_ndims=1, n_samples=n_z)
 
     # compute the hidden features
-    with arg_scope([spt.layers.resnet_deconv2d_block],
+    with arg_scope([spt.layers.deconv2d],
                    kernel_size=config.kernel_size,
-                   shortcut_kernel_size=config.shortcut_kernel_size,
+                   # shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
@@ -132,11 +132,11 @@ def p_net(observed=None, n_z=None, n_x=None, is_training=False, is_initializing=
             ndims=1,
             shape=(7, 7, 64) if config.channels_last else (64, 7, 7)
         )
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64)  # output: (64, 7, 7)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, strides=2)  # output: (32, 14, 14)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32)  # output: (32, 14, 14)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32)  # output: (32, 14, 14)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 16, strides=2)  # output: (16, 28, 28)
+        h_z = spt.layers.deconv2d(h_z, 64)  # output: (64, 7, 7)
+        h_z = spt.layers.deconv2d(h_z, 32, strides=2)  # output: (32, 14, 14)
+        h_z = spt.layers.deconv2d(h_z, 32)  # output: (32, 14, 14)
+        h_z = spt.layers.deconv2d(h_z, 32)  # output: (32, 14, 14)
+        h_z = spt.layers.deconv2d(h_z, 16, strides=2)  # output: (16, 28, 28)
 
     # sample x ~ p(x|z)
     # x_logits = spt.layers.conv2d(
@@ -463,7 +463,7 @@ def main():
                     _, batch_loss = session.run(
                         [pretrain_op, pretrain_loss], feed_dict={
                             input_x: x,
-                            beta: 1.0
+                            beta: 1.0,
                             # beta: min(1., 1.0 * epoch / config.warm_up_epoch)
                         })
                     loop.collect_metrics(train_loss=batch_loss)

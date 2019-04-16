@@ -14,6 +14,8 @@ from tfsnippet.examples.utils import (MLResults,
                                       bernoulli_as_pixel,
                                       bernoulli_flow,
                                       print_with_title)
+from tfsnippet.examples.utils.dataflows_factory import _create_sampled_dataflow
+from tfsnippet.preprocessing import UniformNoiseSampler
 import numpy as np
 
 
@@ -22,7 +24,7 @@ class ExpConfig(spt.Config):
     channels_last = True
 
     # model parameters
-    z_dim = 256
+    z_dim = 128
     act_norm = True
     l2_reg = 0.0001
     kernel_size = 3
@@ -52,6 +54,11 @@ class ExpConfig(spt.Config):
 
     final_test_n_z = 500
     final_test_n_x = 100
+
+    min_epsilon = -8
+    max_epsilon = -2
+    ep_anneal_epoch = 300
+    ep_anneal_factor = -1
 
     @property
     def x_shape(self):
@@ -101,7 +108,7 @@ def q_net(x, observed=None, n_z=None, is_training=False, is_initializing=False):
 
 @spt.global_reuse
 @add_arg_scope
-def p_net(observed=None, n_z=None, n_x=None, is_training=False, is_initializing=False):
+def p_net(observed=None, n_z=None, n_x=None, epsilon=None, is_training=False, is_initializing=False):
     net = spt.BayesianNet(observed=observed)
 
     normalizer_fn = None if not config.act_norm else functools.partial(
@@ -137,18 +144,30 @@ def p_net(observed=None, n_z=None, n_x=None, is_training=False, is_initializing=
         h_z = spt.layers.deconv2d(h_z, 16, strides=2)  # output: (16, 28, 28)
 
     # sample x ~ p(x|z)
-    x_logits = spt.layers.conv2d(
-        h_z, 1, (1, 1), padding='same', name='feature_map_to_pixel',
+    # x_logits = spt.layers.conv2d(
+    #     h_z, 1, (1, 1), padding='same', name='feature_map_to_pixel',
+    #     channels_last=config.channels_last
+    # )  # output: (1, 28, 28)
+    x_mean = spt.layers.conv2d(
+        h_z, 1, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         channels_last=config.channels_last
-    )  # output: (1, 28, 28)
+    )
+    x_logstd = spt.layers.conv2d(
+        h_z, 1, (1, 1), padding='same', scope='feature_map_std_to_pixel',
+        channels_last=config.channels_last
+    )
     if n_x is not None:
-        x_logits = tf.expand_dims(x_logits, 0)
-        multiples = [1 for i in range(len(x_logits.shape))]
+        x_mean = tf.expand_dims(x_mean, 0)
+        x_logstd = tf.expand_dims(x_logstd, 0)
+        multiples = [1 for i in range(len(x_mean.shape))]
         multiples[0] = n_x
         # print(multiples)
-        x_logits = tf.tile(x_logits, multiples=multiples)
-    x = net.add('x', spt.Bernoulli(logits=x_logits), group_ndims=3)
-
+        x_mean = tf.tile(x_mean, multiples=multiples)
+        x_logstd = tf.tile(x_logstd, multiples=multiples)
+    x = net.add('x', spt.Normal(
+        mean=x_mean,
+        logstd=spt.ops.maybe_clip_value(x_logstd, min_val=epsilon),
+    ), group_ndims=3)
     return net
 
 
@@ -208,6 +227,47 @@ def limited(iterator, n):
         pass
 
 
+def gaussian_flow(x, batch_size, shuffle=False, skip_incomplete=False,
+                  sample_now=False, dtype=np.float32, random_state=None):
+    """
+    Construct a new :class:`DataFlow`, which samples 0/1 binary images
+    according to the given `x` array.
+
+    Args:
+        x: The `train_x` or `test_x` of an image dataset.  The pixel values
+            must be 8-bit integers, having the range of ``[0, 255]``.
+        batch_size (int): Size of each mini-batch.
+        shuffle (bool): Whether or not to shuffle data before iterating?
+            (default :obj:`False`)
+        skip_incomplete (bool): Whether or not to exclude the last
+            mini-batch if it is incomplete? (default :obj:`False`)
+        sample_now (bool): Whether or not to sample immediately instead
+            of sampling at the beginning of each epoch? (default :obj:`False`)
+        dtype: The data type of the sampled array.  Default `np.int32`.
+        random_state (RandomState): Optional numpy RandomState for
+            shuffling data before each epoch.  (default :obj:`None`,
+            construct a new :class:`RandomState`).
+
+    Returns:
+        DataFlow: The Bernoulli `x` flow.
+    """
+    x = np.asarray(x)
+
+    # prepare the sampler
+    x = x / np.asarray(255., dtype=x.dtype)
+    sampler = UniformNoiseSampler(dtype=dtype, random_state=random_state, minval=0.0, maxval=1. / 255.)
+
+    # compose the data flow
+    return _create_sampled_dataflow(
+        [x], sampler, sample_now, batch_size=batch_size, shuffle=shuffle,
+        skip_incomplete=skip_incomplete, random_state=random_state
+    )
+
+
+def get_epsilon(epoch):
+    return max(config.min_epsilon, config.max_epsilon - (epoch // config.ep_anneal_epoch) * config.ep_anneal_factor)
+
+
 def main():
     # parse the arguments
     arg_parser = ArgumentParser()
@@ -229,11 +289,12 @@ def main():
 
     # input placeholders
     input_x = tf.placeholder(
-        dtype=tf.int32, shape=(None,) + config.x_shape, name='input_x')
+        dtype=tf.float32, shape=(None,) + config.x_shape, name='input_x')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
     beta = tf.placeholder(dtype=tf.float32, shape=(), name='beta')
     gamma = tf.placeholder(dtype=tf.float32, shape=(), name='gamma')
+    epsilon = tf.placeholder(dtype=tf.float32, shape=(), name='epsilon')
 
     # derive the loss for initializing
     with tf.name_scope('initialization'), \
@@ -247,7 +308,7 @@ def main():
     with tf.name_scope('pretraining'), \
          arg_scope([p_net, q_net], is_training=True):
         pretrain_q_net = q_net(input_x)
-        pretrain_p_net = p_net(observed={'x': input_x, 'z': pretrain_q_net['z']})
+        pretrain_p_net = p_net(observed={'x': input_x, 'z': pretrain_q_net['z']}, epsilon=epsilon)
         pretrain_loss = sgvb_loss(pretrain_p_net, pretrain_q_net, beta, {})
         pretrain_loss += tf.losses.get_regularization_loss()
 
@@ -255,8 +316,8 @@ def main():
     with tf.name_scope('training'), \
          arg_scope([p_net, q_net], is_training=True):
         train_q_net = q_net(input_x)
-        train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']})
-        train_another_p_net = p_net(observed={'z': train_q_net['z']}, n_x=config.train_n_x)
+        train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']}, epsilon=epsilon)
+        train_another_p_net = p_net(observed={'z': train_q_net['z']}, n_x=config.train_n_x, epsilon=epsilon)
         train_another_pq_net = q_net(train_another_p_net['x'], observed={'z': train_q_net['z']})
         log_p_z = train_another_pq_net['z'].log_prob()
         if config.train_n_x is not None:
@@ -322,36 +383,42 @@ def main():
 
         # derive the plotting function
         with tf.name_scope('plotting'):
-            x_plots = tf.reshape(
-                bernoulli_as_pixel(p_net(n_z=100)['x']), (-1,) + config.x_shape)
+            x_samples = p_net(n_z=100)['x']
+            x_plots = 255.0 * tf.reshape(
+                x_samples.distribution.mean, (-1,) + config.x_shape)
+            x_samples = tf.reshape(x_samples, (-1,) + config.x_shape)
             z_plots = tf.reshape(
                 p_net(n_z=1000)['z'], (-1, config.z_dim)
             )
             reconstruct_q_net = q_net(input_x)
             reconstruct_z = reconstruct_q_net['z']
             reconstruct_x = p_net(observed={'z': reconstruct_z})['x']
-            reconstruct_plots = tf.reshape(
-                bernoulli_as_pixel(reconstruct_x),
+            reconstruct_plots = 255.0 * tf.reshape(
+                reconstruct_x.distribution.mean,
                 (-1,) + config.x_shape
             )
-            z_ph = tf.placeholder(dtype=tf.float32, shape=(None, config.z_dim), name='input_z')
+            reconstruct_x = tf.reshape(
+                reconstruct_x,
+                (-1,) + config.x_shape
+            )
+            x_plots = tf.clip_by_value(x_plots, 0, 255)
+            reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
 
         def plot_samples(loop):
             with loop.timeit('plot_time'):
                 # plot samples
-                max_mcmc_iterator = 20
-                x_0 = session.run(x_plots)
-                z_0 = None
+                max_mcmc_iterator = 50
+                [x_0, x_1] = session.run([x_plots, x_samples])
                 images = np.zeros((100 * max_mcmc_iterator,) + config.x_shape, dtype=np.uint8)
                 for mcmc_iterator in range(max_mcmc_iterator):
                     images[mcmc_iterator::max_mcmc_iterator, ...] = x_0.astype(np.uint8)
-                    x_samples = reconstruct_sampler.sample(x_0 / 255.0)
-                    [x_0, z_0] = session.run([reconstruct_plots, reconstruct_z], feed_dict={input_x: x_samples})
+                    [x_0, x_1] = session.run([reconstruct_plots, reconstruct_x],
+                                             feed_dict={input_x: x_1})
 
                 save_images_collection(
                     images=images,
                     filename='plotting/sample_mcmc/{}.png'.format(loop.epoch),
-                    grid_size=(10, 10 * max_mcmc_iterator),
+                    grid_size=(10 * 5, 10 * max_mcmc_iterator // 5),
                     results=results,
                     channels_last=config.channels_last,
                 )
@@ -361,7 +428,7 @@ def main():
                 index_mse = np.zeros(shape=100, dtype=np.float) + np.inf
                 for [x] in reconstruct_train_flow:
                     for i in range(len(x)):
-                        train_set_image = x[i]
+                        train_set_image = (255 * x[i]).astype(np.uint8)
                         mse = np.sum(np.reshape(np.square(x_0 - train_set_image), (100, -1)), axis=-1)
                         mask = (mse < index_mse)
                         index_image[mask] = train_set_image
@@ -377,10 +444,9 @@ def main():
 
                 # plot reconstructs
                 for [x] in reconstruct_train_flow:
-                    x_samples = reconstruct_sampler.sample(x / 255.0)
                     images = np.zeros((100,) + config.x_shape, dtype=np.uint8)
-                    images[::2, ...] = x.astype(np.uint8)
-                    images[1::2, ...] = session.run(reconstruct_plots, feed_dict={input_x: x_samples})
+                    images[::2, ...] = (255.0 * x).astype(np.uint8)
+                    images[1::2, ...] = session.run(reconstruct_plots, feed_dict={input_x: x})
                     save_images_collection(
                         images=images,
                         filename='plotting/train.reconstruct/{}.png'.format(loop.epoch),
@@ -393,13 +459,12 @@ def main():
     # prepare for training and testing data
     (x_train, y_train), (x_test, y_test) = \
         spt.datasets.load_fashion_mnist(x_shape=config.x_shape)
-    train_flow = bernoulli_flow(
-        x_train, config.batch_size, shuffle=True, skip_incomplete=True)
+    train_flow = gaussian_flow(x_train, config.batch_size, shuffle=True, skip_incomplete=True)
     reconstruct_train_flow = spt.DataFlow.arrays(
-        [x_train], 50, shuffle=True, skip_incomplete=True)
-    test_flow = bernoulli_flow(
-        x_test, config.test_batch_size, sample_now=True)
-    reconstruct_sampler = spt.preprocessing.BernoulliSampler()
+        [x_train / 255.0], 50, shuffle=True, skip_incomplete=False)
+    test_flow = spt.DataFlow.arrays(
+        [x_test / 255.0], config.test_batch_size)
+    # reconstruct_sampler = spt.preprocessing.BernoulliSampler()
 
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
@@ -421,7 +486,7 @@ def main():
                            summary_graph=tf.get_default_graph(),
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
-                           checkpoint_epoch_freq=100,) as loop:
+                           checkpoint_epoch_freq=100, ) as loop:
 
             evaluator = spt.Evaluator(
                 loop,
@@ -446,7 +511,8 @@ def main():
                     _, batch_loss = session.run(
                         [pretrain_op, pretrain_loss], feed_dict={
                             input_x: x,
-                            beta: 1.0
+                            beta: 1.0,
+                            epsilon: get_epsilon(epoch)
                             # beta: min(1., 1.0 * epoch / config.warm_up_epoch)
                         })
                     loop.collect_metrics(train_loss=batch_loss)
@@ -467,7 +533,8 @@ def main():
                     _, batch_loss = session.run(
                         [train_op, train_loss], feed_dict={
                             input_x: x,
-                            gamma: gamma_value
+                            gamma: gamma_value,
+                            epsilon: get_epsilon(epoch)
                         })
                     loop.collect_metrics(train_loss=batch_loss)
                 if epoch % config.lr_anneal_epoch_freq == 0:
