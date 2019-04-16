@@ -237,17 +237,18 @@ def G_phi(w):
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
                    channels_last=config.channels_last):
-        h_w = spt.layers.dense(w, 64 * 2 * 2, scope='level_0')
+        h_w = spt.layers.dense(w, 256 * 2 * 2, scope='level_0')
         h_w = spt.ops.reshape_tail(
             h_w,
             ndims=1,
-            shape=(2, 2, 64) if config.channels_last else (64, 2, 2)
+            shape=(2, 2, 256) if config.channels_last else (256, 2, 2)
         )
-        h_w = spt.layers.deconv2d(h_w, 64, scope='level_1')  # output: (64, 2, 2)
-        h_w = spt.layers.deconv2d(h_w, 32, strides=2, scope='level_2')  # output: (32, 4, 4)
+        h_w = spt.layers.deconv2d(h_w, 128, scope='level_1')  # output: (128, 2, 2)
+        h_w = spt.layers.deconv2d(h_w, 64, strides=2, scope='level_2')  # output: (64, 4, 4)
         h_w = spt.layers.deconv2d(h_w, 32, scope='level_3')  # output: (32, 4, 4)
-        h_w = spt.layers.deconv2d(h_w, 16, strides=2, scope='level_4')  # output: (16, 8, 8)
-    h_w = spt.layers.conv2d(h_w, 1, (1, 1), padding='same', scope='level5',
+        h_w = spt.layers.deconv2d(h_w, 32, strides=2, scope='level_4')  # output: (32, 8, 8)
+        h_w = spt.layers.deconv2d(h_w, 16, scope='level_5')  # output: (16, 8, 8)
+    h_w = spt.layers.conv2d(h_w, 1, (1, 1), padding='same', scope='level_6',
                             channels_last=config.channels_last)
 
     # w = spt.ops.reshape_tail(w, 1, [8, 8, 1])
@@ -266,7 +267,7 @@ def G_phi(w):
     #     h_w = spt.layers.conv2d(h_w, 64, strides=2, scope='level_3')  # output: (64, 2, 2)
     #     h_w = spt.layers.conv2d(h_w, 64, scope='level_4')  # output: (64, 2, 2)
     h_w = spt.ops.reshape_tail(h_w, 3, [-1])
-    h_w = spt.layers.dense(h_w, config.z_dim, scope='level_6')
+    h_w = spt.layers.dense(h_w, config.z_dim, scope='level_7')
     return h_w
 
 
