@@ -39,10 +39,11 @@ class ExpConfig(spt.Config):
     batch_size = 128
     initial_lr = 0.001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = 20
+    lr_anneal_epoch_freq = 100
     lr_anneal_step_freq = None
 
-    gradient_penalty_weight = 0.1
+    gradient_penalty_weight = 2
+    gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
     n_critical = 5
@@ -397,10 +398,10 @@ def G_theta(z):
             ndims=1,
             shape=(7, 7, 64)
         )
-        h_z = spt.layers.deconv2d(h_z, 64, scope='level_1')  # output: (64, 7, 7)
-        h_z = spt.layers.deconv2d(h_z, 32, strides=2, scope='level_2')  # output: (32, 14, 14)
-        h_z = spt.layers.deconv2d(h_z, 32, scope='level_3')  # output: (32, 14, 14)
-        h_z = spt.layers.deconv2d(h_z, 16, strides=2, scope='level_4')  # output: (16, 28, 28)
+        h_z = spt.layers.deconv2d(h_z, 64, scope='level_1')  # output: (7, 7, 64)
+        h_z = spt.layers.deconv2d(h_z, 32, strides=2, scope='level_2')  # output: (14, 14, 32)
+        h_z = spt.layers.deconv2d(h_z, 32, scope='level_3')  # output: (14, 14, 32)
+        h_z = spt.layers.deconv2d(h_z, 16, strides=2, scope='level_4')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, 1, (1, 1), padding='same', scope='feature_map_mean_to_pixel'
     )
@@ -419,14 +420,15 @@ def D_psi(x):
                    normalizer_fn=activation_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg), ):
         h_x = tf.to_float(x)
-        h_x = spt.layers.conv2d(h_x, 16, scope='level_0')  # output: (16, 28, 28)
-        h_x = spt.layers.conv2d(h_x, 32, strides=2, scope='level_1')  # output: (32, 14, 14)
-        h_x = spt.layers.conv2d(h_x, 32, scope='level_2')  # output: (32, 14, 14)
-        h_x = spt.layers.conv2d(h_x, 64, strides=2, scope='level_3')  # output: (64, 7, 7)
-        h_x = spt.layers.conv2d(h_x, 64, scope='level_4')  # output: (64, 7, 7)
+        h_x = spt.layers.conv2d(h_x, 16, scope='level_0')  # output: (28, 28, 16)
+        h_x = spt.layers.conv2d(h_x, 32, strides=2, scope='level_1')  # output: (14, 14, 32)
+        h_x = spt.layers.conv2d(h_x, 32, scope='level_2')  # output: (14, 14, 32)
+        h_x = spt.layers.conv2d(h_x, 64, strides=2, scope='level_3')  # output: (7, 7, 64)
+        h_x = spt.layers.conv2d(h_x, 64, scope='level_4')  # output: (7, 7, 64)
 
+        h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
+        h_x = spt.layers.dense(h_x, 64, scope='level_5')
     # sample z ~ q(z|x)
-    h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
     h_x = spt.layers.dense(h_x, 1, scope='level_6', bias_regularizer=spt.layers.l2_regularizer(config.l2_reg))
     return tf.squeeze(h_x, axis=-1)
 
@@ -434,12 +436,19 @@ def D_psi(x):
 def get_all_loss(q_net, p_net, pd_net):
     with tf.name_scope('adv_prior_loss'):
         x = p_net['x']
+        x_ = pd_net['x']
         log_px_z = p_net['x']
         energy_real = p_net['x'].log_prob().energy
         energy_fake = pd_net['x'].log_prob().energy
-        gradient_penalty = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
-        gradient_penalty = tf.reduce_sum(gradient_penalty, tf.range(1, len(gradient_penalty.shape)))
-        gradient_penalty = tf.reduce_mean(gradient_penalty)
+        gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
+        gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(1, len(gradient_penalty_real.shape)))
+        gradient_penalty_real = tf.pow(gradient_penalty_real, config.gradient_penalty_index / 2.0)
+
+        gradient_penalty_fake = tf.square(tf.gradients(energy_fake, [x_.tensor if hasattr(x_, 'tensor') else x_])[0])
+        gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(1, len(gradient_penalty_fake.shape)))
+        gradient_penalty_fake = tf.pow(gradient_penalty_fake, config.gradient_penalty_index / 2.0)
+
+        gradient_penalty = tf.reduce_mean(gradient_penalty_fake + gradient_penalty_real) * config.gradient_penalty_weight / 2.0
         VAE_loss = tf.reduce_mean(
             -log_px_z - p_net['z'].log_prob().log_normal_prob + q_net['z'].log_prob()
         )
@@ -447,9 +456,9 @@ def get_all_loss(q_net, p_net, pd_net):
             -log_px_z + log_px_z.log_prob().energy + q_net['z'].log_prob()
         )
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
-            energy_real) + config.gradient_penalty_weight * gradient_penalty
+            energy_real) + gradient_penalty
         adv_G_loss = tf.reduce_mean(energy_fake)
-    return VAE_loss, adv_VAE_loss, adv_D_loss, adv_G_loss
+    return VAE_loss, adv_VAE_loss, adv_D_loss, adv_G_loss, tf.reduce_mean(energy_real)
 
 
 class MyIterator(object):
@@ -535,7 +544,7 @@ def main():
         train_q_net = q_net(input_x, n_z=config.train_n_qz)
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']}, n_z=config.train_n_qz, beta=beta)
         train_pd_net = p_net(n_z=config.train_n_pz, beta=beta)
-        VAE_loss, adv_VAE_loss, D_loss, G_loss = get_all_loss(train_q_net, train_p_net, train_pd_net)
+        VAE_loss, adv_VAE_loss, D_loss, G_loss, debug = get_all_loss(train_q_net, train_p_net, train_pd_net)
 
         VAE_loss += tf.losses.get_regularization_loss()
         adv_VAE_loss += tf.losses.get_regularization_loss()
@@ -689,23 +698,24 @@ def main():
                 while step_iterator.has_next:
 
                     # vae training
-                    for step, [x] in limited(step_iterator, config.n_critical):
-                        [_, batch_VAE_loss] = session.run(
-                            [VAE_train_op if epoch < config.energy_prior_start_epoch else adv_VAE_train_op,
-                             VAE_loss if epoch < config.energy_prior_start_epoch else adv_VAE_loss], feed_dict={
-                                input_x: x,
-                                beta: config.beta
-                            })
-                        loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
+                    # for step, [x] in limited(step_iterator, config.n_critical):
+                    #     [_, batch_VAE_loss] = session.run(
+                    #         [VAE_train_op if epoch < config.energy_prior_start_epoch else adv_VAE_train_op,
+                    #          VAE_loss if epoch < config.energy_prior_start_epoch else adv_VAE_loss], feed_dict={
+                    #             input_x: x,
+                    #             beta: config.beta
+                    #         })
+                    #     loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
 
                     # discriminator training
                     for step, [x] in limited(step_iterator, config.n_critical if epoch > 5 else config.N_critical):
-                        [_, batch_D_loss] = session.run(
-                            [D_train_op, D_loss], feed_dict={
+                        [_, batch_D_loss, debug_loss] = session.run(
+                            [D_train_op, D_loss, debug], feed_dict={
                                 input_x: x,
                                 beta: config.beta
                             })
                         loop.collect_metrics(D_loss=batch_D_loss)
+                        loop.collect_metrics(debug_loss=debug_loss)
 
                     # generator training x
                     [_, batch_G_loss] = session.run(
@@ -713,9 +723,6 @@ def main():
                             beta: config.beta,
                         })
                     loop.collect_metrics(G_loss=batch_G_loss)
-
-                # if epoch % config.lr_anneal_epoch_freq == 0:
-                #     learning_rate.anneal()
 
                 if epoch % config.lr_anneal_epoch_freq == 0:
                     learning_rate.anneal()
