@@ -229,45 +229,20 @@ def G_phi(w):
         normalizer_fn = None
 
     normalizer_fn = batch_norm
-    # compute the hidden features
-    with arg_scope([spt.layers.deconv2d],
-                   kernel_size=config.kernel_size,
-                   # shortcut_kernel_size=config.shortcut_kernel_size,
+    with arg_scope([spt.layers.dense],
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
-                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
-                   channels_last=config.channels_last):
-        h_w = spt.layers.dense(w, 256 * 2 * 2, scope='level_0')
-        h_w = spt.ops.reshape_tail(
-            h_w,
-            ndims=1,
-            shape=(2, 2, 256) if config.channels_last else (256, 2, 2)
-        )
-        h_w = spt.layers.deconv2d(h_w, 128, scope='level_1')  # output: (128, 2, 2)
-        h_w = spt.layers.deconv2d(h_w, 64, strides=2, scope='level_2')  # output: (64, 4, 4)
-        h_w = spt.layers.deconv2d(h_w, 32, scope='level_3')  # output: (32, 4, 4)
-        h_w = spt.layers.deconv2d(h_w, 32, strides=2, scope='level_4')  # output: (32, 8, 8)
-        h_w = spt.layers.deconv2d(h_w, 16, scope='level_5')  # output: (16, 8, 8)
-    h_w = spt.layers.conv2d(h_w, 1, (1, 1), padding='same', scope='level_6',
-                            channels_last=config.channels_last)
+                   weight_norm=config.weight_norm,
+                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
+        h_w = tf.to_float(w)
+        h_w = spt.layers.dense(h_w, 256, scope='level_0')
+        h_w = spt.layers.dense(h_w, 256, scope='level_1')
+        h_w = spt.layers.dense(h_w, 256, scope='level_2')
+        h_w = spt.layers.dense(h_w, 256, scope='level_3')
+        h_w = spt.layers.dense(h_w, 256, scope='level_4')
+        h_w = spt.layers.dense(h_w, 256, scope='level_5')
 
-    # w = spt.ops.reshape_tail(w, 1, [8, 8, 1])
-    # # compute the hidden features
-    # with arg_scope([spt.layers.conv2d],
-    #                kernel_size=config.kernel_size,
-    #                # shortcut_kernel_size=config.shortcut_kernel_size,
-    #                activation_fn=tf.nn.leaky_relu,
-    #                normalizer_fn=normalizer_fn,
-    #                kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
-    #                channels_last=config.channels_last):
-    #     h_w = tf.to_float(w)
-    #     h_w = spt.layers.conv2d(h_w, 16, scope='level_0')  # output: (16, 8, 8)
-    #     h_w = spt.layers.conv2d(h_w, 32, strides=2, scope='level_1')  # output: (32, 4, 4)
-    #     h_w = spt.layers.conv2d(h_w, 32, scope='level_2')  # output: (32, 4, 4)
-    #     h_w = spt.layers.conv2d(h_w, 64, strides=2, scope='level_3')  # output: (64, 2, 2)
-    #     h_w = spt.layers.conv2d(h_w, 64, scope='level_4')  # output: (64, 2, 2)
-    h_w = spt.ops.reshape_tail(h_w, 3, [-1])
-    h_w = spt.layers.dense(h_w, config.z_dim, scope='level_7')
+    h_w = spt.layers.dense(h_w, config.z_dim, scope='level_6')
     return h_w
 
 
@@ -353,11 +328,15 @@ def adv_prior_loss(q_net, pz_net, pw_net):
         # gradient_penalty = tf.reduce_sum(
         #     tf.square(tf.gradients(energy_mean_z, [q_net['z'].distribution.mean])[0])
         # )
+        print(z.shape, Gw.shape)
+        alpha = tf.random.uniform(spt.utils.get_shape(z))
+        interpolates = alpha * z + (1 - alpha) * Gw
+        disc_interpolates = pw_net['z'].distribution.log_prob(interpolates).energy
         gradient_penalty = tf.reduce_sum(
-            tf.square(tf.gradients(energy_z, [z.tensor if hasattr(z, 'tensor') else z])[0]), axis=-1
+            tf.square(tf.gradients(disc_interpolates, interpolates)[0]), axis=-1
         )
-        print(gradient_penalty.shape)
-        gradient_penalty = tf.reduce_mean(gradient_penalty)
+        # print(gradient_penalty.shape)
+        gradient_penalty = tf.reduce_mean(tf.square(gradient_penalty - 1.0))
         adv_psi_loss = -tf.reduce_mean(energy_Gw) + tf.reduce_mean(
             energy_z) + config.gradient_penalty_weight * gradient_penalty
         adv_theta_loss = -tf.reduce_mean(energy_Gw) + tf.reduce_mean(
@@ -542,8 +521,8 @@ def main():
 
     # derive the loss for initializing
     with tf.name_scope('initialization'), \
-            arg_scope([spt.layers.act_norm], initializing=True), \
-            spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
+         arg_scope([spt.layers.act_norm], initializing=True), \
+         spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
         init_q_net = q_net(input_x, n_z=config.train_n_z)
         init_pw_net = p_net(observed={'x': input_x}, n_z=config.train_n_w)
         init_pz_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_z)
@@ -551,7 +530,7 @@ def main():
 
     # derive the loss and lower-bound for training
     with tf.name_scope('pretraining'), \
-            arg_scope([batch_norm], training=True):
+         arg_scope([batch_norm], training=True):
         pretrain_q_net = q_net(input_x)
         pretrain_pz_net = p_net(observed={'x': input_x, 'z': pretrain_q_net['z']},
                                 gaussian_prior=True)
@@ -560,7 +539,7 @@ def main():
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
-            arg_scope([batch_norm], training=True):
+         arg_scope([batch_norm], training=True):
         train_q_net = q_net(input_x, n_z=config.train_n_z)
         train_pz_net = p_net(observed={'x': input_x, 'z': train_q_net['z']}, n_z=config.train_n_z)
         train_pw_net = p_net(observed={'x': input_x}, n_z=config.train_n_w)
@@ -633,9 +612,9 @@ def main():
     # derive the plotting function
     with tf.name_scope('plotting'):
         x_plots = 255.0 * tf.reshape(
-            p_net(n_z=100, mcmc_iterator=100)['x'], (-1,) + config.x_shape)
+            p_net(n_z=100, mcmc_iterator=0)['x'], (-1,) + config.x_shape)
         z_plots = tf.reshape(
-            p_net(n_z=1000, mcmc_iterator=100)['z'], (-1, config.z_dim)
+            p_net(n_z=1000, mcmc_iterator=0)['z'], (-1, config.z_dim)
         )
         reconstruct_q_net = q_net(input_x)
         reconstruct_z = reconstruct_q_net['z']
