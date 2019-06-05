@@ -25,7 +25,7 @@ class ExpConfig(spt.Config):
     act_norm = False
     weight_norm = False
     l2_reg = 0.0001
-    kernel_size = 3
+    kernel_size = 5
     shortcut_kernel_size = 1
 
     # training parameters
@@ -248,7 +248,6 @@ class ExponentialDistribution(spt.Distribution):
     def D(self):
         return self._D
 
-
     @property
     def N(self):
         return self._N
@@ -262,7 +261,8 @@ class ExponentialDistribution(spt.Distribution):
         with tf.name_scope(name,
                            default_name=spt.utils.get_default_scope_name('log_prob', self),
                            values=[given]):
-            log_px = -tf.sqrt(tf.reduce_sum(tf.square(given - self.mean), axis=tf.range(-group_ndims, 0))) / self.beta - self.log_Z
+            log_px = -tf.sqrt(
+                tf.reduce_sum(tf.square(given - self.mean), axis=tf.range(-group_ndims, 0))) / self.beta - self.log_Z
             log_px.energy = self.D(given)
 
         return log_px
@@ -334,11 +334,11 @@ def q_net(x, observed=None, n_z=None):
                    normalizer_fn=activation_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_x = tf.to_float(x)
-        h_x = spt.layers.conv2d(h_x, 16, scope='level_0')  # output: (16, 28, 28)
-        h_x = spt.layers.conv2d(h_x, 32, strides=2, scope='level_1')  # output: (32, 14, 14)
-        h_x = spt.layers.conv2d(h_x, 32, scope='level_2')  # output: (32, 14, 14)
-        h_x = spt.layers.conv2d(h_x, 64, strides=2, scope='level_3')  # output: (64, 7, 7)
-        h_x = spt.layers.conv2d(h_x, 64, scope='level_4')  # output: (64, 7, 7)
+        h_x = spt.layers.conv2d(h_x, 16, scope='level_0')  # output: (28, 28, 16)
+        h_x = spt.layers.conv2d(h_x, 32, strides=2, scope='level_1')  # output: (14, 14, 32)
+        h_x = spt.layers.conv2d(h_x, 32, scope='level_2')  # output: (14, 14, 32)
+        h_x = spt.layers.conv2d(h_x, 64, strides=2, scope='level_3')  # output: (7, 7, 64)
+        h_x = spt.layers.conv2d(h_x, 64, scope='level_4')  # output: (7, 7, 64)
 
     # sample z ~ q(z|x)
     h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
@@ -399,6 +399,7 @@ def G_theta(z):
             shape=(7, 7, 64)
         )
         h_z = spt.layers.deconv2d(h_z, 64, scope='level_1')  # output: (7, 7, 64)
+        h_z = spt.layers.deconv2d(h_z, 64, scope='level_1')  # output: (7, 7, 64)
         h_z = spt.layers.deconv2d(h_z, 32, strides=2, scope='level_2')  # output: (14, 14, 32)
         h_z = spt.layers.deconv2d(h_z, 32, scope='level_3')  # output: (14, 14, 32)
         h_z = spt.layers.deconv2d(h_z, 16, strides=2, scope='level_4')  # output: (28, 28, 16)
@@ -429,7 +430,7 @@ def D_psi(x):
         h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
         h_x = spt.layers.dense(h_x, 64, scope='level_5')
     # sample z ~ q(z|x)
-    h_x = spt.layers.dense(h_x, 1, scope='level_6', bias_regularizer=spt.layers.l2_regularizer(config.l2_reg))
+    h_x = spt.layers.dense(h_x, 1, scope='level_6')
     return tf.squeeze(h_x, axis=-1)
 
 
@@ -448,7 +449,8 @@ def get_all_loss(q_net, p_net, pd_net):
         gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(1, len(gradient_penalty_fake.shape)))
         gradient_penalty_fake = tf.pow(gradient_penalty_fake, config.gradient_penalty_index / 2.0)
 
-        gradient_penalty = tf.reduce_mean(gradient_penalty_fake + gradient_penalty_real) * config.gradient_penalty_weight / 2.0
+        gradient_penalty = (tf.reduce_mean(gradient_penalty_fake) + tf.reduce_mean(gradient_penalty_real)) \
+                           * config.gradient_penalty_weight / 2.0
         VAE_loss = tf.reduce_mean(
             -log_px_z - p_net['z'].log_prob().log_normal_prob + q_net['z'].log_prob()
         )
@@ -540,7 +542,7 @@ def main():
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
-            arg_scope([batch_norm], training=True):
+         arg_scope([batch_norm], training=True):
         train_q_net = q_net(input_x, n_z=config.train_n_qz)
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']}, n_z=config.train_n_qz, beta=beta)
         train_pd_net = p_net(n_z=config.train_n_pz, beta=beta)
@@ -557,7 +559,8 @@ def main():
         test_p_net = p_net(observed={'x': input_x, 'z': test_q_net['z']}, n_z=config.test_n_qz, beta=config.beta)
         test_pd_net = p_net(n_z=config.test_n_pz, mcmc_iterator=20, beta=config.beta)
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=config.beta)
-        test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0, beta=config.beta)
+        test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
+                                      beta=config.beta)
         test_nll = -tf.reduce_mean(test_chain.vi.evaluation.is_loglikelihood())
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
         log_Z_compute_op = tf.reduce_logsumexp(
@@ -596,7 +599,7 @@ def main():
     # derive the plotting function
     with tf.name_scope('plotting'):
         x_plots = 255.0 * tf.reshape(
-            p_net(n_z=100, mcmc_iterator=0, beta=beta)['x'], (-1,) + config.x_shape)
+            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'], (-1,) + config.x_shape)
         reconstruct_q_net = q_net(input_x)
         reconstruct_z = reconstruct_q_net['z']
         reconstruct_plots = 255.0 * tf.reshape(
