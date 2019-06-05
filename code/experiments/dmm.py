@@ -398,11 +398,11 @@ def G_theta(z):
             ndims=1,
             shape=(7, 7, 64)
         )
-        h_z = spt.layers.deconv2d(h_z, 64, scope='level_0')  # output: (7, 7, 64)
         h_z = spt.layers.deconv2d(h_z, 64, scope='level_1')  # output: (7, 7, 64)
-        h_z = spt.layers.deconv2d(h_z, 32, strides=2, scope='level_2')  # output: (14, 14, 32)
-        h_z = spt.layers.deconv2d(h_z, 32, scope='level_3')  # output: (14, 14, 32)
-        h_z = spt.layers.deconv2d(h_z, 16, strides=2, scope='level_4')  # output: (28, 28, 16)
+        h_z = spt.layers.deconv2d(h_z, 64, scope='level_2')  # output: (7, 7, 64)
+        h_z = spt.layers.deconv2d(h_z, 32, strides=2, scope='level_3')  # output: (14, 14, 32)
+        h_z = spt.layers.deconv2d(h_z, 32, scope='level_4')  # output: (14, 14, 32)
+        h_z = spt.layers.deconv2d(h_z, 16, strides=2, scope='level_5')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, 1, (1, 1), padding='same', scope='feature_map_mean_to_pixel'
     )
