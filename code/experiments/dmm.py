@@ -37,7 +37,7 @@ class ExpConfig(spt.Config):
 
     max_step = None
     batch_size = 128
-    initial_lr = 0.001
+    initial_lr = 0.0001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = 100
     lr_anneal_step_freq = None
@@ -404,7 +404,8 @@ def G_theta(z):
         h_z = spt.layers.deconv2d(h_z, 32, scope='level_4')  # output: (14, 14, 32)
         h_z = spt.layers.deconv2d(h_z, 16, strides=2, scope='level_5')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
-        h_z, 1, (1, 1), padding='same', scope='feature_map_mean_to_pixel'
+        h_z, 1, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
+        activation_fn=tf.nn.tanh
     )
     return x_mean
 
@@ -584,10 +585,10 @@ def main():
             adv_VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
             adv_VAE_grads = adv_VAE_optimizer.compute_gradients(adv_VAE_loss, VAE_params)
         with tf.variable_scope('D_optimizer'):
-            D_optimizer = tf.train.AdamOptimizer(learning_rate)
+            D_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
             D_grads = D_optimizer.compute_gradients(D_loss, D_params)
         with tf.variable_scope('G_optimizer'):
-            G_optimizer = tf.train.AdamOptimizer(learning_rate)
+            G_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
             G_grads = G_optimizer.compute_gradients(G_loss, G_params)
 
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
@@ -598,14 +599,14 @@ def main():
 
     # derive the plotting function
     with tf.name_scope('plotting'):
-        x_plots = 255.0 * tf.reshape(
-            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'], (-1,) + config.x_shape)
+        x_plots = 255.0 / 2 * (tf.reshape(
+            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'], (-1,) + config.x_shape) + 1)
         reconstruct_q_net = q_net(input_x)
         reconstruct_z = reconstruct_q_net['z']
-        reconstruct_plots = 255.0 * tf.reshape(
+        reconstruct_plots = 255.0 / 2 * (tf.reshape(
             p_net(observed={'z': reconstruct_z}, beta=beta)['x'],
             (-1,) + config.x_shape
-        )
+        ) + 1)
         x_plots = tf.clip_by_value(x_plots, 0, 255)
         reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
 
@@ -628,12 +629,12 @@ def main():
             # plot reconstructs
             for [x] in reconstruct_train_flow:
                 # x_samples = reconstruct_sampler.sample(x / 255.)
-                x_samples = x
+                x_samples = 255.0 / 2 * (x + 1)
                 images = np.zeros((150,) + config.x_shape, dtype=np.uint8)
-                images[::3, ...] = (x * 255.0).astype(np.uint8)
-                images[1::3, ...] = (x_samples * 255.0).astype(np.uint8)
+                images[::3, ...] = (x_samples).astype(np.uint8)
+                images[1::3, ...] = (x_samples).astype(np.uint8)
                 images[2::3, ...] = session.run(
-                    reconstruct_plots, feed_dict={input_x: x_samples, beta: config.beta})
+                    reconstruct_plots, feed_dict={input_x: x, beta: config.beta})
                 save_images_collection(
                     images=images,
                     filename='plotting/train.reconstruct/{}.png'.format(loop.epoch),
@@ -647,13 +648,15 @@ def main():
         spt.datasets.load_mnist(x_shape=config.x_shape)
     # train_flow = bernoulli_flow(
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
-    train_flow = spt.DataFlow.arrays([x_train / 255.0], config.batch_size, shuffle=True, skip_incomplete=True)
+    x_train = x_train / 255.0 * 2 - 1
+    x_test = x_test / 255.0 * 2 - 1
+    train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     Z_train_flow = spt.DataFlow.arrays(
-        [x_train / 255.0], config.batch_size, shuffle=True, skip_incomplete=True)
+        [x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     reconstruct_train_flow = spt.DataFlow.arrays(
-        [x_train / 255.0], 50, shuffle=True, skip_incomplete=False)
+        [x_train], 50, shuffle=True, skip_incomplete=False)
     test_flow = spt.DataFlow.arrays(
-        [x_test / 255.0], config.test_batch_size)
+        [x_test], config.test_batch_size)
 
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
