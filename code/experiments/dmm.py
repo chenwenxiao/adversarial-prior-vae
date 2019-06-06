@@ -24,7 +24,7 @@ class ExpConfig(spt.Config):
     z_dim = 64
     act_norm = False
     weight_norm = False
-    l2_reg = 0.0001
+    l2_reg = 0.0002
     kernel_size = 5
     shortcut_kernel_size = 1
 
@@ -32,14 +32,14 @@ class ExpConfig(spt.Config):
     result_dir = None
     write_summary = True
     max_epoch = 1600
-    energy_prior_start_epoch = 800
-    beta = 20
+    energy_prior_start_epoch = 1600
+    beta = 0.01
 
     max_step = None
     batch_size = 128
-    initial_lr = 0.0001
+    initial_lr = 0.001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = 100
+    lr_anneal_epoch_freq = 200
     lr_anneal_step_freq = None
 
     gradient_penalty_weight = 2
@@ -128,9 +128,9 @@ class EnergyDistribution(spt.Distribution):
                                'log_prob', self),
                            values=[given]):
             energy = self.D(self.G(given))
-            log_px = -energy - self.log_Z
+            log_px = self.pz.log_prob(given=given, group_ndims=group_ndims)
+            log_px.log_energy_prob = -energy - self.log_Z
             log_px.energy = energy
-            log_px.log_normal_prob = self.pz.log_prob(given=given, group_ndims=group_ndims)
 
         return log_px
 
@@ -405,7 +405,7 @@ def G_theta(z):
         h_z = spt.layers.deconv2d(h_z, 16, strides=2, scope='level_5')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, 1, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
-        activation_fn=tf.nn.tanh
+        # activation_fn=tf.nn.tanh
     )
     return x_mean
 
@@ -439,7 +439,7 @@ def get_all_loss(q_net, p_net, pd_net):
     with tf.name_scope('adv_prior_loss'):
         x = p_net['x']
         x_ = pd_net['x']
-        log_px_z = p_net['x']
+        log_px_z = p_net['x'].log_prob()
         energy_real = p_net['x'].log_prob().energy
         energy_fake = pd_net['x'].log_prob().energy
         gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
@@ -453,10 +453,12 @@ def get_all_loss(q_net, p_net, pd_net):
         gradient_penalty = (tf.reduce_mean(gradient_penalty_fake) + tf.reduce_mean(gradient_penalty_real)) \
                            * config.gradient_penalty_weight / 2.0
         VAE_loss = tf.reduce_mean(
-            -log_px_z - p_net['z'].log_prob().log_normal_prob + q_net['z'].log_prob()
+            -log_px_z - p_net['z'].log_prob() + q_net['z'].log_prob()
         )
+        global debug_variable
+        debug_variable = tf.reduce_mean(tf.sqrt(tf.reduce_sum((p_net['x'] - p_net['x'].distribution.mean) ** 2, [2, 3, 4])))
         adv_VAE_loss = tf.reduce_mean(
-            -log_px_z + log_px_z.log_prob().energy + q_net['z'].log_prob()
+            -log_px_z + log_px_z.energy + q_net['z'].log_prob()
         )
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
@@ -504,6 +506,8 @@ def limited(iterator, n):
             i += 1
     except StopIteration:
         pass
+
+debug_variable = None
 
 
 def main():
@@ -565,7 +569,7 @@ def main():
         test_nll = -tf.reduce_mean(test_chain.vi.evaluation.is_loglikelihood())
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
         log_Z_compute_op = tf.reduce_logsumexp(
-            -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob().log_normal_prob)
+            -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
 
     # derive the optimizer
     with tf.name_scope('optimizing'):
@@ -599,14 +603,14 @@ def main():
 
     # derive the plotting function
     with tf.name_scope('plotting'):
-        x_plots = 255.0 / 2 * (tf.reshape(
-            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'], (-1,) + config.x_shape) + 1)
+        x_plots = 255.0 * (tf.reshape(
+            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'], (-1,) + config.x_shape))
         reconstruct_q_net = q_net(input_x)
         reconstruct_z = reconstruct_q_net['z']
-        reconstruct_plots = 255.0 / 2 * (tf.reshape(
+        reconstruct_plots = 255.0 * (tf.reshape(
             p_net(observed={'z': reconstruct_z}, beta=beta)['x'],
             (-1,) + config.x_shape
-        ) + 1)
+        ))
         x_plots = tf.clip_by_value(x_plots, 0, 255)
         reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
 
@@ -629,7 +633,7 @@ def main():
             # plot reconstructs
             for [x] in reconstruct_train_flow:
                 # x_samples = reconstruct_sampler.sample(x / 255.)
-                x_samples = 255.0 / 2 * (x + 1)
+                x_samples = 255.0 * (x)
                 images = np.zeros((150,) + config.x_shape, dtype=np.uint8)
                 images[::3, ...] = (x_samples).astype(np.uint8)
                 images[1::3, ...] = (x_samples).astype(np.uint8)
@@ -648,8 +652,8 @@ def main():
         spt.datasets.load_mnist(x_shape=config.x_shape)
     # train_flow = bernoulli_flow(
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
-    x_train = x_train / 255.0 * 2 - 1
-    x_test = x_test / 255.0 * 2 - 1
+    x_train = x_train / 255.0
+    x_test = x_test / 255.0
     train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     Z_train_flow = spt.DataFlow.arrays(
         [x_train], config.batch_size, shuffle=True, skip_incomplete=True)
@@ -665,7 +669,7 @@ def main():
         # initialize the network
         for [x] in train_flow:
             print('Network initialized, first-batch loss is {:.6g}.\n'.
-                  format(session.run(init_loss, feed_dict={input_x: x})))
+                  format(session.run(init_loss, feed_dict={input_x: x, beta: config.beta})))
             break
 
         # train the network
@@ -705,15 +709,16 @@ def main():
 
                     # vae training
                     # for step, [x] in limited(step_iterator, config.n_critical):
-                    #     [_, batch_VAE_loss] = session.run(
+                    #     [_, batch_VAE_loss, debug_information] = session.run(
                     #         [VAE_train_op if epoch < config.energy_prior_start_epoch else adv_VAE_train_op,
-                    #          VAE_loss if epoch < config.energy_prior_start_epoch else adv_VAE_loss], feed_dict={
+                    #          VAE_loss if epoch < config.energy_prior_start_epoch else adv_VAE_loss, debug_variable], feed_dict={
                     #             input_x: x,
                     #             beta: config.beta
                     #         })
                     #     loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
+                    #     loop.collect_metrics(debug_information=debug_information)
 
-                    # discriminator training
+                    # # discriminator training
                     for step, [x] in limited(step_iterator, config.n_critical if epoch > 5 else config.N_critical):
                         [_, batch_D_loss, debug_loss] = session.run(
                             [D_train_op, D_loss, debug], feed_dict={
