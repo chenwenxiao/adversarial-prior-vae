@@ -37,7 +37,7 @@ class ExpConfig(spt.Config):
 
     max_step = None
     batch_size = 128
-    initial_lr = 0.001
+    initial_lr = 0.0001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = 200
     lr_anneal_step_freq = None
@@ -435,7 +435,7 @@ def D_psi(x):
     return tf.squeeze(h_x, axis=-1)
 
 
-def get_all_loss(q_net, p_net, pd_net):
+def get_all_loss(q_net, p_net, pd_net, beta):
     with tf.name_scope('adv_prior_loss'):
         x = p_net['x']
         x_ = pd_net['x']
@@ -454,12 +454,12 @@ def get_all_loss(q_net, p_net, pd_net):
                            * config.gradient_penalty_weight / 2.0
         VAE_loss = tf.reduce_mean(
             -log_px_z - p_net['z'].log_prob() + q_net['z'].log_prob()
-        )
+        ) * beta
         global debug_variable
         debug_variable = tf.reduce_mean(tf.sqrt(tf.reduce_sum((p_net['x'] - p_net['x'].distribution.mean) ** 2, [2, 3, 4])))
         adv_VAE_loss = tf.reduce_mean(
             -log_px_z + log_px_z.energy + q_net['z'].log_prob()
-        )
+        ) * beta
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
         adv_G_loss = tf.reduce_mean(energy_fake)
@@ -543,7 +543,7 @@ def main():
         init_q_net = q_net(input_x, n_z=config.train_n_qz)
         init_p_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz, beta=beta)
         init_pd_net = p_net(n_z=config.train_n_pz, beta=beta)
-        init_loss = sum(get_all_loss(init_q_net, init_p_net, init_pd_net))
+        init_loss = sum(get_all_loss(init_q_net, init_p_net, init_pd_net, beta))
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
@@ -551,7 +551,7 @@ def main():
         train_q_net = q_net(input_x, n_z=config.train_n_qz)
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']}, n_z=config.train_n_qz, beta=beta)
         train_pd_net = p_net(n_z=config.train_n_pz, beta=beta)
-        VAE_loss, adv_VAE_loss, D_loss, G_loss, debug = get_all_loss(train_q_net, train_p_net, train_pd_net)
+        VAE_loss, adv_VAE_loss, D_loss, G_loss, debug = get_all_loss(train_q_net, train_p_net, train_pd_net, beta)
 
         VAE_loss += tf.losses.get_regularization_loss()
         adv_VAE_loss += tf.losses.get_regularization_loss()
@@ -708,17 +708,17 @@ def main():
                 while step_iterator.has_next:
 
                     # vae training
-                    # for step, [x] in limited(step_iterator, config.n_critical):
-                    #     [_, batch_VAE_loss, debug_information] = session.run(
-                    #         [VAE_train_op if epoch < config.energy_prior_start_epoch else adv_VAE_train_op,
-                    #          VAE_loss if epoch < config.energy_prior_start_epoch else adv_VAE_loss, debug_variable], feed_dict={
-                    #             input_x: x,
-                    #             beta: config.beta
-                    #         })
-                    #     loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
-                    #     loop.collect_metrics(debug_information=debug_information)
+                    for step, [x] in limited(step_iterator, config.n_critical):
+                        [_, batch_VAE_loss, debug_information] = session.run(
+                            [VAE_train_op if epoch < config.energy_prior_start_epoch else adv_VAE_train_op,
+                             VAE_loss if epoch < config.energy_prior_start_epoch else adv_VAE_loss, debug_variable], feed_dict={
+                                input_x: x,
+                                beta: config.beta
+                            })
+                        loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
+                        loop.collect_metrics(debug_information=debug_information)
 
-                    # # discriminator training
+                    # discriminator training
                     for step, [x] in limited(step_iterator, config.n_critical if epoch > 5 else config.N_critical):
                         [_, batch_D_loss, debug_loss] = session.run(
                             [D_train_op, D_loss, debug], feed_dict={
