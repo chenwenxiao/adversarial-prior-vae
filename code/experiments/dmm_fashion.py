@@ -32,7 +32,7 @@ class ExpConfig(spt.Config):
     result_dir = None
     write_summary = True
     max_epoch = 1600
-    energy_prior_start_epoch = 1200
+    energy_prior_start_epoch = 1000
     beta = 0.01
     pull_back_energy_weight = 1
 
@@ -717,7 +717,7 @@ def main():
             evaluator = spt.Evaluator(
                 loop,
                 metrics={'test_nll': test_nll, 'test_lb': test_lb,
-                         'adv_test_nll': adv_test_nll, 'adv_test_lb': test_lb},
+                         'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb},
                 inputs=[input_x],
                 data_flow=test_flow,
                 time_metric_name='test_time'

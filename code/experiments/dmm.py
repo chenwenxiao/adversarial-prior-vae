@@ -32,7 +32,7 @@ class ExpConfig(spt.Config):
     result_dir = None
     write_summary = True
     max_epoch = 1600
-    energy_prior_start_epoch = 1200
+    energy_prior_start_epoch = 1000
     beta = 0.01
     pull_back_energy_weight = 1
 
@@ -328,18 +328,18 @@ def q_net(x, observed=None, n_z=None):
     activation_fn = None
 
     # compute the hidden features
-    with arg_scope([spt.layers.resnet_conv2d_block],
+    with arg_scope([spt.layers.conv2d],
                    kernel_size=config.kernel_size,
-                   shortcut_kernel_size=config.shortcut_kernel_size,
+                   # shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=activation_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_x = tf.to_float(x)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, strides=2, scope='level_1')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_3')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_4')  # output: (7, 7, 64)
+        h_x = spt.layers.conv2d(h_x, 16, scope='level_0')  # output: (28, 28, 16)
+        h_x = spt.layers.conv2d(h_x, 32, strides=2, scope='level_1')  # output: (14, 14, 32)
+        h_x = spt.layers.conv2d(h_x, 32, scope='level_2')  # output: (14, 14, 32)
+        h_x = spt.layers.conv2d(h_x, 64, strides=2, scope='level_3')  # output: (7, 7, 64)
+        h_x = spt.layers.conv2d(h_x, 64, scope='level_4')  # output: (7, 7, 64)
 
     # sample z ~ q(z|x)
     h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
@@ -387,9 +387,9 @@ def G_theta(z):
     activation_fn = None
 
     # compute the hidden features
-    with arg_scope([spt.layers.resnet_deconv2d_block],
+    with arg_scope([spt.layers.deconv2d],
                    kernel_size=config.kernel_size,
-                   shortcut_kernel_size=config.shortcut_kernel_size,
+                   # shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=activation_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
@@ -399,11 +399,11 @@ def G_theta(z):
             ndims=1,
             shape=(7, 7, 64)
         )
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_1')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_2')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, strides=2, scope='level_3')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_4')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 16, strides=2, scope='level_5')  # output: (28, 28, 16)
+        h_z = spt.layers.deconv2d(h_z, 64, scope='level_1')  # output: (7, 7, 64)
+        h_z = spt.layers.deconv2d(h_z, 64, scope='level_2')  # output: (7, 7, 64)
+        h_z = spt.layers.deconv2d(h_z, 32, strides=2, scope='level_3')  # output: (14, 14, 32)
+        h_z = spt.layers.deconv2d(h_z, 32, scope='level_4')  # output: (14, 14, 32)
+        h_z = spt.layers.deconv2d(h_z, 16, strides=2, scope='level_5')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, 1, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         # activation_fn=tf.nn.tanh
@@ -416,18 +416,18 @@ def G_theta(z):
 def D_psi(x):
     activation_fn = None
 
-    with arg_scope([spt.layers.resnet_conv2d_block],
+    with arg_scope([spt.layers.conv2d],
                    kernel_size=config.kernel_size,
-                   shortcut_kernel_size=config.shortcut_kernel_size,
+                   # shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=activation_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg), ):
         h_x = tf.to_float(x)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, strides=2, scope='level_1')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_3')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_4')  # output: (7, 7, 64)
+        h_x = spt.layers.conv2d(h_x, 16, scope='level_0')  # output: (28, 28, 16)
+        h_x = spt.layers.conv2d(h_x, 32, strides=2, scope='level_1')  # output: (14, 14, 32)
+        h_x = spt.layers.conv2d(h_x, 32, scope='level_2')  # output: (14, 14, 32)
+        h_x = spt.layers.conv2d(h_x, 64, strides=2, scope='level_3')  # output: (7, 7, 64)
+        h_x = spt.layers.conv2d(h_x, 64, scope='level_4')  # output: (7, 7, 64)
 
         h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
         h_x = spt.layers.dense(h_x, 64, scope='level_5')
@@ -717,7 +717,7 @@ def main():
             evaluator = spt.Evaluator(
                 loop,
                 metrics={'test_nll': test_nll, 'test_lb': test_lb,
-                         'adv_test_nll': adv_test_nll, 'adv_test_lb': test_lb},
+                         'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb},
                 inputs=[input_x],
                 data_flow=test_flow,
                 time_metric_name='test_time'
