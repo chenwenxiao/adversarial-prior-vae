@@ -32,8 +32,9 @@ class ExpConfig(spt.Config):
     result_dir = None
     write_summary = True
     max_epoch = 1600
-    energy_prior_start_epoch = 1600
+    energy_prior_start_epoch = 1200
     beta = 0.01
+    pull_back_energy_weight = 1
 
     max_step = None
     batch_size = 128
@@ -127,7 +128,7 @@ class EnergyDistribution(spt.Distribution):
                            default_name=spt.utils.get_default_scope_name(
                                'log_prob', self),
                            values=[given]):
-            energy = self.D(self.G(z)) * config.pull_back_energy_weight + 1 / tf.reduce_sum(tf.square(z), axis=-1)
+            energy = self.D(self.G(given)) * config.pull_back_energy_weight + 0.5 * tf.reduce_sum(tf.square(given), axis=-1)
             log_px = self.pz.log_prob(given=given, group_ndims=group_ndims)
             log_px.log_energy_prob = -energy - self.log_Z
             log_px.energy = energy
@@ -185,7 +186,7 @@ class EnergyDistribution(spt.Distribution):
         return t
 
     def get_sgld_proposal(self, z):
-        energy_z = self.D(self.G(z)) * config.pull_back_energy_weight + 1 / tf.reduce_sum(tf.square(z), axis=-1)
+        energy_z = self.D(self.G(z)) * config.pull_back_energy_weight + 0.5 * tf.reduce_sum(tf.square(z), axis=-1)
         grad_energy_z = tf.gradients(energy_z, [z.tensor if hasattr(z, 'tensor') else z])[0]
         grad_energy_z = tf.reshape(grad_energy_z, shape=z.shape)
         eps = tf.random.normal(
@@ -459,7 +460,7 @@ def get_all_loss(q_net, p_net, pd_net, beta):
         debug_variable = tf.reduce_mean(
             tf.sqrt(tf.reduce_sum((p_net['x'] - p_net['x'].distribution.mean) ** 2, [2, 3, 4])))
         adv_VAE_loss = tf.reduce_mean(
-            -log_px_z + p_net['z'].log_prob().energy + q_net['z'].log_prob()
+            -log_px_z + p_net['z'].log_prob().log_energy_prob + q_net['z'].log_prob()
         ) * beta
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
@@ -571,6 +572,14 @@ def main():
                                       beta=config.beta)
         test_nll = -tf.reduce_mean(test_chain.vi.evaluation.is_loglikelihood())
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
+
+        vi = spt.VariationalInference(
+            log_joint=test_p_net['x'].log_prob() + test_p_net['z'].log_prob().log_energy_prob,
+            latent_log_probs=[test_q_net['z'].log_prob()],
+            axis=0
+        )
+        adv_test_nll = -tf.reduce_mean(vi.evaluation.is_loglikelihood())
+        adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
         log_Z_compute_op = tf.reduce_logsumexp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
 
@@ -707,7 +716,8 @@ def main():
 
             evaluator = spt.Evaluator(
                 loop,
-                metrics={'test_nll': test_nll, 'test_lb': test_lb},
+                metrics={'test_nll': test_nll, 'test_lb': test_lb,
+                         'adv_test_nll': adv_test_nll, 'adv_test_lb': test_lb},
                 inputs=[input_x],
                 data_flow=test_flow,
                 time_metric_name='test_time'
