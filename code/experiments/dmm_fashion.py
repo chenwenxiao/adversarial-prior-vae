@@ -128,7 +128,8 @@ class EnergyDistribution(spt.Distribution):
                            default_name=spt.utils.get_default_scope_name(
                                'log_prob', self),
                            values=[given]):
-            energy = self.D(self.G(given)) * config.pull_back_energy_weight + 0.5 * tf.reduce_sum(tf.square(given), axis=-1)
+            energy = self.D(self.G(given)) * config.pull_back_energy_weight + 0.5 * tf.reduce_sum(tf.square(given),
+                                                                                                  axis=-1)
             log_px = self.pz.log_prob(given=given, group_ndims=group_ndims)
             log_px.log_energy_prob = -energy - self.log_Z
             log_px.energy = energy
@@ -460,7 +461,7 @@ def get_all_loss(q_net, p_net, pd_net, beta):
         debug_variable = tf.reduce_mean(
             tf.sqrt(tf.reduce_sum((p_net['x'] - p_net['x'].distribution.mean) ** 2, [2, 3, 4])))
         adv_VAE_loss = tf.reduce_mean(
-            -log_px_z + p_net['z'].log_prob().log_energy_prob + q_net['z'].log_prob()
+            -log_px_z - p_net['z'].log_prob().log_energy_prob + q_net['z'].log_prob()
         ) * beta
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
@@ -580,6 +581,8 @@ def main():
         )
         adv_test_nll = -tf.reduce_mean(vi.evaluation.is_loglikelihood())
         adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
+        average_quality_of_reconstruct = tf.reduce_mean(test_p_net['z'].log_prob().log_energy_prob)
+        average_quality_of_sampling = tf.reduce_mean(test_pn_net['z'].log_prob().log_energy_prob)
         log_Z_compute_op = tf.reduce_logsumexp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
 
@@ -717,7 +720,9 @@ def main():
             evaluator = spt.Evaluator(
                 loop,
                 metrics={'test_nll': test_nll, 'test_lb': test_lb,
-                         'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb},
+                         'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb,
+                         'quallity_recon': average_quality_of_reconstruct,
+                         'quality_samp': average_quality_of_sampling},
                 inputs=[input_x],
                 data_flow=test_flow,
                 time_metric_name='test_time'
