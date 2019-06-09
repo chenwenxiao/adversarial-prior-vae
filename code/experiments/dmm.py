@@ -327,14 +327,14 @@ def get_z_moments(z, value_ndims, name=None):
 @spt.global_reuse
 def q_net(x, observed=None, n_z=None):
     net = spt.BayesianNet(observed=observed)
-    activation_fn = batch_norm if config.batch_norm else None
+    normalizer_fn = None
 
     # compute the hidden features
     with arg_scope([spt.layers.resnet_conv2d_block],
                    kernel_size=config.kernel_size,
                    shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
-                   normalizer_fn=activation_fn,
+                   normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
@@ -386,16 +386,16 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0):
 @add_arg_scope
 @spt.global_reuse
 def G_theta(z):
-    activation_fn = batch_norm if config.batch_norm else None
+    normalizer_fn = batch_norm if config.batch_norm else None
 
     # compute the hidden features
     with arg_scope([spt.layers.resnet_deconv2d_block],
                    kernel_size=config.kernel_size,
                    shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
-                   normalizer_fn=activation_fn,
+                   normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
-        h_z = spt.layers.dense(z, 64 * 7 * 7, scope='level_0')
+        h_z = spt.layers.dense(z, 64 * 7 * 7, scope='level_0', normalizer_fn=None)
         h_z = spt.ops.reshape_tail(
             h_z,
             ndims=1,
@@ -416,13 +416,13 @@ def G_theta(z):
 @add_arg_scope
 @spt.global_reuse
 def D_psi(x):
-    activation_fn = batch_norm if config.batch_norm else None
+    normalizer_fn = None
 
     with arg_scope([spt.layers.resnet_conv2d_block],
                    kernel_size=config.kernel_size,
                    shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
-                   normalizer_fn=activation_fn,
+                   normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg), ):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
