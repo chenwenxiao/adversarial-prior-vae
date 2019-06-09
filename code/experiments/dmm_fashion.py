@@ -52,7 +52,7 @@ class ExpConfig(spt.Config):
     # evaluation parameters
     train_n_pz = 128
     train_n_qz = 1
-    test_n_pz = 100
+    test_n_pz = 5000
     test_n_qz = 100
     test_batch_size = 64
     test_epoch_freq = 20
@@ -581,9 +581,11 @@ def main():
         )
         adv_test_nll = -tf.reduce_mean(vi.evaluation.is_loglikelihood())
         adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
-        average_quality_of_reconstruct = tf.reduce_mean(test_p_net['z'].log_prob().log_energy_prob)
-        average_quality_of_sampling = tf.reduce_mean(test_pn_net['z'].log_prob().log_energy_prob)
-        log_Z_compute_op = tf.reduce_logsumexp(
+        average_adv_quality_of_reconstruct = tf.reduce_mean(test_p_net['z'].log_prob().log_energy_prob)
+        average_quality_of_reconstruct = tf.reduce_mean(test_p_net['z'].log_prob())
+        average_adv_quality_of_sampling = tf.reduce_mean(test_pn_net['z'].log_prob().log_energy_prob)
+        average_quality_of_sampling = tf.reduce_mean(test_pn_net['z'].log_prob())
+        log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
 
     # derive the optimizer
@@ -715,14 +717,18 @@ def main():
                            summary_graph=tf.get_default_graph(),
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
-                           checkpoint_epoch_freq=100, ) as loop:
+                           checkpoint_epoch_freq=100,
+                           restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/27/6f/adb0002df599663cbfc5/checkpoint/checkpoint/checkpoint.dat-468000'
+                           ) as loop:
 
             evaluator = spt.Evaluator(
                 loop,
                 metrics={'test_nll': test_nll, 'test_lb': test_lb,
                          'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb,
                          'quallity_recon': average_quality_of_reconstruct,
-                         'quality_samp': average_quality_of_sampling},
+                         'quality_adv_recon': average_adv_quality_of_reconstruct,
+                         'quality_samp': average_quality_of_sampling,
+                         'quality_adv_samp': average_adv_quality_of_sampling},
                 inputs=[input_x],
                 data_flow=test_flow,
                 time_metric_name='test_time'
