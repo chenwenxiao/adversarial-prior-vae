@@ -718,7 +718,6 @@ def main():
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
                            checkpoint_epoch_freq=100,
-                           restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/27/6f/adb0002df599663cbfc5/checkpoint/checkpoint/checkpoint.dat-468000'
                            ) as loop:
 
             evaluator = spt.Evaluator(
