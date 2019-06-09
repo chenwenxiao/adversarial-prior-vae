@@ -27,6 +27,7 @@ class ExpConfig(spt.Config):
     l2_reg = 0.0002
     kernel_size = 5
     shortcut_kernel_size = 1
+    batch_norm = True
 
     # training parameters
     result_dir = None
@@ -55,7 +56,7 @@ class ExpConfig(spt.Config):
     test_n_pz = 5000
     test_n_qz = 100
     test_batch_size = 64
-    test_epoch_freq = 20
+    test_epoch_freq = 100
     plot_epoch_freq = 10
 
     epsilon = -20
@@ -326,7 +327,7 @@ def get_z_moments(z, value_ndims, name=None):
 @spt.global_reuse
 def q_net(x, observed=None, n_z=None):
     net = spt.BayesianNet(observed=observed)
-    activation_fn = None
+    activation_fn = batch_norm if config.batch_norm else None
 
     # compute the hidden features
     with arg_scope([spt.layers.resnet_conv2d_block],
@@ -385,7 +386,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0):
 @add_arg_scope
 @spt.global_reuse
 def G_theta(z):
-    activation_fn = None
+    activation_fn = batch_norm if config.batch_norm else None
 
     # compute the hidden features
     with arg_scope([spt.layers.resnet_deconv2d_block],
@@ -415,7 +416,7 @@ def G_theta(z):
 @add_arg_scope
 @spt.global_reuse
 def D_psi(x):
-    activation_fn = None
+    activation_fn = batch_norm if config.batch_norm else None
 
     with arg_scope([spt.layers.resnet_conv2d_block],
                    kernel_size=config.kernel_size,
@@ -567,7 +568,7 @@ def main():
     with tf.name_scope('testing'):
         test_q_net = q_net(input_x, n_z=config.test_n_qz)
         test_p_net = p_net(observed={'x': input_x, 'z': test_q_net['z']}, n_z=config.test_n_qz, beta=config.beta)
-        test_pd_net = p_net(n_z=config.test_n_pz, mcmc_iterator=20, beta=config.beta)
+        test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=config.beta)
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=config.beta)
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=config.beta)
@@ -585,6 +586,8 @@ def main():
         average_quality_of_reconstruct = tf.reduce_mean(test_p_net['z'].log_prob())
         average_adv_quality_of_sampling = tf.reduce_mean(test_pn_net['z'].log_prob().log_energy_prob)
         average_quality_of_sampling = tf.reduce_mean(test_pn_net['z'].log_prob())
+        pd_energy = tf.reduce_mean(test_pd_net['x'].log_prob().energy)
+        pn_energy = tf.reduce_mean(test_pn_net['x'].log_prob().energy)
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
 
@@ -727,7 +730,8 @@ def main():
                          'quallity_recon': average_quality_of_reconstruct,
                          'quality_adv_recon': average_adv_quality_of_reconstruct,
                          'quality_samp': average_quality_of_sampling,
-                         'quality_adv_samp': average_adv_quality_of_sampling},
+                         'quality_adv_samp': average_adv_quality_of_sampling,
+                         'pd_energy': pd_energy, 'pn_energy': pn_energy},
                 inputs=[input_x],
                 data_flow=test_flow,
                 time_metric_name='test_time'
