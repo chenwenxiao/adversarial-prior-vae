@@ -32,8 +32,8 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 1600
-    energy_prior_start_epoch = 1000
+    max_epoch = 2100
+    energy_prior_start_epoch = 1500
     beta = 0.0013
     pull_back_energy_weight = 1
 
@@ -41,7 +41,7 @@ class ExpConfig(spt.Config):
     batch_size = 128
     initial_lr = 0.001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = 200
+    lr_anneal_epoch_freq = 300
     lr_anneal_step_freq = None
 
     gradient_penalty_weight = 2
