@@ -48,8 +48,7 @@ class ExpConfig(spt.Config):
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    n_critical = 5
-    N_critical = 100
+    n_critical = 1
     # evaluation parameters
     train_n_pz = 128
     train_n_qz = 1
@@ -386,7 +385,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0):
 @add_arg_scope
 @spt.global_reuse
 def G_theta(z):
-    normalizer_fn = batch_norm if config.batch_norm else None
+    normalizer_fn = None
 
     # compute the hidden features
     with arg_scope([spt.layers.resnet_deconv2d_block],
@@ -408,7 +407,7 @@ def G_theta(z):
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, strides=2, scope='level_5')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, 1, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
-        # activation_fn=tf.nn.tanh
+        activation_fn=tf.nn.tanh
     )
     return x_mean
 
@@ -546,17 +545,18 @@ def main():
     with tf.name_scope('initialization'), \
          arg_scope([spt.layers.act_norm], initializing=True), \
          spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
+        init_pd_net = p_net(n_z=config.train_n_pz, beta=beta)
         init_q_net = q_net(input_x, n_z=config.train_n_qz)
         init_p_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz, beta=beta)
-        init_pd_net = p_net(n_z=config.train_n_pz, beta=beta)
         init_loss = sum(get_all_loss(init_q_net, init_p_net, init_pd_net, beta))
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
          arg_scope([batch_norm], training=True):
+        train_pd_net = p_net(n_z=config.train_n_pz, beta=beta)
         train_q_net = q_net(input_x, n_z=config.train_n_qz)
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']}, n_z=config.train_n_qz, beta=beta)
-        train_pd_net = p_net(n_z=config.train_n_pz, beta=beta)
+
         VAE_loss, adv_VAE_loss, D_loss, G_loss, debug = get_all_loss(train_q_net, train_p_net, train_pd_net, beta)
 
         VAE_loss += tf.losses.get_regularization_loss()
@@ -618,20 +618,20 @@ def main():
 
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             VAE_train_op = VAE_optimizer.apply_gradients(VAE_grads)
-            adv_VAE_train_op = adv_VAE_optimizer.apply_gradients(adv_VAE_grads)
-            D_train_op = D_optimizer.apply_gradients(D_grads)
             G_train_op = G_optimizer.apply_gradients(G_grads)
+        adv_VAE_train_op = adv_VAE_optimizer.apply_gradients(adv_VAE_grads)
+        D_train_op = D_optimizer.apply_gradients(D_grads)
 
     # derive the plotting function
     with tf.name_scope('plotting'):
         x_plots = 255.0 * (tf.reshape(
-            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'], (-1,) + config.x_shape))
+            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'], (-1,) + config.x_shape) + 1) / 2
         reconstruct_q_net = q_net(input_x)
         reconstruct_z = reconstruct_q_net['z']
         reconstruct_plots = 255.0 * (tf.reshape(
             p_net(observed={'z': reconstruct_z}, beta=beta)['x'],
             (-1,) + config.x_shape
-        ))
+        ) + 1) / 2
         x_plots = tf.clip_by_value(x_plots, 0, 255)
         reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
 
@@ -643,55 +643,58 @@ def main():
             # pyplot.savefig(results.system_path('plotting/z_plot/{}.pdf'.format(loop.epoch)))
             # pyplot.close()
             # print(images)
-            print(np.max(images), np.min(images))
-            save_images_collection(
-                images=images,
-                filename='plotting/sample/{}.png'.format(loop.epoch),
-                grid_size=(10, 10),
-                results=results,
-            )
-
-            # plot reconstructs
-            for [x] in reconstruct_train_flow:
-                # x_samples = reconstruct_sampler.sample(x / 255.)
-                x_samples = 255.0 * (x)
-                images = np.zeros((150,) + config.x_shape, dtype=np.uint8)
-                images[::3, ...] = (x_samples).astype(np.uint8)
-                images[1::3, ...] = (x_samples).astype(np.uint8)
-                images[2::3, ...] = session.run(
-                    reconstruct_plots, feed_dict={input_x: x, beta: config.beta})
+            try:
+                print(np.max(images), np.min(images))
                 save_images_collection(
                     images=images,
-                    filename='plotting/train.reconstruct/{}.png'.format(loop.epoch),
-                    grid_size=(10, 15),
+                    filename='plotting/sample/{}.png'.format(loop.epoch),
+                    grid_size=(10, 10),
                     results=results,
                 )
-                break
 
-            # plot reconstructs
-            for [x] in reconstruct_test_flow:
-                # x_samples = reconstruct_sampler.sample(x / 255.)
-                x_samples = 255.0 * (x)
-                images = np.zeros((150,) + config.x_shape, dtype=np.uint8)
-                images[::3, ...] = (x_samples).astype(np.uint8)
-                images[1::3, ...] = (x_samples).astype(np.uint8)
-                images[2::3, ...] = session.run(
-                    reconstruct_plots, feed_dict={input_x: x, beta: config.beta})
-                save_images_collection(
-                    images=images,
-                    filename='plotting/test.reconstruct/{}.png'.format(loop.epoch),
-                    grid_size=(10, 15),
-                    results=results,
-                )
-                break
+                # plot reconstructs
+                for [x] in reconstruct_train_flow:
+                    # x_samples = reconstruct_sampler.sample(x / 255.)
+                    x_samples = 255.0 * (x + 1) / 2
+                    images = np.zeros((150,) + config.x_shape, dtype=np.uint8)
+                    images[::3, ...] = (x_samples).astype(np.uint8)
+                    images[1::3, ...] = (x_samples).astype(np.uint8)
+                    images[2::3, ...] = session.run(
+                        reconstruct_plots, feed_dict={input_x: x, beta: config.beta})
+                    save_images_collection(
+                        images=images,
+                        filename='plotting/train.reconstruct/{}.png'.format(loop.epoch),
+                        grid_size=(10, 15),
+                        results=results,
+                    )
+                    break
+
+                # plot reconstructs
+                for [x] in reconstruct_test_flow:
+                    # x_samples = reconstruct_sampler.sample(x / 255.)
+                    x_samples = 255.0 * (x + 1) / 2
+                    images = np.zeros((150,) + config.x_shape, dtype=np.uint8)
+                    images[::3, ...] = (x_samples).astype(np.uint8)
+                    images[1::3, ...] = (x_samples).astype(np.uint8)
+                    images[2::3, ...] = session.run(
+                        reconstruct_plots, feed_dict={input_x: x, beta: config.beta})
+                    save_images_collection(
+                        images=images,
+                        filename='plotting/test.reconstruct/{}.png'.format(loop.epoch),
+                        grid_size=(10, 15),
+                        results=results,
+                    )
+                    break
+            except Exception as e:
+                print(e)
 
     # prepare for training and testing data
     (x_train, y_train), (x_test, y_test) = \
-        spt.datasets.load_fashion_mnist(x_shape=config.x_shape)
+        spt.datasets.load_mnist(x_shape=config.x_shape)
     # train_flow = bernoulli_flow(
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
-    x_train = x_train / 255.0
-    x_test = x_test / 255.0
+    x_train = x_train / 255.0 * 2 - 1
+    x_test = x_test / 255.0 * 2 - 1
     train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     reconstruct_train_flow = spt.DataFlow.arrays(
         [x_train], 50, shuffle=True, skip_incomplete=False)
@@ -763,7 +766,7 @@ def main():
                             loop.collect_metrics(debug_information=debug_information)
 
                         # discriminator training
-                        for step, [x] in limited(step_iterator, config.n_critical if epoch > 5 else config.N_critical):
+                        for step, [x] in limited(step_iterator, config.n_critical):
                             [_, batch_D_loss, debug_loss] = session.run(
                                 [D_train_op, D_loss, debug], feed_dict={
                                     input_x: x,
@@ -775,7 +778,6 @@ def main():
                         # generator training x
                         [_, batch_G_loss] = session.run(
                             [G_train_op, G_loss], feed_dict={
-                                input_x: x,
                                 beta: config.beta,
                             })
                         loop.collect_metrics(G_loss=batch_G_loss)
