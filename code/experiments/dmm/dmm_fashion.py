@@ -34,12 +34,12 @@ class ExpConfig(spt.Config):
     write_summary = True
     max_epoch = 1600
     energy_prior_start_epoch = 1000
-    beta = 0.01
+    beta = 0.0013
     pull_back_energy_weight = 1
 
     max_step = None
     batch_size = 128
-    initial_lr = 0.0001
+    initial_lr = 0.001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = 200
     lr_anneal_step_freq = None
