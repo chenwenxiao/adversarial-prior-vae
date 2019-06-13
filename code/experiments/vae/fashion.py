@@ -18,6 +18,8 @@ from tfsnippet.examples.utils import (MLResults,
 import numpy as np
 from scipy.misc import logsumexp
 
+from tfsnippet.preprocessing import UniformNoiseSampler
+
 
 class ExpConfig(spt.Config):
     # model parameters
@@ -32,16 +34,16 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 2100
-    energy_prior_start_epoch = 1500
-    beta = 0.0013
+    max_epoch = 2800
+    energy_prior_start_epoch = 2000
+    beta = 0.07
     pull_back_energy_weight = 1
 
     max_step = None
     batch_size = 128
-    initial_lr = 0.001
+    initial_lr = 0.0002
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = 300
+    lr_anneal_epoch_freq = 400
     lr_anneal_step_freq = None
 
     gradient_penalty_weight = 2
@@ -407,7 +409,7 @@ def G_theta(z):
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, strides=2, scope='level_5')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, 1, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
-        activation_fn=tf.nn.tanh
+        kernel_initializer=tf.zeros_initializer()
     )
     return x_mean
 
@@ -539,7 +541,7 @@ def main():
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_x')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
-    beta = tf.placeholder(dtype=tf.float32, shape=(), name='beta')
+    beta = tf.Variable(initial_value=0.05, dtype=tf.float32, name='beta')
 
     # derive the loss for initializing
     with tf.name_scope('initialization'), \
@@ -593,7 +595,7 @@ def main():
 
     # derive the optimizer
     with tf.name_scope('optimizing'):
-        VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta')
+        VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables('beta')
         adv_VAE_params = tf.trainable_variables('q_net')
         D_params = tf.trainable_variables('D_psi')
         G_params = tf.trainable_variables('G_theta')
@@ -624,14 +626,14 @@ def main():
 
     # derive the plotting function
     with tf.name_scope('plotting'):
-        x_plots = 255.0 * (tf.reshape(
-            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'], (-1,) + config.x_shape) + 1) / 2
+        x_plots = 256.0 * tf.reshape(
+            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'], (-1,) + config.x_shape) / 2 + 127.5
         reconstruct_q_net = q_net(input_x)
         reconstruct_z = reconstruct_q_net['z']
-        reconstruct_plots = 255.0 * (tf.reshape(
+        reconstruct_plots = 256.0 * tf.reshape(
             p_net(observed={'z': reconstruct_z}, beta=beta)['x'],
             (-1,) + config.x_shape
-        ) + 1) / 2
+        ) / 2 + 127.5
         x_plots = tf.clip_by_value(x_plots, 0, 255)
         reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
 
@@ -645,6 +647,7 @@ def main():
             # print(images)
             try:
                 print(np.max(images), np.min(images))
+                images = np.round(images)
                 save_images_collection(
                     images=images,
                     filename='plotting/sample/{}.png'.format(loop.epoch),
@@ -654,13 +657,12 @@ def main():
 
                 # plot reconstructs
                 for [x] in reconstruct_train_flow:
-                    # x_samples = reconstruct_sampler.sample(x / 255.)
-                    x_samples = 255.0 * (x + 1) / 2
+                    x_samples = uniform_sampler.sample(x)
                     images = np.zeros((150,) + config.x_shape, dtype=np.uint8)
-                    images[::3, ...] = (x_samples).astype(np.uint8)
-                    images[1::3, ...] = (x_samples).astype(np.uint8)
-                    images[2::3, ...] = session.run(
-                        reconstruct_plots, feed_dict={input_x: x, beta: config.beta})
+                    images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
+                    images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
+                    images[2::3, ...] = np.round(session.run(
+                        reconstruct_plots, feed_dict={input_x: x, beta: config.beta}))
                     save_images_collection(
                         images=images,
                         filename='plotting/train.reconstruct/{}.png'.format(loop.epoch),
@@ -671,13 +673,12 @@ def main():
 
                 # plot reconstructs
                 for [x] in reconstruct_test_flow:
-                    # x_samples = reconstruct_sampler.sample(x / 255.)
-                    x_samples = 255.0 * (x + 1) / 2
+                    x_samples = uniform_sampler.sample(x)
                     images = np.zeros((150,) + config.x_shape, dtype=np.uint8)
-                    images[::3, ...] = (x_samples).astype(np.uint8)
-                    images[1::3, ...] = (x_samples).astype(np.uint8)
-                    images[2::3, ...] = session.run(
-                        reconstruct_plots, feed_dict={input_x: x, beta: config.beta})
+                    images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
+                    images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
+                    images[2::3, ...] = np.round(session.run(
+                        reconstruct_plots, feed_dict={input_x: x, beta: config.beta}))
                     save_images_collection(
                         images=images,
                         filename='plotting/test.reconstruct/{}.png'.format(loop.epoch),
@@ -693,16 +694,18 @@ def main():
         spt.datasets.load_fashion_mnist(x_shape=config.x_shape)
     # train_flow = bernoulli_flow(
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
-    x_train = x_train / 255.0 * 2 - 1
-    x_test = x_test / 255.0 * 2 - 1
+    x_train = (x_train - 127.5) / 256.0 * 2
+    x_test = (x_test - 127.5) / 256.0 * 2
+    uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0)
     train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
+    train_flow = train_flow.map(uniform_sampler)
     reconstruct_train_flow = spt.DataFlow.arrays(
         [x_train], 50, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(
         [x_test], 50, shuffle=True, skip_incomplete=False)
     test_flow = spt.DataFlow.arrays(
         [x_test], config.test_batch_size)
-
+    test_flow = test_flow.map(uniform_sampler)
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
         spt.utils.ensure_variables_initialized()
@@ -756,13 +759,13 @@ def main():
                 while step_iterator.has_next:
                     # vae training
                     for step, [x] in limited(step_iterator, config.n_critical):
-                        [_, batch_VAE_loss, debug_information] = session.run(
-                            [VAE_train_op, VAE_loss, debug_variable], feed_dict={
+                        [_, batch_VAE_loss, debug_information, beta_value] = session.run(
+                            [VAE_train_op, VAE_loss, debug_variable, beta], feed_dict={
                                 input_x: x,
-                                beta: config.beta
                             })
                         loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                         loop.collect_metrics(debug_information=debug_information)
+                        loop.collect_metrics(beta=beta_value)
 
                 if epoch % config.lr_anneal_epoch_freq == 0:
                     learning_rate.anneal()
