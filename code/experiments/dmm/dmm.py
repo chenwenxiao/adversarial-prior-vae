@@ -75,7 +75,7 @@ config = ExpConfig()
 class EnergyDistribution(spt.Distribution):
     """
     A distribution derived from an energy function `D(x)` and a generator
-    function `x = G(z)`, where `p(z) = exp(-\xi * D(G(z)) - 0.5 * z^2) / Z`.
+    function `x = G(z)`, where `p(z) = exp(-xi * D(G(z)) - 0.5 * z^2) / Z`.
     """
 
     def __init__(self, pz, G, D, log_Z=0., xi=1.0, mcmc_iterator=0, mcmc_alpha=0.01, mcmc_algorithm='mala',
@@ -127,7 +127,7 @@ class EnergyDistribution(spt.Distribution):
 
     @property
     def xi(self):
-        return self.xi
+        return self._xi
 
     @property
     def log_Z(self):
@@ -382,7 +382,9 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0):
     normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
                         logstd=tf.zeros([1, config.z_dim]))
     normal = normal.batch_ndims_to_value(1)
-    pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=log_Z, mcmc_iterator=mcmc_iterator)
+    xi = tf.Variable(initial_value=1.0, dtype=tf.float32, name='xi', trainable=True)
+    xi = tf.clip_by_value(xi, 0.0, 10000.0)
+    pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator)
     z = net.add('z', pz, n_samples=n_z)
     x_mean = G_theta(z)
     x = net.add('x', ExponentialDistribution(
@@ -553,8 +555,6 @@ def main():
     beta = tf.placeholder(dtype=tf.float32, shape=(), name='beta')
     beta = tf.Variable(initial_value=config.beta, dtype=tf.float32, name='beta', trainable=True)
     beta = tf.clip_by_value(beta, config.beta, 1.0)
-    xi = tf.Variable(initial_value=1.0, dtype=tf.float32, name='xi', trainable=True)
-    xi = tf.clip_by_value(xi, 0.0, 10000.0)
 
     # derive the loss for initializing
     with tf.name_scope('initialization'), \
@@ -586,7 +586,7 @@ def main():
         test_q_net = q_net(input_x, n_z=config.test_n_qz)
         test_p_net = p_net(observed={'x': input_x, 'z': test_q_net['z']},
                            n_z=config.test_n_qz, beta=beta, log_Z=get_log_Z())
-        test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
+        # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta)
@@ -600,11 +600,10 @@ def main():
         )
         adv_test_nll = -tf.reduce_mean(vi.evaluation.is_loglikelihood())
         adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
-        average_adv_quality_of_reconstruct = tf.reduce_mean(test_p_net['z'].log_prob().log_energy_prob)
-        average_quality_of_reconstruct = tf.reduce_mean(test_p_net['z'].log_prob())
-        average_adv_quality_of_sampling = tf.reduce_mean(test_pn_net['z'].log_prob().log_energy_prob)
-        average_quality_of_sampling = tf.reduce_mean(test_pn_net['z'].log_prob())
-        pd_energy = tf.reduce_mean(test_pd_net['x'].log_prob().energy)
+
+        reconstruct_energy = tf.reduce_mean(test_p_net['x'].log_prob().energy)
+        pd_energy = tf.reduce_mean(
+            test_pn_net['x'].log_prob().energy + test_pn_net['z'].log_prob().log_energy_prob - test_pn_net['z'].log_prob())
         pn_energy = tf.reduce_mean(test_pn_net['x'].log_prob().energy)
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
@@ -612,11 +611,13 @@ def main():
     # derive the optimizer
     with tf.name_scope('optimizing'):
         VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta')
-        adv_VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('xi')
+        adv_VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('p_net/xi')
         D_params = tf.trainable_variables('D_psi')
         G_params = tf.trainable_variables('G_theta')
         print("========VAE_params=========")
         print(VAE_params)
+        print("========VAE_params=========")
+        print(adv_VAE_params)
         print("========D_params=========")
         print(D_params)
         print("========G_params=========")
@@ -730,7 +731,7 @@ def main():
         # initialize the network
         for [x] in train_flow:
             print('Network initialized, first-batch loss is {:.6g}.\n'.
-                  format(session.run(init_loss, feed_dict={input_x: x, beta: beta})))
+                  format(session.run(init_loss, feed_dict={input_x: x})))
             break
 
         # train the network
@@ -750,10 +751,7 @@ def main():
                 loop,
                 metrics={'test_nll': test_nll, 'test_lb': test_lb,
                          'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb,
-                         'quallity_recon': average_quality_of_reconstruct,
-                         'quality_adv_recon': average_adv_quality_of_reconstruct,
-                         'quality_samp': average_quality_of_sampling,
-                         'quality_adv_samp': average_adv_quality_of_sampling,
+                         'reconstruct_energy': reconstruct_energy,
                          'pd_energy': pd_energy, 'pn_energy': pn_energy},
                 inputs=[input_x],
                 data_flow=test_flow,
@@ -780,7 +778,6 @@ def main():
                             [_, batch_VAE_loss, debug_information] = session.run(
                                 [VAE_train_op, VAE_loss, debug_variable], feed_dict={
                                     input_x: x,
-                                    beta: beta
                                 })
                             loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                             loop.collect_metrics(debug_information=debug_information)
@@ -790,7 +787,6 @@ def main():
                             [_, batch_D_loss, debug_loss] = session.run(
                                 [D_train_op, D_loss, debug], feed_dict={
                                     input_x: x,
-                                    beta: beta
                                 })
                             loop.collect_metrics(D_loss=batch_D_loss)
                             loop.collect_metrics(debug_loss=debug_loss)
@@ -798,7 +794,6 @@ def main():
                         # generator training x
                         [_, batch_G_loss] = session.run(
                             [G_train_op, G_loss], feed_dict={
-                                beta: beta,
                             })
                         loop.collect_metrics(G_loss=batch_G_loss)
                     else:
@@ -806,7 +801,6 @@ def main():
                             [_, batch_VAE_loss, debug_information] = session.run(
                                 [adv_VAE_train_op, adv_VAE_loss, debug_variable], feed_dict={
                                     input_x: x,
-                                    beta: beta
                                 })
                             loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                             loop.collect_metrics(debug_information=debug_information)
