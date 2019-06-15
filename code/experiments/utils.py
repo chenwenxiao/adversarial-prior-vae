@@ -189,10 +189,6 @@ def get_inception_score(images, splits=10):
 
 
 if __name__ == '__main__':
-    import input_data
-
-    mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
-    mnist = mnist.train.images
-    mnist = tf.reshape(mnist, shape=(-1, 1, 28, 28)).eval()
-    mnist = np.concatenate((mnist, mnist, mnist), axis=1)
-    print(get_inception_score(mnist[0:200]))
+    import tfsnippet as spt
+    (train_x, train_y), (test_x, test_y) = spt.datasets.load_cifar10(channels_last=False, normalize_x=True)
+    print(get_inception_score(train_x))

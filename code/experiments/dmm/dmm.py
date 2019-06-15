@@ -55,18 +55,21 @@ class ExpConfig(spt.Config):
     train_n_pz = 128
     train_n_qz = 1
     test_n_pz = 5000
-    test_n_qz = 100
+    test_n_qz = 10
     test_batch_size = 64
     test_epoch_freq = 100
     plot_epoch_freq = 10
 
     test_fid_n_pz = 5000
+    test_x_samples = 64
 
     epsilon = -20
 
     @property
     def x_shape(self):
         return (28, 28, 1)
+
+    x_shape_multiple = 784
 
 
 config = ExpConfig()
@@ -382,7 +385,8 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0):
     normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
                         logstd=tf.zeros([1, config.z_dim]))
     normal = normal.batch_ndims_to_value(1)
-    xi = tf.Variable(initial_value=1.0, dtype=tf.float32, name='xi', trainable=True)
+    xi = tf.get_variable(name='xi', shape=(), initializer=tf.ones_initializer,
+                         dtype=tf.float32, trainable=True)
     xi = tf.clip_by_value(xi, 0.0, 10000.0)
     pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator)
     z = net.add('z', pz, n_samples=n_z)
@@ -552,7 +556,6 @@ def main():
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_x')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
-    beta = tf.placeholder(dtype=tf.float32, shape=(), name='beta')
     beta = tf.Variable(initial_value=config.beta, dtype=tf.float32, name='beta', trainable=True)
     beta = tf.clip_by_value(beta, config.beta, 1.0)
 
@@ -590,7 +593,13 @@ def main():
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta)
-        test_nll = -tf.reduce_mean(test_chain.vi.evaluation.is_loglikelihood())
+        # test_nll = -tf.reduce_mean(test_chain.vi.evaluation.is_loglikelihood())
+        test_nll = -tf.reduce_mean(
+            spt.ops.log_mean_exp(
+                tf.reshape(
+                    test_chain.vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,) + config.x_shape
+                ), axis=-1)
+        ) + config.x_shape_multiple * np.log(128.0)
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
 
         vi = spt.VariationalInference(
@@ -598,12 +607,18 @@ def main():
             latent_log_probs=[test_q_net['z'].log_prob()],
             axis=0
         )
-        adv_test_nll = -tf.reduce_mean(vi.evaluation.is_loglikelihood())
+        adv_test_nll = -tf.reduce_mean(
+            spt.ops.log_mean_exp(
+                tf.reshape(
+                    vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,) + config.x_shape
+                ), axis=-1)
+        ) + config.x_shape_multiple * np.log(128.0)
         adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
 
         reconstruct_energy = tf.reduce_mean(test_p_net['x'].log_prob().energy)
         pd_energy = tf.reduce_mean(
-            test_pn_net['x'].log_prob().energy + test_pn_net['z'].log_prob().log_energy_prob - test_pn_net['z'].log_prob())
+            test_pn_net['x'].log_prob().energy + test_pn_net['z'].log_prob().log_energy_prob - test_pn_net[
+                'z'].log_prob())
         pn_energy = tf.reduce_mean(test_pn_net['x'].log_prob().energy)
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
@@ -707,12 +722,12 @@ def main():
                 print(e)
 
     # prepare for training and testing data
-    (x_train, y_train), (x_test, y_test) = \
+    (_x_train, _y_train), (_x_test, _y_test) = \
         spt.datasets.load_mnist(x_shape=config.x_shape)
     # train_flow = bernoulli_flow(
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
-    x_train = (x_train - 127.5) / 256.0 * 2
-    x_test = (x_test - 127.5) / 256.0 * 2
+    x_train = (_x_train - 127.5) / 256.0 * 2
+    x_test = (_x_test - 127.5) / 256.0 * 2
     uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0, dtype=np.float)
     train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     train_flow = train_flow.map(uniform_sampler)
@@ -721,7 +736,7 @@ def main():
     reconstruct_test_flow = spt.DataFlow.arrays(
         [x_test], 50, shuffle=True, skip_incomplete=False)
     test_flow = spt.DataFlow.arrays(
-        [x_test], config.test_batch_size)
+        [np.repeat(config.test_x_samples, 0)], config.test_batch_size)
     test_flow = test_flow.map(uniform_sampler)
 
     with spt.utils.create_session().as_default() as session, \
@@ -744,8 +759,7 @@ def main():
                            summary_graph=tf.get_default_graph(),
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
-                           checkpoint_epoch_freq=100,
-                           ) as loop:
+                           checkpoint_epoch_freq=100, ) as loop:
 
             evaluator = spt.Evaluator(
                 loop,
@@ -818,26 +832,26 @@ def main():
                     with loop.timeit('eval_time'):
                         evaluator.run()
 
-                if epoch == config.max_epoch:
-                    log_Z = session.run(log_Z_compute_op)
-                    get_log_Z().set(log_Z)
-                    print(log_Z, get_log_Z())
-                    evaluator.run()
-
+                        # if epoch == config.max_epoch:
                     sample_img = []
                     for i in range(config.test_fid_n_pz // 100):
                         sample_img.append(session.run(x_plots))
-                    # turn to numpy array
                     sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
                     sample_img = sample_img.transpose((0, 3, 1, 2))
                     sample_img = np.concatenate((sample_img, sample_img, sample_img), axis=1)
+                    sample_img = sample_img / 255.0
+
+                    dataset_img = np.concatenate([_x_train, _x_test], axis=0)
+                    dataset_img = dataset_img.transpose((0, 3, 1, 2))
+                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
                     from code.experiments.utils import get_inception_score, get_fid
+                    FID = get_fid(sample_img * 255.0, dataset_img * 255.0)
+                    print(f'Fréchet Inception Distance : {FID}')
+                    # turn to numpy array
                     IS_mean, IS_std = get_inception_score(sample_img)
-                    FID = get_fid(sample_img, np.concatenate([x_train, x_test], axis=0))
                     print(f'Inception Score with splits of {len(IS_mean)} : ')
                     for mean, std in IS_mean, IS_std:
                         print(f'IS : {mean} {std}')
-                    print(f'Fréchet Inception Distance : {FID}')
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
 
