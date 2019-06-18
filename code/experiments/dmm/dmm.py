@@ -281,6 +281,7 @@ class ExponentialDistribution(spt.Distribution):
             log_px = -tf.sqrt(
                 tf.reduce_sum(tf.square(given - self.mean), axis=tf.range(-group_ndims, 0))) / self.beta - self.log_Z
             log_px.energy = self.D(given)
+            log_px.mean_energy = self.D(self.mean)
 
         return log_px
 
@@ -478,6 +479,8 @@ def get_all_loss(q_net, p_net, pd_net, beta):
         global debug_variable
         debug_variable = tf.reduce_mean(
             tf.sqrt(tf.reduce_sum((p_net['x'] - p_net['x'].distribution.mean) ** 2, [2, 3, 4])))
+        global train_reconstruct_energy
+        train_reconstruct_energy = tf.reduce_mean(p_net['x'].log_prob().mean_energy)
         adv_VAE_loss = tf.reduce_mean(
             -log_px_z - p_net['z'].log_prob().log_energy_prob + q_net['z'].log_prob()
         ) * beta
@@ -542,6 +545,7 @@ def get_var(name):
 
 
 debug_variable = None
+train_reconstruct_energy = None
 
 
 def main():
@@ -627,9 +631,10 @@ def main():
         ) + config.x_shape_multiple * np.log(128.0)
         adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
 
-        reconstruct_energy = tf.reduce_mean(test_p_net['x'].log_prob().energy)
-        pd_energy = tf.reduce_mean(
-            test_pn_net['x'].log_prob().energy + test_pn_net['z'].log_prob().log_energy_prob - test_pn_net[
+        real_energy = tf.reduce_mean(test_p_net['x'].log_prob().energy)
+        reconstruct_energy = tf.reduce_mean(test_p_net['x'].log_prob().mean_energy)
+        pd_energy = spt.ops.log_mean_exp(
+            tf.log(test_pn_net['x'].log_prob().energy) + test_pn_net['z'].log_prob().log_energy_prob - test_pn_net[
                 'z'].log_prob())
         pn_energy = tf.reduce_mean(test_pn_net['x'].log_prob().energy)
         log_Z_compute_op = spt.ops.log_mean_exp(
@@ -775,7 +780,7 @@ def main():
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
                            checkpoint_epoch_freq=100,
-                           # restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/b2/ec/6bd4be4b33d4c43f50d5/checkpoint/checkpoint/checkpoint.dat-468000'
+                           # restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/03/ec/6be7e6bf24967e0170d5/checkpoint.dat-936000'
                            ) as loop:
 
             evaluator = spt.Evaluator(
@@ -783,6 +788,7 @@ def main():
                 metrics={'test_nll': test_nll, 'test_lb': test_lb,
                          'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb,
                          'reconstruct_energy': reconstruct_energy,
+                         'real_energy': real_energy,
                          'pd_energy': pd_energy, 'pn_energy': pn_energy},
                 inputs=[input_x],
                 data_flow=test_flow,
@@ -806,13 +812,14 @@ def main():
                     if epoch < config.energy_prior_start_epoch:
                         # vae training
                         for step, [x] in limited(step_iterator, config.n_critical):
-                            [_, batch_VAE_loss, beta_value, debug_information] = session.run(
-                                [VAE_train_op, VAE_loss, beta, debug_variable], feed_dict={
+                            [_, batch_VAE_loss, beta_value, debug_information, train_reconstruct_energy_value] = session.run(
+                                [VAE_train_op, VAE_loss, beta, debug_variable, train_reconstruct_energy], feed_dict={
                                     input_x: x,
                                 })
                             loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                             loop.collect_metrics(beta=beta_value)
                             loop.collect_metrics(debug_information=debug_information)
+                            loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
 
                         # discriminator training
                         for step, [x] in limited(step_iterator, config.n_critical):
