@@ -26,6 +26,7 @@ altering dmm.py to use this
 
 
 '''
+from tensorflow.contrib.gan.python.eval import get_graph_def_from_url_tarball
 
 '''
 From https://github.com/tsc2017/Frechet-Inception-Distance
@@ -54,6 +55,11 @@ session = tf.InteractiveSession()
 # A smaller BATCH_SIZE reduces GPU memory usage, but at the cost of a slight slowdown
 BATCH_SIZE = 64
 
+INCEPTION_URL = 'http://download.tensorflow.org/models/frozen_inception_v1_2015_12_05.tar.gz'
+INCEPTION_FROZEN_GRAPH = 'inceptionv1_for_inception_score.pb'
+graph_def = get_graph_def_from_url_tarball(INCEPTION_URL, INCEPTION_FROZEN_GRAPH,
+                                           '/home/cwx17/' + os.path.basename(INCEPTION_URL))
+
 # Run images through Inception.
 inception_images = tf.placeholder(tf.float32, [BATCH_SIZE, 3, None, None])
 activations1 = tf.placeholder(tf.float32, [None, None], name='activations1')
@@ -67,7 +73,7 @@ def inception_activations(images=inception_images, num_splits=1):
     images = tf.image.resize_bilinear(images, [size, size])
     generated_images_list = array_ops.split(images, num_or_size_splits=num_splits)
     activations = functional_ops.map_fn(
-        fn=functools.partial(tfgan.eval.run_inception, output_tensor='pool_3:0'),
+        fn=functools.partial(tfgan.eval.run_inception, graph_def=graph_def, output_tensor='pool_3:0'),
         elems=array_ops.stack(generated_images_list),
         parallel_iterations=1,
         back_prop=False,
@@ -122,13 +128,6 @@ Returns:
     mean and standard deviation of the inception across the splits.
 '''
 
-# Run images through Inception.
-inception_images = tf.placeholder(
-    tf.float32,
-    [BATCH_SIZE, 3, None, None]
-)
-
-
 def inception_logits(images=inception_images, num_splits=1):
     images = tf.transpose(images, [0, 2, 3, 1])
     size = 299
@@ -137,7 +136,7 @@ def inception_logits(images=inception_images, num_splits=1):
         images, num_or_size_splits=num_splits
     )
     logits = functional_ops.map_fn(
-        fn=functools.partial(tfgan.eval.run_inception, output_tensor='logits:0'),
+        fn=functools.partial(tfgan.eval.run_inception, graph_def=graph_def, output_tensor='logits:0'),
         elems=array_ops.stack(generated_images_list),
         parallel_iterations=1,
         back_prop=False,
@@ -174,12 +173,12 @@ def preds2score(preds, splits):
 
 
 def get_inception_score(images, splits=10):
+    images = images / 255. * 2 - 1
     assert (type(images) == np.ndarray)
     assert (len(images.shape) == 4)
     assert (images.shape[1] == 3)
     assert (np.max(images[0]) <= 1)
     assert (np.min(images[0]) >= -1)
-
     start_time = time.time()
     preds = get_inception_probs(images)
     print('Inception Score for %i samples in %i splits' % (preds.shape[0], splits))
@@ -190,5 +189,6 @@ def get_inception_score(images, splits=10):
 
 if __name__ == '__main__':
     import tfsnippet as spt
-    (train_x, train_y), (test_x, test_y) = spt.datasets.load_cifar10(channels_last=False, normalize_x=True)
-    print(get_inception_score(train_x))
+    (train_x, train_y), (test_x, test_y) = spt.datasets.load_cifar10(channels_last=False)
+    print(get_inception_score(test_x))
+    print(get_fid(test_x, test_x))

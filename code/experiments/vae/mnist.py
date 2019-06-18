@@ -10,6 +10,7 @@ from matplotlib import pyplot
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
+from code.experiments.utils import get_inception_score, get_fid
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
                                       bernoulli_as_pixel,
@@ -34,16 +35,16 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 2800
-    energy_prior_start_epoch = 2000
-    beta = 0.01
+    max_epoch = 1000
+    energy_prior_start_epoch = 1000
+    beta = 0.005
     pull_back_energy_weight = 1
 
     max_step = None
     batch_size = 128
     initial_lr = 0.0002
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = 400
+    lr_anneal_epoch_freq = 200
     lr_anneal_step_freq = None
 
     gradient_penalty_weight = 2
@@ -57,14 +58,19 @@ class ExpConfig(spt.Config):
     test_n_pz = 5000
     test_n_qz = 100
     test_batch_size = 64
-    test_epoch_freq = 100
+    test_epoch_freq = 200
     plot_epoch_freq = 10
+
+    test_fid_n_pz = 5000
+    test_x_samples = 8
 
     epsilon = -20
 
     @property
     def x_shape(self):
         return (28, 28, 1)
+
+    x_shape_multiple = 784
 
 
 config = ExpConfig()
@@ -447,6 +453,10 @@ def get_all_loss(q_net, p_net):
         VAE_loss = tf.reduce_mean(
             -log_px_z - p_net['z'].log_prob() + q_net['z'].log_prob()
         )
+        global debug_variable
+        debug_variable = tf.reduce_mean(
+            tf.sqrt(tf.reduce_sum((p_net['x'] - p_net['x'].distribution.mean) ** 2, [2, 3, 4])))
+
     return VAE_loss
 
 
@@ -491,6 +501,8 @@ def limited(iterator, n):
     except StopIteration:
         pass
 
+debug_variable = None
+
 
 def main():
     # parse the arguments
@@ -518,7 +530,7 @@ def main():
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
     beta = tf.Variable(initial_value=config.beta, dtype=tf.float32, name='beta', trainable=True)
-    beta = tf.clip_by_value(beta, config.beta, 1.0)
+    beta = tf.clip_by_value(beta, 0.0, 1.0)
 
     # derive the loss for initializing
     with tf.name_scope('initialization'), \
@@ -542,7 +554,12 @@ def main():
         test_q_net = q_net(input_x, n_z=config.test_n_qz)
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta)
-        test_nll = -tf.reduce_mean(test_chain.vi.evaluation.is_loglikelihood())
+        test_nll = -tf.reduce_mean(
+            spt.ops.log_mean_exp(
+                tf.reshape(
+                    test_chain.vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
+                ), axis=-1)
+        ) + config.x_shape_multiple * np.log(128.0)
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
 
     # derive the optimizer
@@ -624,12 +641,12 @@ def main():
                 print(e)
 
     # prepare for training and testing data
-    (x_train, y_train), (x_test, y_test) = \
+    (_x_train, _y_train), (_x_test, _y_test) = \
         spt.datasets.load_mnist(x_shape=config.x_shape)
     # train_flow = bernoulli_flow(
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
-    x_train = (x_train - 127.5) / 256.0 * 2
-    x_test = (x_test - 127.5) / 256.0 * 2
+    x_train = (_x_train - 127.5) / 256.0 * 2
+    x_test = (_x_test - 127.5) / 256.0 * 2
     uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0, dtype=np.float)
     train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     train_flow = train_flow.map(uniform_sampler)
@@ -638,8 +655,9 @@ def main():
     reconstruct_test_flow = spt.DataFlow.arrays(
         [x_test], 50, shuffle=True, skip_incomplete=False)
     test_flow = spt.DataFlow.arrays(
-        [x_test], config.test_batch_size)
+        [np.repeat(x_test, config.test_x_samples, axis=0)], config.test_batch_size)
     test_flow = test_flow.map(uniform_sampler)
+
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
         spt.utils.ensure_variables_initialized()
@@ -687,12 +705,13 @@ def main():
                 while step_iterator.has_next:
                     # vae training
                     for step, [x] in limited(step_iterator, config.n_critical):
-                        [_, batch_VAE_loss, beta_value] = session.run(
-                            [VAE_train_op, VAE_loss, beta], feed_dict={
+                        [_, batch_VAE_loss, beta_value, debug_information] = session.run(
+                            [VAE_train_op, VAE_loss, beta, debug_variable], feed_dict={
                                 input_x: x,
                             })
                         loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                         loop.collect_metrics(beta=beta_value)
+                        loop.collect_metrics(debug_information=debug_information)
 
                 if epoch % config.lr_anneal_epoch_freq == 0:
                     learning_rate.anneal()
@@ -705,9 +724,26 @@ def main():
                         evaluator.run()
 
                 if epoch == config.max_epoch:
-                    evaluator.run()
+                    sample_img = []
+                    for i in range((len(x_train) + len(x_test)) // 100):
+                        sample_img.append(session.run(x_plots))
+                    sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
+                    sample_img = sample_img.transpose((0, 3, 1, 2))
+                    sample_img = np.concatenate((sample_img, sample_img, sample_img), axis=1)
 
+                    dataset_img = np.concatenate([_x_train, _x_test], axis=0)
+                    dataset_img = dataset_img.transpose((0, 3, 1, 2))
+                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
+
+                    FID = get_fid(sample_img, dataset_img)
+                    print(f'Fréchet Inception Distance : {FID}')
+                    # turn to numpy array
+                    IS_mean, IS_std = get_inception_score(sample_img)
+                    print(f'Inception Score : {IS_mean, IS_std}')
+                    results.update_metrics({'FID': FID})
+                    results.update_metrics({'IS': IS_mean})
                 loop.collect_metrics(lr=learning_rate.get())
+                results.update_metrics({'epoch': f'{epoch}/{loop.max_epoch}'})
                 loop.print_logs()
 
     # print the final metrics and close the results object
