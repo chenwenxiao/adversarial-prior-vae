@@ -387,7 +387,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0):
     normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
                         logstd=tf.zeros([1, config.z_dim]))
     normal = normal.batch_ndims_to_value(1)
-    xi = tf.get_variable(name='xi', shape=(), initializer=tf.ones_initializer,
+    xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(1.0),
                          dtype=tf.float32, trainable=True)
     xi = tf.clip_by_value(xi, 0.0, 10000.0)
     pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator)
@@ -475,7 +475,7 @@ def get_all_loss(q_net, p_net, pd_net, beta):
                            * config.gradient_penalty_weight / 2.0
         VAE_loss = tf.reduce_mean(
             -log_px_z - p_net['z'].log_prob() + q_net['z'].log_prob()
-        ) * beta
+        )
         global debug_variable
         debug_variable = tf.reduce_mean(
             tf.sqrt(tf.reduce_sum((p_net['x'] - p_net['x'].distribution.mean) ** 2, [2, 3, 4])))
@@ -483,7 +483,7 @@ def get_all_loss(q_net, p_net, pd_net, beta):
         train_reconstruct_energy = tf.reduce_mean(p_net['x'].log_prob().mean_energy)
         adv_VAE_loss = tf.reduce_mean(
             -log_px_z - p_net['z'].log_prob().log_energy_prob + q_net['z'].log_prob()
-        ) * beta
+        )
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
         adv_G_loss = tf.reduce_mean(energy_fake)
@@ -573,7 +573,7 @@ def main():
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_x')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
-    beta = tf.Variable(initial_value=config.beta, dtype=tf.float32, name='beta', trainable=False)
+    beta = tf.Variable(initial_value=config.beta, dtype=tf.float32, name='beta', trainable=True)
     beta = tf.clip_by_value(beta, 0.0, 1.0)
 
     # derive the loss for initializing
@@ -646,7 +646,8 @@ def main():
     with tf.name_scope('optimizing'):
         VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
             'beta')
-        adv_VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('p_net/xi')
+        adv_VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('p_net/xi') + tf.trainable_variables(
+            'beta')
         D_params = tf.trainable_variables('D_psi')
         G_params = tf.trainable_variables('G_theta')
         print("========VAE_params=========")
@@ -780,7 +781,7 @@ def main():
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
                            checkpoint_epoch_freq=100,
-                           # restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/03/ec/6be7e6bf24967e0170d5/checkpoint.dat-936000'
+                           # restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/03/ec/6be7e6bf24967e0170d5/checkpoint/checkpoint/checkpoint.dat-936000'
                            ) as loop:
 
             evaluator = spt.Evaluator(
@@ -837,15 +838,20 @@ def main():
                         loop.collect_metrics(G_loss=batch_G_loss)
                     else:
                         for step, [x] in limited(step_iterator, config.n_critical):
-                            [_, batch_VAE_loss, debug_information, xi_value] = session.run(
-                                [adv_VAE_train_op, adv_VAE_loss, debug_variable, xi_node], feed_dict={
+                            [_, batch_VAE_loss, beta_value, debug_information, xi_value, train_reconstruct_energy_value] = session.run(
+                                [adv_VAE_train_op, beta, adv_VAE_loss, debug_variable, xi_node, train_reconstruct_energy], feed_dict={
                                     input_x: x,
                                 })
                             loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
+                            loop.collect_metrics(beta=beta_value)
                             loop.collect_metrics(debug_information=debug_information)
                             loop.collect_metrics(xi=xi_value)
+                            loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
 
-                if epoch % config.lr_anneal_epoch_freq == 0 and epoch < config.energy_prior_start_epoch:
+                if epoch == config.energy_prior_start_epoch: ## WARNING
+                    learning_rate.set(config.initial_lr)
+
+                if epoch % config.lr_anneal_epoch_freq == 0:
                     learning_rate.anneal()
 
                 if epoch % config.plot_epoch_freq == 0:
