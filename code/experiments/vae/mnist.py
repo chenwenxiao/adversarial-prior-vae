@@ -724,16 +724,17 @@ def main():
                         evaluator.run()
 
                 if epoch == config.max_epoch:
+                    dataset_img = np.concatenate([_x_train, _x_test], axis=0)
+                    dataset_img = dataset_img.transpose((0, 3, 1, 2))
+                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
+
                     sample_img = []
-                    for i in range((len(x_train) + len(x_test)) // 100):
+                    for i in range((len(x_train) + len(x_test)) // 100 + 1):
                         sample_img.append(session.run(x_plots))
                     sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
                     sample_img = sample_img.transpose((0, 3, 1, 2))
                     sample_img = np.concatenate((sample_img, sample_img, sample_img), axis=1)
-
-                    dataset_img = np.concatenate([_x_train, _x_test], axis=0)
-                    dataset_img = dataset_img.transpose((0, 3, 1, 2))
-                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
+                    sample_img = sample_img[:len(dataset_img)]
 
                     FID = get_fid(sample_img, dataset_img)
                     print(f'Fréchet Inception Distance : {FID}')
