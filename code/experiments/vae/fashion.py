@@ -10,6 +10,7 @@ from matplotlib import pyplot
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
+from code.experiments.utils import get_inception_score, get_fid
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
                                       bernoulli_as_pixel,
@@ -34,16 +35,16 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 2800
-    energy_prior_start_epoch = 2000
-    beta = 0.07
+    max_epoch = 1000
+    energy_prior_start_epoch = 1000
+    beta = 0.005
     pull_back_energy_weight = 1
 
     max_step = None
     batch_size = 128
     initial_lr = 0.0002
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = 400
+    lr_anneal_epoch_freq = 200
     lr_anneal_step_freq = None
 
     gradient_penalty_weight = 2
@@ -57,14 +58,19 @@ class ExpConfig(spt.Config):
     test_n_pz = 5000
     test_n_qz = 100
     test_batch_size = 64
-    test_epoch_freq = 100
+    test_epoch_freq = 200
     plot_epoch_freq = 10
+
+    test_fid_n_pz = 5000
+    test_x_samples = 8
 
     epsilon = -20
 
     @property
     def x_shape(self):
         return (28, 28, 1)
+
+    x_shape_multiple = 784
 
 
 config = ExpConfig()
@@ -368,6 +374,7 @@ def get_log_Z():
 @add_arg_scope
 @spt.global_reuse
 def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0):
+    normalizer_fn = None
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
     normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
@@ -381,6 +388,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0):
         beta=beta,
         D=D_psi
     ), group_ndims=3)
+    # compute the hidden features
     return net
 
 
@@ -439,36 +447,17 @@ def D_psi(x):
     return tf.squeeze(h_x, axis=-1)
 
 
-def get_all_loss(q_net, p_net, pd_net, beta):
+def get_all_loss(q_net, p_net):
     with tf.name_scope('adv_prior_loss'):
-        x = p_net['x']
-        x_ = pd_net['x']
         log_px_z = p_net['x'].log_prob()
-        energy_real = p_net['x'].log_prob().energy
-        energy_fake = pd_net['x'].log_prob().energy
-        gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
-        gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(1, len(gradient_penalty_real.shape)))
-        gradient_penalty_real = tf.pow(gradient_penalty_real, config.gradient_penalty_index / 2.0)
-
-        gradient_penalty_fake = tf.square(tf.gradients(energy_fake, [x_.tensor if hasattr(x_, 'tensor') else x_])[0])
-        gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(1, len(gradient_penalty_fake.shape)))
-        gradient_penalty_fake = tf.pow(gradient_penalty_fake, config.gradient_penalty_index / 2.0)
-
-        gradient_penalty = (tf.reduce_mean(gradient_penalty_fake) + tf.reduce_mean(gradient_penalty_real)) \
-                           * config.gradient_penalty_weight / 2.0
         VAE_loss = tf.reduce_mean(
             -log_px_z - p_net['z'].log_prob() + q_net['z'].log_prob()
         )
         global debug_variable
         debug_variable = tf.reduce_mean(
             tf.sqrt(tf.reduce_sum((p_net['x'] - p_net['x'].distribution.mean) ** 2, [2, 3, 4])))
-        adv_VAE_loss = tf.reduce_mean(
-            -log_px_z - p_net['z'].log_prob().log_energy_prob + q_net['z'].log_prob()
-        )
-        adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
-            energy_real) + gradient_penalty
-        adv_G_loss = tf.reduce_mean(energy_fake)
-    return VAE_loss, adv_VAE_loss, adv_D_loss, adv_G_loss, tf.reduce_mean(energy_real)
+
+    return VAE_loss
 
 
 class MyIterator(object):
@@ -512,7 +501,6 @@ def limited(iterator, n):
     except StopIteration:
         pass
 
-
 debug_variable = None
 
 
@@ -541,93 +529,56 @@ def main():
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_x')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
-    beta = tf.Variable(initial_value=0.05, dtype=tf.float32, name='beta')
+    beta = tf.Variable(initial_value=config.beta, dtype=tf.float32, name='beta', trainable=True)
+    beta = tf.clip_by_value(beta, 0.0, 1.0)
 
     # derive the loss for initializing
     with tf.name_scope('initialization'), \
          arg_scope([spt.layers.act_norm], initializing=True), \
          spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
-        init_pd_net = p_net(n_z=config.train_n_pz, beta=beta)
         init_q_net = q_net(input_x, n_z=config.train_n_qz)
         init_p_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz, beta=beta)
-        init_loss = sum(get_all_loss(init_q_net, init_p_net, init_pd_net, beta))
+        init_loss = get_all_loss(init_q_net, init_p_net)
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
          arg_scope([batch_norm], training=True):
-        train_pd_net = p_net(n_z=config.train_n_pz, beta=beta)
         train_q_net = q_net(input_x, n_z=config.train_n_qz)
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']}, n_z=config.train_n_qz, beta=beta)
 
-        VAE_loss, adv_VAE_loss, D_loss, G_loss, debug = get_all_loss(train_q_net, train_p_net, train_pd_net, beta)
-
+        VAE_loss = get_all_loss(train_q_net, train_p_net)
         VAE_loss += tf.losses.get_regularization_loss()
-        adv_VAE_loss += tf.losses.get_regularization_loss()
-        D_loss += tf.losses.get_regularization_loss()
-        G_loss += tf.losses.get_regularization_loss()
 
     # derive the nll and logits output for testing
     with tf.name_scope('testing'):
         test_q_net = q_net(input_x, n_z=config.test_n_qz)
-        test_p_net = p_net(observed={'x': input_x, 'z': test_q_net['z']}, n_z=config.test_n_qz, beta=config.beta)
-        test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=config.beta)
-        test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=config.beta)
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
-                                      beta=config.beta)
-        test_nll = -tf.reduce_mean(test_chain.vi.evaluation.is_loglikelihood())
+                                      beta=beta)
+        test_nll = -tf.reduce_mean(
+            spt.ops.log_mean_exp(
+                tf.reshape(
+                    test_chain.vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
+                ), axis=-1)
+        ) + config.x_shape_multiple * np.log(128.0)
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
-
-        vi = spt.VariationalInference(
-            log_joint=test_p_net['x'].log_prob() + test_p_net['z'].log_prob().log_energy_prob,
-            latent_log_probs=[test_q_net['z'].log_prob()],
-            axis=0
-        )
-        adv_test_nll = -tf.reduce_mean(vi.evaluation.is_loglikelihood())
-        adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
-        average_adv_quality_of_reconstruct = tf.reduce_mean(test_p_net['z'].log_prob().log_energy_prob)
-        average_quality_of_reconstruct = tf.reduce_mean(test_p_net['z'].log_prob())
-        average_adv_quality_of_sampling = tf.reduce_mean(test_pn_net['z'].log_prob().log_energy_prob)
-        average_quality_of_sampling = tf.reduce_mean(test_pn_net['z'].log_prob())
-        pd_energy = tf.reduce_mean(test_pd_net['x'].log_prob().energy)
-        pn_energy = tf.reduce_mean(test_pn_net['x'].log_prob().energy)
-        log_Z_compute_op = spt.ops.log_mean_exp(
-            -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
 
     # derive the optimizer
     with tf.name_scope('optimizing'):
-        VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables('beta')
-        adv_VAE_params = tf.trainable_variables('q_net')
-        D_params = tf.trainable_variables('D_psi')
-        G_params = tf.trainable_variables('G_theta')
+        VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
+            'beta')
         print("========VAE_params=========")
         print(VAE_params)
-        print("========D_params=========")
-        print(D_params)
-        print("========G_params=========")
-        print(G_params)
         with tf.variable_scope('VAE_optimizer'):
             VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
             VAE_grads = VAE_optimizer.compute_gradients(VAE_loss, VAE_params)
-        with tf.variable_scope('adv_VAE_optimizer'):
-            adv_VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
-            adv_VAE_grads = adv_VAE_optimizer.compute_gradients(adv_VAE_loss, adv_VAE_params)
-        with tf.variable_scope('D_optimizer'):
-            D_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
-            D_grads = D_optimizer.compute_gradients(D_loss, D_params)
-        with tf.variable_scope('G_optimizer'):
-            G_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
-            G_grads = G_optimizer.compute_gradients(G_loss, G_params)
 
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             VAE_train_op = VAE_optimizer.apply_gradients(VAE_grads)
-            G_train_op = G_optimizer.apply_gradients(G_grads)
-        adv_VAE_train_op = adv_VAE_optimizer.apply_gradients(adv_VAE_grads)
-        D_train_op = D_optimizer.apply_gradients(D_grads)
 
     # derive the plotting function
     with tf.name_scope('plotting'):
         x_plots = 256.0 * tf.reshape(
-            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'], (-1,) + config.x_shape) / 2 + 127.5
+            p_net(n_z=100, mcmc_iterator=0, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
         reconstruct_q_net = q_net(input_x)
         reconstruct_z = reconstruct_q_net['z']
         reconstruct_plots = 256.0 * tf.reshape(
@@ -640,7 +591,7 @@ def main():
     def plot_samples(loop):
         with loop.timeit('plot_time'):
             # plot samples
-            images = session.run(x_plots, feed_dict={beta: config.beta})
+            images = session.run(x_plots)
             # pyplot.scatter(z_points[:, 0], z_points[:, 1], s=5)
             # pyplot.savefig(results.system_path('plotting/z_plot/{}.pdf'.format(loop.epoch)))
             # pyplot.close()
@@ -662,7 +613,7 @@ def main():
                     images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
                     images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
                     images[2::3, ...] = np.round(session.run(
-                        reconstruct_plots, feed_dict={input_x: x, beta: config.beta}))
+                        reconstruct_plots, feed_dict={input_x: x}))
                     save_images_collection(
                         images=images,
                         filename='plotting/train.reconstruct/{}.png'.format(loop.epoch),
@@ -678,7 +629,7 @@ def main():
                     images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
                     images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
                     images[2::3, ...] = np.round(session.run(
-                        reconstruct_plots, feed_dict={input_x: x, beta: config.beta}))
+                        reconstruct_plots, feed_dict={input_x: x}))
                     save_images_collection(
                         images=images,
                         filename='plotting/test.reconstruct/{}.png'.format(loop.epoch),
@@ -690,13 +641,13 @@ def main():
                 print(e)
 
     # prepare for training and testing data
-    (x_train, y_train), (x_test, y_test) = \
+    (_x_train, _y_train), (_x_test, _y_test) = \
         spt.datasets.load_fashion_mnist(x_shape=config.x_shape)
     # train_flow = bernoulli_flow(
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
-    x_train = (x_train - 127.5) / 256.0 * 2
-    x_test = (x_test - 127.5) / 256.0 * 2
-    uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0)
+    x_train = (_x_train - 127.5) / 256.0 * 2
+    x_test = (_x_test - 127.5) / 256.0 * 2
+    uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0, dtype=np.float)
     train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     train_flow = train_flow.map(uniform_sampler)
     reconstruct_train_flow = spt.DataFlow.arrays(
@@ -704,8 +655,9 @@ def main():
     reconstruct_test_flow = spt.DataFlow.arrays(
         [x_test], 50, shuffle=True, skip_incomplete=False)
     test_flow = spt.DataFlow.arrays(
-        [x_test], config.test_batch_size)
+        [np.repeat(x_test, config.test_x_samples, axis=0)], config.test_batch_size)
     test_flow = test_flow.map(uniform_sampler)
+
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
         spt.utils.ensure_variables_initialized()
@@ -713,7 +665,7 @@ def main():
         # initialize the network
         for [x] in train_flow:
             print('Network initialized, first-batch loss is {:.6g}.\n'.
-                  format(session.run(init_loss, feed_dict={input_x: x, beta: config.beta})))
+                  format(session.run(init_loss, feed_dict={input_x: x})))
             break
 
         # train the network
@@ -731,13 +683,7 @@ def main():
 
             evaluator = spt.Evaluator(
                 loop,
-                metrics={'test_nll': test_nll, 'test_lb': test_lb,
-                         'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb,
-                         'quallity_recon': average_quality_of_reconstruct,
-                         'quality_adv_recon': average_adv_quality_of_reconstruct,
-                         'quality_samp': average_quality_of_sampling,
-                         'quality_adv_samp': average_adv_quality_of_sampling,
-                         'pd_energy': pd_energy, 'pn_energy': pn_energy},
+                metrics={'test_nll': test_nll, 'test_lb': test_lb, },
                 inputs=[input_x],
                 data_flow=test_flow,
                 time_metric_name='test_time'
@@ -759,13 +705,13 @@ def main():
                 while step_iterator.has_next:
                     # vae training
                     for step, [x] in limited(step_iterator, config.n_critical):
-                        [_, batch_VAE_loss, debug_information, beta_value] = session.run(
-                            [VAE_train_op, VAE_loss, debug_variable, beta], feed_dict={
+                        [_, batch_VAE_loss, beta_value, debug_information] = session.run(
+                            [VAE_train_op, VAE_loss, beta, debug_variable], feed_dict={
                                 input_x: x,
                             })
                         loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
-                        loop.collect_metrics(debug_information=debug_information)
                         loop.collect_metrics(beta=beta_value)
+                        loop.collect_metrics(debug_information=debug_information)
 
                 if epoch % config.lr_anneal_epoch_freq == 0:
                     learning_rate.anneal()
@@ -774,19 +720,30 @@ def main():
                     plot_samples(loop)
 
                 if epoch % config.test_epoch_freq == 0:
-                    log_Z = session.run(log_Z_compute_op)
-                    get_log_Z().set(log_Z)
-                    print(log_Z, get_log_Z())
                     with loop.timeit('eval_time'):
                         evaluator.run()
 
                 if epoch == config.max_epoch:
-                    log_Z = session.run(log_Z_compute_op)
-                    get_log_Z().set(log_Z)
-                    print(log_Z, get_log_Z())
-                    evaluator.run()
+                    sample_img = []
+                    for i in range((len(x_train) + len(x_test)) // 100):
+                        sample_img.append(session.run(x_plots))
+                    sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
+                    sample_img = sample_img.transpose((0, 3, 1, 2))
+                    sample_img = np.concatenate((sample_img, sample_img, sample_img), axis=1)
 
+                    dataset_img = np.concatenate([_x_train, _x_test], axis=0)
+                    dataset_img = dataset_img.transpose((0, 3, 1, 2))
+                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
+
+                    FID = get_fid(sample_img, dataset_img)
+                    print(f'Fréchet Inception Distance : {FID}')
+                    # turn to numpy array
+                    IS_mean, IS_std = get_inception_score(sample_img)
+                    print(f'Inception Score : {IS_mean, IS_std}')
+                    results.update_metrics({'FID': FID})
+                    results.update_metrics({'IS': IS_mean})
                 loop.collect_metrics(lr=learning_rate.get())
+                results.update_metrics({'epoch': f'{epoch}/{loop.max_epoch}'})
                 loop.print_logs()
 
     # print the final metrics and close the results object
