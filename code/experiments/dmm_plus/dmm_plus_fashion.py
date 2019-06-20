@@ -345,18 +345,18 @@ def q_net(x, observed=None, n_z=None):
     normalizer_fn = None
 
     # compute the hidden features
-    with arg_scope([spt.layers.resnet_conv2d_block],
+    with arg_scope([spt.layers.conv2d],
                    kernel_size=config.kernel_size,
-                   shortcut_kernel_size=config.shortcut_kernel_size,
+                   # shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_x = tf.to_float(x)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, strides=2, scope='level_1')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_3')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_4')  # output: (7, 7, 64)
+        h_x = spt.layers.conv2d(h_x, 16, scope='level_0')  # output: (28, 28, 16)
+        h_x = spt.layers.conv2d(h_x, 32, strides=2, scope='level_1')  # output: (14, 14, 32)
+        h_x = spt.layers.conv2d(h_x, 32, scope='level_2')  # output: (14, 14, 32)
+        h_x = spt.layers.conv2d(h_x, 64, strides=2, scope='level_3')  # output: (7, 7, 64)
+        h_x = spt.layers.conv2d(h_x, 64, scope='level_4')  # output: (7, 7, 64)
 
     # sample z ~ q(z|x)
     h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
@@ -407,9 +407,9 @@ def G_theta(z):
     normalizer_fn = None
 
     # compute the hidden features
-    with arg_scope([spt.layers.resnet_deconv2d_block],
+    with arg_scope([spt.layers.deconv2d],
                    kernel_size=config.kernel_size,
-                   shortcut_kernel_size=config.shortcut_kernel_size,
+                   # shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
@@ -419,11 +419,11 @@ def G_theta(z):
             ndims=1,
             shape=(7, 7, 64)
         )
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_1')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_2')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, strides=2, scope='level_3')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_4')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 16, strides=2, scope='level_5')  # output: (28, 28, 16)
+        h_z = spt.layers.deconv2d(h_z, 64, scope='level_1')  # output: (7, 7, 64)
+        h_z = spt.layers.deconv2d(h_z, 64, scope='level_2')  # output: (7, 7, 64)
+        h_z = spt.layers.deconv2d(h_z, 32, strides=2, scope='level_3')  # output: (14, 14, 32)
+        h_z = spt.layers.deconv2d(h_z, 32, scope='level_4')  # output: (14, 14, 32)
+        h_z = spt.layers.deconv2d(h_z, 16, strides=2, scope='level_5')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, 1, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         kernel_initializer=tf.zeros_initializer()
@@ -436,18 +436,18 @@ def G_theta(z):
 def D_psi(x):
     normalizer_fn = None
 
-    with arg_scope([spt.layers.resnet_conv2d_block],
+    with arg_scope([spt.layers.conv2d],
                    kernel_size=config.kernel_size,
-                   shortcut_kernel_size=config.shortcut_kernel_size,
+                   # shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg), ):
         h_x = tf.to_float(x)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, strides=2, scope='level_1')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_3')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_4')  # output: (7, 7, 64)
+        h_x = spt.layers.conv2d(h_x, 16, scope='level_0')  # output: (28, 28, 16)
+        h_x = spt.layers.conv2d(h_x, 32, strides=2, scope='level_1')  # output: (14, 14, 32)
+        h_x = spt.layers.conv2d(h_x, 32, scope='level_2')  # output: (14, 14, 32)
+        h_x = spt.layers.conv2d(h_x, 64, strides=2, scope='level_3')  # output: (7, 7, 64)
+        h_x = spt.layers.conv2d(h_x, 64, scope='level_4')  # output: (7, 7, 64)
 
         h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
         h_x = spt.layers.dense(h_x, 64, scope='level_5')
@@ -752,6 +752,9 @@ def main():
     uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0, dtype=np.float)
     train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     train_flow = train_flow.map(uniform_sampler)
+    gan_train_flow = spt.DataFlow.arrays(
+        [np.concatenate([x_train, x_test], axis=0)], config.batch_size, shuffle=True, skip_incomplete=True)
+    gan_train_flow = gan_train_flow.map(uniform_sampler)
     reconstruct_train_flow = spt.DataFlow.arrays(
         [x_train], 50, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(
@@ -781,7 +784,7 @@ def main():
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
                            checkpoint_epoch_freq=100,
-                           # restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/03/ec/6be7e6bf24967e0170d5/checkpoint/checkpoint/checkpoint.dat-936000'
+                           restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/34/ec/6bae1ffafbe672df90d5/checkpoint/checkpoint/checkpoint.dat-2027454'
                            ) as loop:
 
             evaluator = spt.Evaluator(
@@ -808,22 +811,24 @@ def main():
             # adversarial training
             for epoch in epoch_iterator:
 
-                step_iterator = MyIterator(loop.iter_steps(train_flow))
-                while step_iterator.has_next:
-                    if epoch < config.energy_prior_start_epoch:
+                if epoch < config.energy_prior_start_epoch:
+                    step_iterator = MyIterator(train_flow)
+                    gan_step_iterator = MyIterator(gan_train_flow)
+                    while step_iterator.has_next or gan_step_iterator.has_next:
                         # vae training
-                        for step, [x] in limited(step_iterator, config.n_critical):
-                            [_, batch_VAE_loss, beta_value, debug_information, train_reconstruct_energy_value] = session.run(
-                                [VAE_train_op, VAE_loss, beta, debug_variable, train_reconstruct_energy], feed_dict={
+                        for step, [x] in loop.iter_steps(limited(step_iterator, config.n_critical)):
+                            [_, batch_VAE_loss, beta_value, debug_information, train_reconstruct_energy_value, training_D_loss] = session.run(
+                                [VAE_train_op, VAE_loss, beta, debug_variable, train_reconstruct_energy, D_loss], feed_dict={
                                     input_x: x,
                                 })
                             loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                             loop.collect_metrics(beta=beta_value)
                             loop.collect_metrics(debug_information=debug_information)
                             loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
+                            loop.collect_metrics(training_D_loss=training_D_loss)
 
                         # discriminator training
-                        for step, [x] in limited(step_iterator, config.n_critical):
+                        for step, [x] in loop.iter_steps(limited(gan_step_iterator, config.n_critical)):
                             [_, batch_D_loss, debug_loss] = session.run(
                                 [D_train_op, D_loss, debug], feed_dict={
                                     input_x: x,
@@ -836,8 +841,10 @@ def main():
                             [G_train_op, G_loss], feed_dict={
                             })
                         loop.collect_metrics(G_loss=batch_G_loss)
-                    else:
-                        for step, [x] in limited(step_iterator, config.n_critical):
+                else:
+                    step_iterator = MyIterator(train_flow)
+                    while step_iterator.has_next:
+                        for step, [x] in loop.iter_steps(limited(step_iterator, config.n_critical)):
                             [_, beta_value, batch_VAE_loss, debug_information, xi_value, train_reconstruct_energy_value] = session.run(
                                 [adv_VAE_train_op, beta, adv_VAE_loss, debug_variable, xi_node, train_reconstruct_energy], feed_dict={
                                     input_x: x,
