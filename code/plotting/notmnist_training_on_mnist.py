@@ -850,10 +850,9 @@ def main():
             loop.print_logs()
 
             # Example for evaluate detailly
-            step_iterator = MyIterator(loop.iter_steps(test_flow))
             test_nll_values = []
             adv_test_nll_values = []
-            for step, [x] in step_iterator:
+            for step, [x] in loop.iter_steps(test_flow):
                 [batch_nll, batch_adv_nll] = session.run(
                     [test_nll, adv_test_nll], feed_dict={
                         input_x: x,
