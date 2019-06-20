@@ -745,6 +745,9 @@ def main():
     # prepare for training and testing data
     (_x_train, _y_train), (_x_test, _y_test) = \
         spt.datasets.load_mnist(x_shape=config.x_shape)
+    (_x_train_out, _y_train_out), (_x_test_out, _y_test_out) = \
+        spt.datasets.load_not_mnist(x_shape=config.x_shape)
+    x_out = np.concatenate([_x_train_out, _x_test_out], axis=0)
     # train_flow = bernoulli_flow(
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
     x_train = (_x_train - 127.5) / 256.0 * 2
@@ -762,6 +765,9 @@ def main():
     test_flow = spt.DataFlow.arrays(
         [np.repeat(x_test, config.test_x_samples, axis=0)], config.test_batch_size)
     test_flow = test_flow.map(uniform_sampler)
+    out_flow = spt.DataFlow.arrays(
+        [np.repeat(x_out, config.test_x_samples, axis=0)], config.test_batch_size)
+    out_flow = out_flow.map(uniform_sampler)
 
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
@@ -791,8 +797,8 @@ def main():
                 loop,
                 metrics={'test_nll': test_nll, 'test_lb': test_lb,
                          'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb,
-                         'reconstruct_energy': reconstruct_energy,
-                         'real_energy': real_energy,
+                         'reconstruct_test_energy': reconstruct_energy,
+                         'real_test_energy': real_energy,
                          'pd_energy': pd_energy, 'pn_energy': pn_energy},
                 inputs=[input_x],
                 data_flow=test_flow,
@@ -803,97 +809,94 @@ def main():
                 lambda e: results.update_metrics(evaluator.last_metrics_dict)
             )
 
+            evaluator_out = spt.Evaluator(
+                loop,
+                metrics={'out_nll': test_nll, 'out_lb': test_lb,
+                         'adv_out_nll': adv_test_nll, 'adv_out_lb': adv_test_lb,
+                         'reconstruct_out_energy': reconstruct_energy,
+                         'real_out_energy': real_energy,
+                         'pd_energy': pd_energy, 'pn_energy': pn_energy},
+                inputs=[input_x],
+                data_flow=out_flow,
+                time_metric_name='test_time'
+            )
+            evaluator_out.events.on(
+                spt.EventKeys.AFTER_EXECUTION,
+                lambda e: results.update_metrics(evaluator.last_metrics_dict)
+            )
+
+            evaluator_train = spt.Evaluator(
+                loop,
+                metrics={'train_nll': test_nll, 'train_lb': test_lb,
+                         'adv_train_nll': adv_test_nll, 'adv_train_lb': adv_test_lb,
+                         'reconstruct_train_energy': reconstruct_energy,
+                         'real_train_energy': real_energy,
+                         'pd_energy': pd_energy, 'pn_energy': pn_energy},
+                inputs=[input_x],
+                data_flow=train_flow,
+                time_metric_name='test_time'
+            )
+            evaluator_train.events.on(
+                spt.EventKeys.AFTER_EXECUTION,
+                lambda e: results.update_metrics(evaluator.last_metrics_dict)
+            )
+
             loop.print_training_summary()
             spt.utils.ensure_variables_initialized()
 
-            epoch_iterator = loop.iter_epochs()
+            evaluator.run()
+            evaluator_train.run()
+            evaluator_out.run()
+            loop.print_logs()
 
-            # adversarial training
-            for epoch in epoch_iterator:
+            # Example for evaluate detailly
+            step_iterator = MyIterator(loop.iter_steps(test_flow))
+            test_nll_values = []
+            adv_test_nll_values = []
+            for step, [x] in step_iterator:
+                [batch_nll, batch_adv_nll] = session.run(
+                    [test_nll, adv_test_nll], feed_dict={
+                        input_x: x,
+                    })
+                test_nll_values.append(batch_nll)
+                adv_test_nll_values.append(batch_adv_nll)
+            test_nll_values = np.concatenate(test_nll_values, axis=0)
+            adv_test_nll_values = np.concatenate(adv_test_nll_values, axis=0)
+            print(len(test_nll_values), len(adv_test_nll_values))
+            # Example Finished
 
-                if epoch < config.energy_prior_start_epoch:
-                    step_iterator = MyIterator(train_flow)
-                    gan_step_iterator = MyIterator(gan_train_flow)
-                    while step_iterator.has_next or gan_step_iterator.has_next:
-                        # vae training
-                        for step, [x] in loop.iter_steps(limited(step_iterator, config.n_critical)):
-                            [_, batch_VAE_loss, beta_value, debug_information, train_reconstruct_energy_value, training_D_loss] = session.run(
-                                [VAE_train_op, VAE_loss, beta, debug_variable, train_reconstruct_energy, D_loss], feed_dict={
-                                    input_x: x,
-                                })
-                            loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
-                            loop.collect_metrics(beta=beta_value)
-                            loop.collect_metrics(debug_information=debug_information)
-                            loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
-                            loop.collect_metrics(training_D_loss=training_D_loss)
+            def FID(dataset, dataset_name):
+                sample_img = []
+                for i in range(len(dataset) // 100):
+                    sample_img.append(session.run(x_plots))
+                sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
+                sample_img = sample_img.transpose((0, 3, 1, 2))
+                sample_img = np.concatenate((sample_img, sample_img, sample_img), axis=1)
 
-                        # discriminator training
-                        for step, [x] in loop.iter_steps(limited(gan_step_iterator, config.n_critical)):
-                            [_, batch_D_loss, debug_loss] = session.run(
-                                [D_train_op, D_loss, debug], feed_dict={
-                                    input_x: x,
-                                })
-                            loop.collect_metrics(D_loss=batch_D_loss)
-                            loop.collect_metrics(debug_loss=debug_loss)
+                FID = get_fid(sample_img, dataset_img)
+                print(f'Fréchet Inception Distance To {dataset_name} : {FID}')
+                results.update_metrics({'FID_' + dataset_name: FID})
 
-                        # generator training x
-                        [_, batch_G_loss] = session.run(
-                            [G_train_op, G_loss], feed_dict={
-                            })
-                        loop.collect_metrics(G_loss=batch_G_loss)
-                else:
-                    step_iterator = MyIterator(train_flow)
-                    while step_iterator.has_next:
-                        for step, [x] in loop.iter_steps(limited(step_iterator, config.n_critical)):
-                            [_, beta_value, batch_VAE_loss, debug_information, xi_value, train_reconstruct_energy_value] = session.run(
-                                [adv_VAE_train_op, beta, adv_VAE_loss, debug_variable, xi_node, train_reconstruct_energy], feed_dict={
-                                    input_x: x,
-                                })
-                            loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
-                            loop.collect_metrics(beta=beta_value)
-                            loop.collect_metrics(debug_information=debug_information)
-                            loop.collect_metrics(xi=xi_value)
-                            loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
+            dataset_img = np.concatenate([_x_train], axis=0)
+            dataset_img = dataset_img.transpose((0, 3, 1, 2))
+            dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
+            FID(dataset_img, 'mnist_train')
 
-                if epoch == config.energy_prior_start_epoch: ## WARNING
-                    learning_rate.set(config.initial_lr)
+            dataset_img = np.concatenate([_x_test], axis=0)
+            dataset_img = dataset_img.transpose((0, 3, 1, 2))
+            dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
+            FID(dataset_img, 'mnist_test')
 
-                if epoch in config.lr_anneal_epoch_freq:
-                    learning_rate.anneal()
+            dataset_img = np.concatenate([_x_train, _x_test], axis=0)
+            dataset_img = dataset_img.transpose((0, 3, 1, 2))
+            dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
+            FID(dataset_img, 'mnist')
 
-                if epoch % config.plot_epoch_freq == 0:
-                    plot_samples(loop)
-
-                if epoch % config.test_epoch_freq == 0:
-                    log_Z = session.run(log_Z_compute_op)
-                    get_log_Z().set(log_Z)
-                    print(log_Z, get_log_Z())
-                    with loop.timeit('eval_time'):
-                        evaluator.run()
-
-                if epoch == config.max_epoch:
-                    sample_img = []
-                    for i in range((len(x_train) + len(x_test)) // 100):
-                        sample_img.append(session.run(x_plots))
-                    sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
-                    sample_img = sample_img.transpose((0, 3, 1, 2))
-                    sample_img = np.concatenate((sample_img, sample_img, sample_img), axis=1)
-
-                    dataset_img = np.concatenate([_x_train, _x_test], axis=0)
-                    dataset_img = dataset_img.transpose((0, 3, 1, 2))
-                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
-
-                    FID = get_fid(sample_img, dataset_img)
-                    print(f'Fréchet Inception Distance : {FID}')
-                    # turn to numpy array
-                    IS_mean, IS_std = get_inception_score(sample_img)
-                    print(f'Inception Score : {IS_mean, IS_std}')
-                    results.update_metrics({'FID': FID})
-                    results.update_metrics({'IS': IS_mean})
-
-                loop.collect_metrics(lr=learning_rate.get())
-                results.update_metrics({'epoch': f'{epoch}/{loop.max_epoch}'})
-                loop.print_logs()
+            dataset_img = np.concatenate([_x_train], axis=0)
+            dataset_img = dataset_img.transpose((0, 3, 1, 2))
+            dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
+            FID(dataset_img, 'not_mnist')
+            # turn to numpy array
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')
