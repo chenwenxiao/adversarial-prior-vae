@@ -866,13 +866,14 @@ def main():
 
             def FID(dataset, dataset_name):
                 sample_img = []
-                for i in range(len(dataset) // 100):
+                for i in range(len(dataset) // 100 + 1):
                     sample_img.append(session.run(x_plots))
                 sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
                 sample_img = sample_img.transpose((0, 3, 1, 2))
                 sample_img = np.concatenate((sample_img, sample_img, sample_img), axis=1)
+                sample_img = sample_img[:len(dataset)]
 
-                FID = get_fid(sample_img, dataset_img)
+                FID = get_fid(sample_img, dataset)
                 print(f'Fréchet Inception Distance To {dataset_name} : {FID}')
                 results.update_metrics({'FID_' + dataset_name: FID})
 
