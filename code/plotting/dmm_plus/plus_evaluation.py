@@ -681,6 +681,8 @@ def main():
     with tf.name_scope('plotting'):
         x_plots = 256.0 * tf.reshape(
             p_net(n_z=100, mcmc_iterator=0, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
+        adv_x_plots = 256.0 * tf.reshape(
+            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
         reconstruct_q_net = q_net(input_x)
         reconstruct_z = reconstruct_q_net['z']
         reconstruct_plots = 256.0 * tf.reshape(
@@ -688,6 +690,7 @@ def main():
             (-1,) + config.x_shape
         ) / 2 + 127.5
         x_plots = tf.clip_by_value(x_plots, 0, 255)
+        adv_x_plots = tf.clip_by_value(adv_x_plots, 0, 255)
         reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
 
     def plot_samples(loop):
@@ -745,9 +748,10 @@ def main():
     # prepare for training and testing data
     (_x_train, _y_train), (_x_test, _y_test) = \
         spt.datasets.load_mnist(x_shape=config.x_shape)
+    from code.experiments.datasets.not_mnist import load_not_mnist
     (_x_train_out, _y_train_out), (_x_test_out, _y_test_out) = \
-        spt.datasets.load_not_mnist(x_shape=config.x_shape)
-    x_out = np.concatenate([_x_train_out, _x_test_out], axis=0)
+        load_not_mnist(x_shape=config.x_shape)
+    x_out = (_x_test_out - 127.5) / 256.0 * 2
     # train_flow = bernoulli_flow(
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
     x_train = (_x_train - 127.5) / 256.0 * 2
@@ -769,20 +773,12 @@ def main():
         [np.repeat(x_out, config.test_x_samples, axis=0)], config.test_batch_size)
     out_flow = out_flow.map(uniform_sampler)
 
-    with spt.utils.create_session().as_default() as session, \
-            train_flow.threaded(5) as train_flow:
+    with spt.utils.create_session().as_default() as session:
         spt.utils.ensure_variables_initialized()
-
-        # initialize the network
-        for [x] in train_flow:
-            print('Network initialized, first-batch loss is {:.6g}.\n'.
-                  format(session.run(init_loss, feed_dict={input_x: x})))
-            break
-
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net'],
-                           max_epoch=config.max_epoch,
+                           max_epoch=config.max_epoch + 1,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
@@ -790,113 +786,117 @@ def main():
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
                            checkpoint_epoch_freq=100,
-                           restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/34/ec/6bae1ffafbe672df90d5/checkpoint/checkpoint/checkpoint.dat-2027454'
+                           restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/01/19/6f9d69b5d193ae62b0d5/checkpoint/checkpoint/checkpoint.dat-2401854'
                            ) as loop:
-
-            evaluator = spt.Evaluator(
-                loop,
-                metrics={'test_nll': test_nll, 'test_lb': test_lb,
-                         'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb,
-                         'reconstruct_test_energy': reconstruct_energy,
-                         'real_test_energy': real_energy,
-                         'pd_energy': pd_energy, 'pn_energy': pn_energy},
-                inputs=[input_x],
-                data_flow=test_flow,
-                time_metric_name='test_time'
-            )
-            evaluator.events.on(
-                spt.EventKeys.AFTER_EXECUTION,
-                lambda e: results.update_metrics(evaluator.last_metrics_dict)
-            )
-
-            evaluator_out = spt.Evaluator(
-                loop,
-                metrics={'out_nll': test_nll, 'out_lb': test_lb,
-                         'adv_out_nll': adv_test_nll, 'adv_out_lb': adv_test_lb,
-                         'reconstruct_out_energy': reconstruct_energy,
-                         'real_out_energy': real_energy,
-                         'pd_energy': pd_energy, 'pn_energy': pn_energy},
-                inputs=[input_x],
-                data_flow=out_flow,
-                time_metric_name='test_time'
-            )
-            evaluator_out.events.on(
-                spt.EventKeys.AFTER_EXECUTION,
-                lambda e: results.update_metrics(evaluator.last_metrics_dict)
-            )
-
-            evaluator_train = spt.Evaluator(
-                loop,
-                metrics={'train_nll': test_nll, 'train_lb': test_lb,
-                         'adv_train_nll': adv_test_nll, 'adv_train_lb': adv_test_lb,
-                         'reconstruct_train_energy': reconstruct_energy,
-                         'real_train_energy': real_energy,
-                         'pd_energy': pd_energy, 'pn_energy': pn_energy},
-                inputs=[input_x],
-                data_flow=train_flow,
-                time_metric_name='test_time'
-            )
-            evaluator_train.events.on(
-                spt.EventKeys.AFTER_EXECUTION,
-                lambda e: results.update_metrics(evaluator.last_metrics_dict)
-            )
 
             loop.print_training_summary()
             spt.utils.ensure_variables_initialized()
 
-            evaluator.run()
-            evaluator_train.run()
-            evaluator_out.run()
-            loop.print_logs()
+            for epoch in loop.iter_epochs():
+                evaluator_train = spt.Evaluator(
+                    loop,
+                    metrics={'train_nll': test_nll, 'train_lb': test_lb,
+                             'adv_train_nll': adv_test_nll, 'adv_train_lb': adv_test_lb,
+                             'reconstruct_train_energy': reconstruct_energy,
+                             'real_train_energy': real_energy,
+                             'pd_energy': pd_energy, 'pn_energy': pn_energy},
+                    inputs=[input_x],
+                    data_flow=train_flow,
+                    time_metric_name='test_time'
+                )
+                evaluator_train.events.on(
+                    spt.EventKeys.AFTER_EXECUTION,
+                    lambda e: results.update_metrics(evaluator_train.last_metrics_dict)
+                )
+                evaluator_train.run()
 
-            # Example for evaluate detailly
-            test_nll_values = []
-            adv_test_nll_values = []
-            for step, [x] in loop.iter_steps(test_flow):
-                [batch_nll, batch_adv_nll] = session.run(
-                    [test_nll, adv_test_nll], feed_dict={
-                        input_x: x,
-                    })
-                test_nll_values.append(batch_nll)
-                adv_test_nll_values.append(batch_adv_nll)
-            test_nll_values = np.concatenate(test_nll_values, axis=0)
-            adv_test_nll_values = np.concatenate(adv_test_nll_values, axis=0)
-            print(len(test_nll_values), len(adv_test_nll_values))
-            # Example Finished
+                evaluator = spt.Evaluator(
+                    loop,
+                    metrics={'test_nll': test_nll, 'test_lb': test_lb,
+                             'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb,
+                             'reconstruct_test_energy': reconstruct_energy,
+                             'real_test_energy': real_energy,
+                             'pd_energy': pd_energy, 'pn_energy': pn_energy},
+                    inputs=[input_x],
+                    data_flow=test_flow,
+                    time_metric_name='test_time'
+                )
+                evaluator.events.on(
+                    spt.EventKeys.AFTER_EXECUTION,
+                    lambda e: results.update_metrics(evaluator.last_metrics_dict)
+                )
+                evaluator.run()
 
-            def FID(dataset, dataset_name):
-                sample_img = []
-                for i in range(len(dataset) // 100 + 1):
-                    sample_img.append(session.run(x_plots))
-                sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
-                sample_img = sample_img.transpose((0, 3, 1, 2))
-                sample_img = np.concatenate((sample_img, sample_img, sample_img), axis=1)
-                sample_img = sample_img[:len(dataset)]
+                evaluator_out = spt.Evaluator(
+                    loop,
+                    metrics={'out_nll': test_nll, 'out_lb': test_lb,
+                             'adv_out_nll': adv_test_nll, 'adv_out_lb': adv_test_lb,
+                             'reconstruct_out_energy': reconstruct_energy,
+                             'real_out_energy': real_energy,
+                             'pd_energy': pd_energy, 'pn_energy': pn_energy},
+                    inputs=[input_x],
+                    data_flow=out_flow,
+                    time_metric_name='test_time'
+                )
+                evaluator_out.events.on(
+                    spt.EventKeys.AFTER_EXECUTION,
+                    lambda e: results.update_metrics(evaluator_out.last_metrics_dict)
+                )
+                evaluator_out.run()
 
-                FID = get_fid(sample_img, dataset)
-                print(f'Fréchet Inception Distance To {dataset_name} : {FID}')
-                results.update_metrics({'FID_' + dataset_name: FID})
+                loop.print_logs()
 
-            dataset_img = np.concatenate([_x_train], axis=0)
-            dataset_img = dataset_img.transpose((0, 3, 1, 2))
-            dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
-            FID(dataset_img, 'mnist_train')
+                # Example for evaluate detailly
+                test_nll_values = []
+                adv_test_nll_values = []
+                for step, [x] in loop.iter_steps(test_flow):
+                    [batch_nll, batch_adv_nll] = session.run(
+                        [test_nll, adv_test_nll], feed_dict={
+                            input_x: x,
+                        })
+                    test_nll_values.append(batch_nll)
+                    adv_test_nll_values.append(batch_adv_nll)
+                print(len(test_nll_values), len(adv_test_nll_values))
 
-            dataset_img = np.concatenate([_x_test], axis=0)
-            dataset_img = dataset_img.transpose((0, 3, 1, 2))
-            dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
-            FID(dataset_img, 'mnist_test')
+                # Example Finished
+                def sample_estimate(slot, prefix=''):
+                    def FID(dataset, dataset_name):
+                        sample_img = []
+                        for i in range(len(dataset) // 100 + 1):
+                            sample_img.append(session.run(slot))
+                        sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
+                        sample_img = sample_img.transpose((0, 3, 1, 2))
+                        sample_img = np.concatenate((sample_img, sample_img, sample_img), axis=1)
+                        sample_img = sample_img[:len(dataset)]
 
-            dataset_img = np.concatenate([_x_train, _x_test], axis=0)
-            dataset_img = dataset_img.transpose((0, 3, 1, 2))
-            dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
-            FID(dataset_img, 'mnist')
+                        FID = get_fid(sample_img, dataset)
+                        print(f'Fréchet Inception Distance To {dataset_name} : {FID}')
+                        results.update_metrics({'FID_' + dataset_name: FID})
 
-            dataset_img = np.concatenate([_x_train], axis=0)
-            dataset_img = dataset_img.transpose((0, 3, 1, 2))
-            dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
-            FID(dataset_img, 'not_mnist')
-            # turn to numpy array
+                    dataset_img = np.concatenate([_x_train], axis=0)
+                    dataset_img = dataset_img.transpose((0, 3, 1, 2))
+                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
+                    FID(dataset_img, prefix + 'mnist_train')
+
+                    dataset_img = np.concatenate([_x_test], axis=0)
+                    dataset_img = dataset_img.transpose((0, 3, 1, 2))
+                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
+                    FID(dataset_img, prefix + 'mnist_test')
+
+                    dataset_img = np.concatenate([_x_train, _x_test], axis=0)
+                    dataset_img = dataset_img.transpose((0, 3, 1, 2))
+                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
+                    FID(dataset_img, prefix + 'mnist')
+
+                    dataset_img = np.concatenate([_x_test_out], axis=0)
+                    dataset_img = dataset_img.transpose((0, 3, 1, 2))
+                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
+                    FID(dataset_img, prefix + 'not_mnist')
+
+                sample_estimate(x_plots, 'normal_prior_')
+                sample_estimate(adv_x_plots, 'adv_prior_')
+                # turn to numpy array
+                break
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')
