@@ -61,14 +61,13 @@ graph_def = get_graph_def_from_url_tarball(INCEPTION_URL, INCEPTION_FROZEN_GRAPH
                                            '/home/cwx17/' + os.path.basename(INCEPTION_URL))
 
 # Run images through Inception.
-inception_images = tf.placeholder(tf.float32, [BATCH_SIZE, 3, None, None])
+inception_images = tf.placeholder(tf.float32, [BATCH_SIZE, None, None, 3])
 activations1 = tf.placeholder(tf.float32, [None, None], name='activations1')
 activations2 = tf.placeholder(tf.float32, [None, None], name='activations2')
 fcd = tfgan.eval.frechet_classifier_distance_from_activations(activations1, activations2)
 
 
 def inception_activations(images=inception_images, num_splits=1):
-    images = tf.transpose(images, [0, 2, 3, 1])
     size = 299
     images = tf.image.resize_bilinear(images, [size, size])
     generated_images_list = array_ops.split(images, num_or_size_splits=num_splits)
@@ -100,13 +99,14 @@ def activations2distance(act1, act2):
 
 
 def get_fid(images1, images2):
+
     assert (type(images1) == np.ndarray)
     assert (len(images1.shape) == 4)
-    assert (images1.shape[1] == 3)
+    assert (images1.shape[3] == 3)
     assert (np.min(images1[0]) >= 0 and np.max(images1[0]) > 10), 'Image values should be in the range [0, 255]'
     assert (type(images2) == np.ndarray)
     assert (len(images2.shape) == 4)
-    assert (images2.shape[1] == 3)
+    assert (images2.shape[3] == 3)
     assert (np.min(images2[0]) >= 0 and np.max(images2[0]) > 10), 'Image values should be in the range [0, 255]'
     assert (images1.shape == images2.shape), 'The two numpy arrays must have the same shape'
     print('Calculating FID with %i images from each distribution' % (images1.shape[0]))
@@ -129,7 +129,6 @@ Returns:
 '''
 
 def inception_logits(images=inception_images, num_splits=1):
-    images = tf.transpose(images, [0, 2, 3, 1])
     size = 299
     images = tf.image.resize_bilinear(images, [size, size])
     generated_images_list = array_ops.split(
@@ -176,7 +175,7 @@ def get_inception_score(images, splits=10):
     images = images / 255. * 2 - 1
     assert (type(images) == np.ndarray)
     assert (len(images.shape) == 4)
-    assert (images.shape[1] == 3)
+    assert (images.shape[3] == 3)
     assert (np.max(images[0]) <= 1)
     assert (np.min(images[0]) >= -1)
     start_time = time.time()

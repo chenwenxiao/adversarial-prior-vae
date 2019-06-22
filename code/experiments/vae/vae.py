@@ -10,12 +10,12 @@ from matplotlib import pyplot
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
+from code.experiments.utils import get_inception_score, get_fid
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
                                       bernoulli_as_pixel,
                                       bernoulli_flow,
                                       print_with_title)
-from code.experiments.utils import get_inception_score, get_fid
 import numpy as np
 from scipy.misc import logsumexp
 
@@ -35,16 +35,16 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 2800
+    max_epoch = 2000
     energy_prior_start_epoch = 2000
-    beta = 0.00142071
+    beta = 0.005
     pull_back_energy_weight = 1
 
     max_step = None
     batch_size = 128
     initial_lr = 0.0002
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [400, 800, 1200, 1600, 2000, 2200, 2400, 2600, 2800]
+    lr_anneal_epoch_freq = 400
     lr_anneal_step_freq = None
 
     gradient_penalty_weight = 2
@@ -56,7 +56,7 @@ class ExpConfig(spt.Config):
     train_n_pz = 128
     train_n_qz = 1
     test_n_pz = 5000
-    test_n_qz = 10
+    test_n_qz = 100
     test_batch_size = 64
     test_epoch_freq = 200
     plot_epoch_freq = 10
@@ -79,11 +79,10 @@ config = ExpConfig()
 class EnergyDistribution(spt.Distribution):
     """
     A distribution derived from an energy function `D(x)` and a generator
-    function `x = G(z)`, where `p(z) = exp(-xi * D(G(z)) - 0.5 * z^2) / Z`.
+    function `x = G(z)`, where `p(z) = exp(-D(G(z))) / Z`.
     """
 
-    def __init__(self, pz, G, D, log_Z=0., xi=1.0, mcmc_iterator=0, mcmc_alpha=0.01, mcmc_algorithm='mala',
-                 mcmc_space='z'):
+    def __init__(self, pz, G, D, log_Z=0., mcmc_iterator=0, mcmc_alpha=0.01, mcmc_algorithm='mala', mcmc_space='z'):
         """
         Construct a new :class:`EnergyDistribution`.
 
@@ -92,7 +91,6 @@ class EnergyDistribution(spt.Distribution):
             G: The function `x = G(z)`.
             D: The function `D(x)`.
             Z: The partition factor `Z`.
-            xi: The weight of energy.
         """
         if not pz.is_continuous:
             raise TypeError('`base_distribution` must be a continuous '
@@ -111,7 +109,6 @@ class EnergyDistribution(spt.Distribution):
         self._pz = pz
         self._G = G
         self._D = D
-        self._xi = xi
         with tf.name_scope('log_Z', values=[log_Z]):
             self._log_Z = tf.maximum(log_Z, -20)
         self._mcmc_iterator = mcmc_iterator
@@ -130,10 +127,6 @@ class EnergyDistribution(spt.Distribution):
         return self._D
 
     @property
-    def xi(self):
-        return self._xi
-
-    @property
     def log_Z(self):
         return self._log_Z
 
@@ -143,8 +136,8 @@ class EnergyDistribution(spt.Distribution):
                            default_name=spt.utils.get_default_scope_name(
                                'log_prob', self),
                            values=[given]):
-            energy = self.D(self.G(given)) * self.xi + 0.5 * tf.reduce_sum(tf.square(given),
-                                                                           axis=-1)
+            energy = self.D(self.G(given)) * config.pull_back_energy_weight + 0.5 * tf.reduce_sum(tf.square(given),
+                                                                                                  axis=-1)
             log_px = self.pz.log_prob(given=given, group_ndims=group_ndims)
             log_px.log_energy_prob = -energy - self.log_Z
             log_px.energy = energy
@@ -202,7 +195,7 @@ class EnergyDistribution(spt.Distribution):
         return t
 
     def get_sgld_proposal(self, z):
-        energy_z = self.D(self.G(z)) * self.xi + 0.5 * tf.reduce_sum(tf.square(z), axis=-1)
+        energy_z = self.D(self.G(z)) * config.pull_back_energy_weight + 0.5 * tf.reduce_sum(tf.square(z), axis=-1)
         grad_energy_z = tf.gradients(energy_z, [z.tensor if hasattr(z, 'tensor') else z])[0]
         grad_energy_z = tf.reshape(grad_energy_z, shape=z.shape)
         eps = tf.random.normal(
@@ -281,7 +274,6 @@ class ExponentialDistribution(spt.Distribution):
             log_px = -tf.sqrt(
                 tf.reduce_sum(tf.square(given - self.mean), axis=tf.range(-group_ndims, 0))) / self.beta - self.log_Z
             log_px.energy = self.D(given)
-            log_px.mean_energy = self.D(self.mean)
 
         return log_px
 
@@ -381,16 +373,14 @@ def get_log_Z():
 
 @add_arg_scope
 @spt.global_reuse
-def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0):
+def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0):
+    normalizer_fn = None
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
     normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
                         logstd=tf.zeros([1, config.z_dim]))
     normal = normal.batch_ndims_to_value(1)
-    xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(1.0),
-                         dtype=tf.float32, trainable=True)
-    xi = tf.clip_by_value(xi, 0.0, 10000.0)
-    pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator)
+    pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=get_log_Z(), mcmc_iterator=mcmc_iterator)
     z = net.add('z', pz, n_samples=n_z)
     x_mean = G_theta(z)
     x = net.add('x', ExponentialDistribution(
@@ -398,6 +388,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0):
         beta=beta,
         D=D_psi
     ), group_ndims=3)
+    # compute the hidden features
     return net
 
 
@@ -456,38 +447,17 @@ def D_psi(x):
     return tf.squeeze(h_x, axis=-1)
 
 
-def get_all_loss(q_net, p_net, pd_net, beta):
+def get_all_loss(q_net, p_net):
     with tf.name_scope('adv_prior_loss'):
-        x = p_net['x']
-        x_ = pd_net['x']
         log_px_z = p_net['x'].log_prob()
-        energy_real = p_net['x'].log_prob().energy
-        energy_fake = pd_net['x'].log_prob().energy
-        gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
-        gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(1, len(gradient_penalty_real.shape)))
-        gradient_penalty_real = tf.pow(gradient_penalty_real, config.gradient_penalty_index / 2.0)
-
-        gradient_penalty_fake = tf.square(tf.gradients(energy_fake, [x_.tensor if hasattr(x_, 'tensor') else x_])[0])
-        gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(1, len(gradient_penalty_fake.shape)))
-        gradient_penalty_fake = tf.pow(gradient_penalty_fake, config.gradient_penalty_index / 2.0)
-
-        gradient_penalty = (tf.reduce_mean(gradient_penalty_fake) + tf.reduce_mean(gradient_penalty_real)) \
-                           * config.gradient_penalty_weight / 2.0
         VAE_loss = tf.reduce_mean(
             -log_px_z - p_net['z'].log_prob() + q_net['z'].log_prob()
         )
         global debug_variable
         debug_variable = tf.reduce_mean(
             tf.sqrt(tf.reduce_sum((p_net['x'] - p_net['x'].distribution.mean) ** 2, [2, 3, 4])))
-        global train_reconstruct_energy
-        train_reconstruct_energy = tf.reduce_mean(p_net['x'].log_prob().mean_energy)
-        adv_VAE_loss = tf.reduce_mean(
-            -log_px_z - p_net['z'].log_prob().log_energy_prob + q_net['z'].log_prob()
-        )
-        adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
-            energy_real) + gradient_penalty
-        adv_G_loss = tf.reduce_mean(energy_fake)
-    return VAE_loss, adv_VAE_loss, adv_D_loss, adv_G_loss, tf.reduce_mean(energy_real)
+
+    return VAE_loss
 
 
 class MyIterator(object):
@@ -531,21 +501,7 @@ def limited(iterator, n):
     except StopIteration:
         pass
 
-
-def get_var(name):
-    pfx = name.rsplit('/', 1)
-    if len(pfx) == 2:
-        vars = tf.global_variables(pfx[0] + '/')
-    else:
-        vars = tf.global_variables()
-    for var in vars:
-        if var.name.split(':', 1)[0] == name:
-            return var
-    raise NameError('Variable {} not exist.'.format(name))
-
-
 debug_variable = None
-train_reconstruct_energy = None
 
 
 def main():
@@ -580,34 +536,22 @@ def main():
     with tf.name_scope('initialization'), \
          arg_scope([spt.layers.act_norm], initializing=True), \
          spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
-        init_pd_net = p_net(n_z=config.train_n_pz, beta=beta)
         init_q_net = q_net(input_x, n_z=config.train_n_qz)
         init_p_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz, beta=beta)
-        init_loss = sum(get_all_loss(init_q_net, init_p_net, init_pd_net, beta))
+        init_loss = get_all_loss(init_q_net, init_p_net)
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
          arg_scope([batch_norm], training=True):
-        train_pn_net = p_net(n_z=config.train_n_pz, beta=beta)
-        train_log_Z = spt.ops.log_mean_exp(-train_pn_net['z'].log_prob().energy - train_pn_net['z'].log_prob())
         train_q_net = q_net(input_x, n_z=config.train_n_qz)
-        train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']},
-                            n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
+        train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']}, n_z=config.train_n_qz, beta=beta)
 
-        VAE_loss, adv_VAE_loss, D_loss, G_loss, debug = get_all_loss(train_q_net, train_p_net, train_pn_net, beta)
-
+        VAE_loss = get_all_loss(train_q_net, train_p_net)
         VAE_loss += tf.losses.get_regularization_loss()
-        adv_VAE_loss += tf.losses.get_regularization_loss()
-        D_loss += tf.losses.get_regularization_loss()
-        G_loss += tf.losses.get_regularization_loss()
 
     # derive the nll and logits output for testing
     with tf.name_scope('testing'):
         test_q_net = q_net(input_x, n_z=config.test_n_qz)
-        test_p_net = p_net(observed={'x': input_x, 'z': test_q_net['z']},
-                           n_z=config.test_n_qz, beta=beta, log_Z=get_log_Z())
-        # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
-        test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta)
         test_nll = -tf.reduce_mean(
@@ -618,64 +562,18 @@ def main():
         ) + config.x_shape_multiple * np.log(128.0)
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
 
-        vi = spt.VariationalInference(
-            log_joint=test_p_net['x'].log_prob() + test_p_net['z'].log_prob().log_energy_prob,
-            latent_log_probs=[test_q_net['z'].log_prob()],
-            axis=0
-        )
-        adv_test_nll = -tf.reduce_mean(
-            spt.ops.log_mean_exp(
-                tf.reshape(
-                    vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
-                ), axis=-1)
-        ) + config.x_shape_multiple * np.log(128.0)
-        adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
-
-        real_energy = tf.reduce_mean(test_p_net['x'].log_prob().energy)
-        reconstruct_energy = tf.reduce_mean(test_p_net['x'].log_prob().mean_energy)
-        pd_energy = tf.reduce_mean(
-            test_pn_net['x'].log_prob().mean_energy * tf.exp(
-                test_pn_net['z'].log_prob().log_energy_prob - test_pn_net['z'].log_prob()))
-        pn_energy = tf.reduce_mean(test_pn_net['x'].log_prob().mean_energy)
-        log_Z_compute_op = spt.ops.log_mean_exp(
-            -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
-
-    xi_node = get_var('p_net/xi')
-
     # derive the optimizer
     with tf.name_scope('optimizing'):
         VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
             'beta')
-        adv_VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('p_net/xi') + tf.trainable_variables(
-            'beta')
-        D_params = tf.trainable_variables('D_psi')
-        G_params = tf.trainable_variables('G_theta')
         print("========VAE_params=========")
         print(VAE_params)
-        print("========VAE_params=========")
-        print(adv_VAE_params)
-        print("========D_params=========")
-        print(D_params)
-        print("========G_params=========")
-        print(G_params)
         with tf.variable_scope('VAE_optimizer'):
             VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
             VAE_grads = VAE_optimizer.compute_gradients(VAE_loss, VAE_params)
-        with tf.variable_scope('adv_VAE_optimizer'):
-            adv_VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
-            adv_VAE_grads = adv_VAE_optimizer.compute_gradients(adv_VAE_loss, adv_VAE_params)
-        with tf.variable_scope('D_optimizer'):
-            D_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
-            D_grads = D_optimizer.compute_gradients(D_loss, D_params)
-        with tf.variable_scope('G_optimizer'):
-            G_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
-            G_grads = G_optimizer.compute_gradients(G_loss, G_params)
 
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             VAE_train_op = VAE_optimizer.apply_gradients(VAE_grads)
-            G_train_op = G_optimizer.apply_gradients(G_grads)
-        adv_VAE_train_op = adv_VAE_optimizer.apply_gradients(adv_VAE_grads)
-        D_train_op = D_optimizer.apply_gradients(D_grads)
 
     # derive the plotting function
     with tf.name_scope('plotting'):
@@ -744,7 +642,7 @@ def main():
 
     # prepare for training and testing data
     (_x_train, _y_train), (_x_test, _y_test) = \
-        spt.datasets.load_fashion_mnist(x_shape=config.x_shape)
+        spt.datasets.load_mnist(x_shape=config.x_shape)
     # train_flow = bernoulli_flow(
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
     x_train = (_x_train - 127.5) / 256.0 * 2
@@ -752,9 +650,6 @@ def main():
     uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0, dtype=np.float)
     train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     train_flow = train_flow.map(uniform_sampler)
-    gan_train_flow = spt.DataFlow.arrays(
-        [x_train], config.batch_size, shuffle=True, skip_incomplete=True)
-    gan_train_flow = gan_train_flow.map(uniform_sampler)
     reconstruct_train_flow = spt.DataFlow.arrays(
         [x_train], 50, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(
@@ -784,16 +679,11 @@ def main():
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
                            checkpoint_epoch_freq=100,
-                           # restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/34/ec/6bae1ffafbe672df90d5/checkpoint/checkpoint/checkpoint.dat-2027454'
                            ) as loop:
 
             evaluator = spt.Evaluator(
                 loop,
-                metrics={'test_nll': test_nll, 'test_lb': test_lb,
-                         'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb,
-                         'reconstruct_energy': reconstruct_energy,
-                         'real_energy': real_energy,
-                         'pd_energy': pd_energy, 'pn_energy': pn_energy},
+                metrics={'test_nll': test_nll, 'test_lb': test_lb, },
                 inputs=[input_x],
                 data_flow=test_flow,
                 time_metric_name='test_time'
@@ -811,63 +701,25 @@ def main():
             # adversarial training
             for epoch in epoch_iterator:
 
-                if epoch < config.energy_prior_start_epoch:
-                    step_iterator = MyIterator(train_flow)
-                    gan_step_iterator = MyIterator(gan_train_flow)
-                    while step_iterator.has_next or gan_step_iterator.has_next:
-                        # vae training
-                        for step, [x] in loop.iter_steps(limited(step_iterator, config.n_critical)):
-                            [_, batch_VAE_loss, beta_value, debug_information, train_reconstruct_energy_value, training_D_loss] = session.run(
-                                [VAE_train_op, VAE_loss, beta, debug_variable, train_reconstruct_energy, D_loss], feed_dict={
-                                    input_x: x,
-                                })
-                            loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
-                            loop.collect_metrics(beta=beta_value)
-                            loop.collect_metrics(debug_information=debug_information)
-                            loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
-                            loop.collect_metrics(training_D_loss=training_D_loss)
-
-                        # discriminator training
-                        for step, [x] in loop.iter_steps(limited(gan_step_iterator, config.n_critical)):
-                            [_, batch_D_loss, debug_loss] = session.run(
-                                [D_train_op, D_loss, debug], feed_dict={
-                                    input_x: x,
-                                })
-                            loop.collect_metrics(D_loss=batch_D_loss)
-                            loop.collect_metrics(debug_loss=debug_loss)
-
-                        # generator training x
-                        [_, batch_G_loss] = session.run(
-                            [G_train_op, G_loss], feed_dict={
+                step_iterator = MyIterator(loop.iter_steps(train_flow))
+                while step_iterator.has_next:
+                    # vae training
+                    for step, [x] in limited(step_iterator, config.n_critical):
+                        [_, batch_VAE_loss, beta_value, debug_information] = session.run(
+                            [VAE_train_op, VAE_loss, beta, debug_variable], feed_dict={
+                                input_x: x,
                             })
-                        loop.collect_metrics(G_loss=batch_G_loss)
-                else:
-                    step_iterator = MyIterator(train_flow)
-                    while step_iterator.has_next:
-                        for step, [x] in loop.iter_steps(limited(step_iterator, config.n_critical)):
-                            [_, beta_value, batch_VAE_loss, debug_information, xi_value, train_reconstruct_energy_value] = session.run(
-                                [adv_VAE_train_op, beta, adv_VAE_loss, debug_variable, xi_node, train_reconstruct_energy], feed_dict={
-                                    input_x: x,
-                                })
-                            loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
-                            loop.collect_metrics(beta=beta_value)
-                            loop.collect_metrics(debug_information=debug_information)
-                            loop.collect_metrics(xi=xi_value)
-                            loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
+                        loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
+                        loop.collect_metrics(beta=beta_value)
+                        loop.collect_metrics(debug_information=debug_information)
 
-                if epoch == config.energy_prior_start_epoch: ## WARNING
-                    learning_rate.set(config.initial_lr)
-
-                if epoch in config.lr_anneal_epoch_freq:
+                if epoch % config.lr_anneal_epoch_freq == 0:
                     learning_rate.anneal()
 
                 if epoch % config.plot_epoch_freq == 0:
                     plot_samples(loop)
 
                 if epoch % config.test_epoch_freq == 0:
-                    log_Z = session.run(log_Z_compute_op)
-                    get_log_Z().set(log_Z)
-                    print(log_Z, get_log_Z())
                     with loop.timeit('eval_time'):
                         evaluator.run()
 
@@ -889,7 +741,6 @@ def main():
                     print(f'Inception Score : {IS_mean, IS_std}')
                     results.update_metrics({'FID': FID})
                     results.update_metrics({'IS': IS_mean})
-
                 loop.collect_metrics(lr=learning_rate.get())
                 results.update_metrics({'epoch': f'{epoch}/{loop.max_epoch}'})
                 loop.print_logs()

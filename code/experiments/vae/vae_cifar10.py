@@ -68,9 +68,9 @@ class ExpConfig(spt.Config):
 
     @property
     def x_shape(self):
-        return (28, 28, 1)
+        return (32, 32, 3)
 
-    x_shape_multiple = 784
+    x_shape_multiple = 784 * 3
 
 
 config = ExpConfig()
@@ -404,11 +404,11 @@ def G_theta(z):
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
-        h_z = spt.layers.dense(z, 64 * 7 * 7, scope='level_0', normalizer_fn=None)
+        h_z = spt.layers.dense(z, 64 * 8 * 8, scope='level_0', normalizer_fn=None)
         h_z = spt.ops.reshape_tail(
             h_z,
             ndims=1,
-            shape=(7, 7, 64)
+            shape=(8, 8, 64)
         )
         h_z = spt.layers.deconv2d(h_z, 64, scope='level_1')  # output: (7, 7, 64)
         h_z = spt.layers.deconv2d(h_z, 64, scope='level_2')  # output: (7, 7, 64)
@@ -416,7 +416,7 @@ def G_theta(z):
         h_z = spt.layers.deconv2d(h_z, 32, scope='level_4')  # output: (14, 14, 32)
         h_z = spt.layers.deconv2d(h_z, 16, strides=2, scope='level_5')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
-        h_z, 1, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
+        h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         kernel_initializer=tf.zeros_initializer()
     )
     return x_mean
@@ -642,7 +642,7 @@ def main():
 
     # prepare for training and testing data
     (_x_train, _y_train), (_x_test, _y_test) = \
-        spt.datasets.load_mnist(x_shape=config.x_shape)
+        spt.datasets.load_cifar10(x_shape=config.x_shape)
     # train_flow = bernoulli_flow(
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
     x_train = (_x_train - 127.5) / 256.0 * 2
@@ -725,15 +725,11 @@ def main():
 
                 if epoch == config.max_epoch:
                     dataset_img = np.concatenate([_x_train, _x_test], axis=0)
-                    dataset_img = dataset_img.transpose((0, 3, 1, 2))
-                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
 
                     sample_img = []
                     for i in range((len(x_train) + len(x_test)) // 100 + 1):
                         sample_img.append(session.run(x_plots))
                     sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
-                    sample_img = sample_img.transpose((0, 3, 1, 2))
-                    sample_img = np.concatenate((sample_img, sample_img, sample_img), axis=1)
                     sample_img = sample_img[:len(dataset_img)]
 
                     FID = get_fid(sample_img, dataset_img)
