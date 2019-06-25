@@ -866,7 +866,7 @@ def main():
                             sample_img.append(session.run(slot))
                         sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
                         sample_img = sample_img.transpose((0, 3, 1, 2))
-                        sample_img = np.concatenate((sample_img, sample_img, sample_img), axis=1)
+                        sample_img = np.concatenate((sample_img, sample_img, sample_img), axis=3)
                         sample_img = sample_img[:len(dataset)]
 
                         FID = get_fid(sample_img, dataset)
@@ -875,22 +875,22 @@ def main():
 
                     dataset_img = np.concatenate([_x_train], axis=0)
                     dataset_img = dataset_img.transpose((0, 3, 1, 2))
-                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
+                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=3)
                     FID(dataset_img, prefix + 'mnist_train')
 
                     dataset_img = np.concatenate([_x_test], axis=0)
                     dataset_img = dataset_img.transpose((0, 3, 1, 2))
-                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
+                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=3)
                     FID(dataset_img, prefix + 'mnist_test')
 
                     dataset_img = np.concatenate([_x_train, _x_test], axis=0)
                     dataset_img = dataset_img.transpose((0, 3, 1, 2))
-                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
+                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=3)
                     FID(dataset_img, prefix + 'mnist')
 
                     dataset_img = np.concatenate([_x_test_out], axis=0)
                     dataset_img = dataset_img.transpose((0, 3, 1, 2))
-                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
+                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=3)
                     FID(dataset_img, prefix + 'not_mnist')
 
                 sample_estimate(x_plots, 'normal_prior_')

@@ -60,6 +60,7 @@ class ExpConfig(spt.Config):
     test_batch_size = 64
     test_epoch_freq = 200
     plot_epoch_freq = 10
+    grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
     test_x_samples = 8
@@ -659,8 +660,15 @@ def main():
         print("========G_params=========")
         print(G_params)
         with tf.variable_scope('VAE_optimizer'):
+            _VAE_grads = tf.gradients(VAE_loss, G_params)
+            VAE_grad = []
+            for grad in _VAE_grads:
+                VAE_grad.append(tf.reshape(grad, (-1, )))
+            VAE_grad = tf.concat(VAE_grad, axis=0)
+            # above is working for get the gradient for G_theta
             VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
             VAE_grads = VAE_optimizer.compute_gradients(VAE_loss, VAE_params)
+
         with tf.variable_scope('adv_VAE_optimizer'):
             adv_VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
             adv_VAE_grads = adv_VAE_optimizer.compute_gradients(adv_VAE_loss, adv_VAE_params)
@@ -671,6 +679,9 @@ def main():
             G_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
             G_grads = G_optimizer.compute_gradients(G_loss, G_params)
 
+            _G_grads = tf.gradients(G_loss, G_params)
+            G_grad = [tf.reshape(grad, (-1, )) for grad in _G_grads]
+            G_grad = tf.concat(G_grad, axis=0)
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             VAE_train_op = VAE_optimizer.apply_gradients(VAE_grads)
             G_train_op = G_optimizer.apply_gradients(G_grads)
@@ -839,7 +850,7 @@ def main():
                         # generator training x
                         [_, batch_G_loss] = session.run(
                             [G_train_op, G_loss], feed_dict={
-                            })
+                        })
                         loop.collect_metrics(G_loss=batch_G_loss)
                 else:
                     step_iterator = MyIterator(train_flow)
@@ -854,6 +865,23 @@ def main():
                             loop.collect_metrics(debug_information=debug_information)
                             loop.collect_metrics(xi=xi_value)
                             loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
+
+                if epoch % config.grad_epoch_freq == 0:
+                    array_VAE_grad = []
+                    array_G_grad = []
+                    for step, [x] in loop.iter_steps(MyIterator(train_flow)):
+                        [batch_VAE_grad, batch_G_grad] = session.run(
+                            [VAE_grad, G_grad], feed_dict={
+                                input_x: x
+                            })
+                        array_VAE_grad.append(batch_VAE_grad)
+                        array_G_grad.append(batch_G_grad)
+                    mean_VAE_grad = np.mean(np.asarray(array_VAE_grad), axis=0)
+                    mean_G_grad = np.mean(np.asarray(array_G_grad), axis=0)
+                    mean_VAE_grad = mean_VAE_grad / np.sqrt(np.sum(mean_VAE_grad ** 2))
+                    mean_G_grad = mean_G_grad / np.sqrt(np.sum(mean_G_grad ** 2))
+                    cos_grad = np.sum(mean_VAE_grad * mean_G_grad)
+                    loop.collect_metrics(cos_grad=cos_grad)
 
                 if epoch == config.energy_prior_start_epoch: ## WARNING
                     learning_rate.set(config.initial_lr)
@@ -873,13 +901,13 @@ def main():
 
                 if epoch == config.max_epoch:
                     dataset_img = np.concatenate([_x_train, _x_test], axis=0)
-                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=1)
+                    dataset_img = np.concatenate((dataset_img, dataset_img, dataset_img), axis=3)
 
                     sample_img = []
                     for i in range((len(x_train) + len(x_test)) // 100 + 1):
                         sample_img.append(session.run(x_plots))
                     sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
-                    sample_img = np.concatenate((sample_img, sample_img, sample_img), axis=1)
+                    sample_img = np.concatenate((sample_img, sample_img, sample_img), axis=3)
                     sample_img = sample_img[:len(dataset_img)]
 
                     FID = get_fid(sample_img, dataset_img)
