@@ -19,7 +19,7 @@ from tfsnippet.examples.utils import (MLResults,
 import numpy as np
 from scipy.misc import logsumexp
 
-from tfsnippet.preprocessing import UniformNoiseSampler
+from tfsnippet.preprocessing import BernoulliSampler
 
 
 class ExpConfig(spt.Config):
@@ -554,13 +554,28 @@ def main():
         test_q_net = q_net(input_x, n_z=config.test_n_qz)
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta)
+        p = test_chain.model['x'].distribution.mean
+        p = tf.clip_by_value(p, clip_value_max=1 - 1e-7, clip_value_min=1e-7)
+        logits = tf.log(p) - tf.log1p(-p)
+        labels = tf.tile(
+            tf.expand_dims(test_chain.model['x'], axis=0),
+            tf.concat([[config.test_n_qz], [1] * spt.utils.get_rank(test_chain.model['x'])], axis=0)
+        )
+        log_px_given_z = tf.reduce_mean(
+            -tf.nn.sigmoid_cross_entropy_with_logits(
+                labels=labels, logits=logits
+            ),
+            axis=list(range(-len(config.x_shape), 0))
+        )
+        vi = spt.VariationalInference(
+            log_joint=log_px_given_z + test_chain.model['z'].log_prob(),
+            latent_log_probs=[test_q_net['z'].log_prob()],
+            axis=0
+        )
         test_nll = -tf.reduce_mean(
-            spt.ops.log_mean_exp(
-                tf.reshape(
-                    test_chain.vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
-                ), axis=-1)
-        ) + config.x_shape_multiple * np.log(128.0)
-        test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
+            vi.evaluation.is_loglikelihood()
+        )
+        test_lb = tf.reduce_mean(vi.lower_bound.elbo())
 
     # derive the optimizer
     with tf.name_scope('optimizing'):
@@ -577,14 +592,14 @@ def main():
 
     # derive the plotting function
     with tf.name_scope('plotting'):
-        x_plots = 256.0 * tf.reshape(
-            p_net(n_z=100, mcmc_iterator=0, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
+        x_plots = 255.0 * tf.reshape(
+            p_net(n_z=100, mcmc_iterator=0, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape)
         reconstruct_q_net = q_net(input_x)
         reconstruct_z = reconstruct_q_net['z']
-        reconstruct_plots = 256.0 * tf.reshape(
+        reconstruct_plots = 255.0 * tf.reshape(
             p_net(observed={'z': reconstruct_z}, beta=beta)['x'],
             (-1,) + config.x_shape
-        ) / 2 + 127.5
+        )
         x_plots = tf.clip_by_value(x_plots, 0, 255)
         reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
 
@@ -608,10 +623,10 @@ def main():
 
                 # plot reconstructs
                 for [x] in reconstruct_train_flow:
-                    x_samples = uniform_sampler.sample(x)
+                    x_samples = bernouli_sampler.sample(x)
                     images = np.zeros((150,) + config.x_shape, dtype=np.uint8)
-                    images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
-                    images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
+                    images[::3, ...] = np.round(255.0 * x)
+                    images[1::3, ...] = np.round(255.0 * x_samples)
                     images[2::3, ...] = np.round(session.run(
                         reconstruct_plots, feed_dict={input_x: x}))
                     save_images_collection(
@@ -624,10 +639,10 @@ def main():
 
                 # plot reconstructs
                 for [x] in reconstruct_test_flow:
-                    x_samples = uniform_sampler.sample(x)
+                    x_samples = bernouli_sampler.sample(x)
                     images = np.zeros((150,) + config.x_shape, dtype=np.uint8)
-                    images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
-                    images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
+                    images[::3, ...] = np.round(255.0 * x )
+                    images[1::3, ...] = np.round(255.0 * x_samples)
                     images[2::3, ...] = np.round(session.run(
                         reconstruct_plots, feed_dict={input_x: x}))
                     save_images_collection(
@@ -645,18 +660,18 @@ def main():
         spt.datasets.load_mnist(x_shape=config.x_shape)
     # train_flow = bernoulli_flow(
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
-    x_train = (_x_train - 127.5) / 256.0 * 2
-    x_test = (_x_test - 127.5) / 256.0 * 2
-    uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0, dtype=np.float)
+    x_train = _x_train / 255.0
+    x_test = _x_test / 255.0
+    bernouli_sampler = BernoulliSampler()
     train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
-    train_flow = train_flow.map(uniform_sampler)
+    # train_flow = train_flow.map(bernouli_sampler)
     reconstruct_train_flow = spt.DataFlow.arrays(
         [x_train], 50, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(
         [x_test], 50, shuffle=True, skip_incomplete=False)
     test_flow = spt.DataFlow.arrays(
-        [np.repeat(x_test, config.test_x_samples, axis=0)], config.test_batch_size)
-    test_flow = test_flow.map(uniform_sampler)
+        [x_test], config.test_batch_size)
+    # test_flow = test_flow.map(bernouli_sampler)
 
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
