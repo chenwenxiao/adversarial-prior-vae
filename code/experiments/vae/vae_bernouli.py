@@ -24,7 +24,7 @@ from tfsnippet.preprocessing import BernoulliSampler
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 784
+    z_dim = 64
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -58,7 +58,7 @@ class ExpConfig(spt.Config):
     test_n_pz = 5000
     test_n_qz = 100
     test_batch_size = 64
-    test_epoch_freq = 200
+    test_epoch_freq = 20
     plot_epoch_freq = 10
 
     test_fid_n_pz = 5000
@@ -561,7 +561,7 @@ def main():
             tf.expand_dims(test_chain.model['x'], axis=0),
             tf.concat([[config.test_n_qz], [1] * spt.utils.get_rank(test_chain.model['x'])], axis=0)
         )
-        log_px_given_z = tf.reduce_mean(
+        log_px_given_z = tf.reduce_sum(
             -tf.nn.sigmoid_cross_entropy_with_logits(
                 labels=labels, logits=logits
             ),
@@ -571,6 +571,19 @@ def main():
             log_joint=log_px_given_z + test_chain.model['z'].log_prob(),
             latent_log_probs=[test_q_net['z'].log_prob()],
             axis=0
+        )
+        test_recon = tf.reduce_mean(
+            log_px_given_z
+        )
+        logits_labels = tf.clip_by_value(labels, clip_value_max=1 - 1e-7, clip_value_min=1e-7)
+        logits_labels = tf.log(logits_labels) - tf.log1p(-logits_labels)
+        test_best_recon = tf.reduce_mean(
+            tf.reduce_sum(
+                -tf.nn.sigmoid_cross_entropy_with_logits(
+                    labels=labels, logits=logits_labels
+                ),
+                axis=list(range(-len(config.x_shape), 0))
+            )
         )
         test_nll = -tf.reduce_mean(
             vi.evaluation.is_loglikelihood()
@@ -698,14 +711,10 @@ def main():
 
             evaluator = spt.Evaluator(
                 loop,
-                metrics={'test_nll': test_nll, 'test_lb': test_lb, },
+                metrics={'test_nll': test_nll, 'test_lb': test_lb, 'test_recon': test_recon, 'test_best_recon': test_best_recon},
                 inputs=[input_x],
                 data_flow=test_flow,
                 time_metric_name='test_time'
-            )
-            evaluator.events.on(
-                spt.EventKeys.AFTER_EXECUTION,
-                lambda e: results.update_metrics(evaluator.last_metrics_dict)
             )
 
             loop.print_training_summary()
@@ -750,14 +759,11 @@ def main():
                     sample_img = sample_img[:len(dataset_img)]
 
                     FID = get_fid(sample_img, dataset_img)
-                    print(f'Fréchet Inception Distance : {FID}')
                     # turn to numpy array
                     IS_mean, IS_std = get_inception_score(sample_img)
-                    print(f'Inception Score : {IS_mean, IS_std}')
-                    results.update_metrics({'FID': FID})
-                    results.update_metrics({'IS': IS_mean})
+                    loop.collect_metrics(FID=FID)
+                    loop.collect_metrics(IS=IS_mean)
                 loop.collect_metrics(lr=learning_rate.get())
-                results.update_metrics({'epoch': f'{epoch}/{loop.max_epoch}'})
                 loop.print_logs()
 
     # print the final metrics and close the results object

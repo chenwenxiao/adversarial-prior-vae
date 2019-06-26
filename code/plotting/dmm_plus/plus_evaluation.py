@@ -844,7 +844,6 @@ def main():
                 )
                 evaluator_out.run()
 
-                loop.print_logs()
 
                 # Example for evaluate detailly
                 test_nll_values = []
@@ -870,8 +869,7 @@ def main():
                         sample_img = sample_img[:len(dataset)]
 
                         FID = get_fid(sample_img, dataset)
-                        print(f'Fréchet Inception Distance To {dataset_name} : {FID}')
-                        results.update_metrics({'FID_' + dataset_name: FID})
+                        loop.collect_metrics({'FID_' + dataset_name: FID})
 
                     dataset_img = np.concatenate([_x_train], axis=0)
                     dataset_img = dataset_img.transpose((0, 3, 1, 2))
@@ -896,7 +894,9 @@ def main():
                 sample_estimate(x_plots, 'normal_prior_')
                 sample_estimate(adv_x_plots, 'adv_prior_')
                 # turn to numpy array
+                loop.print_logs()
                 break
+
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')

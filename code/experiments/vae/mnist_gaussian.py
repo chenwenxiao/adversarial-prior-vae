@@ -672,10 +672,6 @@ def main():
                 data_flow=test_flow,
                 time_metric_name='test_time'
             )
-            evaluator.events.on(
-                spt.EventKeys.AFTER_EXECUTION,
-                lambda e: results.update_metrics(evaluator.last_metrics_dict)
-            )
 
             loop.print_training_summary()
             spt.utils.ensure_variables_initialized()

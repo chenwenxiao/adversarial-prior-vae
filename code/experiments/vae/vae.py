@@ -735,14 +735,12 @@ def main():
                     sample_img = sample_img[:len(dataset_img)]
 
                     FID = get_fid(sample_img, dataset_img)
-                    print(f'Fréchet Inception Distance : {FID}')
                     # turn to numpy array
                     IS_mean, IS_std = get_inception_score(sample_img)
-                    print(f'Inception Score : {IS_mean, IS_std}')
-                    results.update_metrics({'FID': FID})
-                    results.update_metrics({'IS': IS_mean})
+                    loop.collect_metrics(FID=FID)
+                    loop.collect_metrics(IS=IS_mean)
+
                 loop.collect_metrics(lr=learning_rate.get())
-                results.update_metrics({'epoch': f'{epoch}/{loop.max_epoch}'})
                 loop.print_logs()
 
     # print the final metrics and close the results object
