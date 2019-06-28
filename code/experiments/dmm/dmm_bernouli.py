@@ -486,7 +486,7 @@ def get_all_loss(q_net, p_net, pn_net, beta):
             -pn_net['z'].log_prob().energy - pn_net['z'].log_prob())
         VAE_loss = tf.reduce_mean(
             -log_px_z + p_net['z'].log_prob().energy + q_net['z'].log_prob()
-        ) - log_Z_compute_op
+        ) + log_Z_compute_op
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
         adv_G_loss = tf.reduce_mean(energy_fake)
@@ -824,8 +824,7 @@ def main():
             # adversarial training
             for epoch in epoch_iterator:
                 step_iterator = MyIterator(train_flow)
-                gan_step_iterator = MyIterator(gan_train_flow)
-                while step_iterator.has_next or gan_step_iterator.has_next:
+                while step_iterator.has_next:
                     # vae training
                     for step, [x] in loop.iter_steps(limited(step_iterator, config.n_critical)):
                         [_, batch_VAE_loss, beta_value, xi_value, debug_information, train_reconstruct_energy_value,
