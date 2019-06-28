@@ -37,7 +37,7 @@ class ExpConfig(spt.Config):
     write_summary = True
     max_epoch = 2000
     energy_prior_start_epoch = 2000
-    beta = 0.1
+    beta = 0.01
     pull_back_energy_weight = 1
 
     max_step = None

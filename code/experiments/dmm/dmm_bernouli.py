@@ -35,7 +35,7 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 2800
+    max_epoch = 2000
     energy_prior_start_epoch = 2000
     beta = 0.01
     pull_back_energy_weight = 1
@@ -44,21 +44,21 @@ class ExpConfig(spt.Config):
     batch_size = 128
     initial_lr = 0.0002
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [400, 800, 1200, 1600, 2000, 2200, 2400, 2600, 2800]
+    lr_anneal_epoch_freq = [400, 800, 1200, 1600, 2000]
     lr_anneal_step_freq = None
 
     gradient_penalty_weight = 2
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    n_critical = 1
+    n_critical = 10
     # evaluation parameters
     train_n_pz = 128
     train_n_qz = 1
-    test_n_pz = 5000
-    test_n_qz = 10
+    test_n_pz = 10000
+    test_n_qz = 100
     test_batch_size = 64
-    test_epoch_freq = 20
+    test_epoch_freq = 100
     plot_epoch_freq = 10
     grad_epoch_freq = 10
 
@@ -577,7 +577,7 @@ def main():
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
     beta = tf.Variable(initial_value=config.beta, dtype=tf.float32, name='beta', trainable=True)
-    beta = tf.clip_by_value(beta, config.beta, 1.0)
+    beta = tf.clip_by_value(beta, 0.0, 1.0)
 
     # derive the loss for initializing
     with tf.name_scope('initialization'), \
@@ -657,7 +657,7 @@ def main():
         pn_energy = tf.reduce_mean(test_pn_net['x'].log_prob().mean_energy)
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
-
+    xi_node = get_var('p_net/xi')
     # derive the optimizer
     with tf.name_scope('optimizing'):
         VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
@@ -674,7 +674,7 @@ def main():
             _VAE_grads = tf.gradients(VAE_loss, G_params)
             VAE_grad = []
             for grad in _VAE_grads:
-                VAE_grad.append(tf.reshape(grad, (-1, )))
+                VAE_grad.append(tf.reshape(grad, (-1,)))
             VAE_grad = tf.concat(VAE_grad, axis=0)
             # above is working for get the gradient for G_theta
             VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
@@ -687,7 +687,7 @@ def main():
             G_grads = G_optimizer.compute_gradients(G_loss, G_params)
 
             _G_grads = tf.gradients(G_loss, G_params)
-            G_grad = [tf.reshape(grad, (-1, )) for grad in _G_grads]
+            G_grad = [tf.reshape(grad, (-1,)) for grad in _G_grads]
             G_grad = tf.concat(G_grad, axis=0)
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             VAE_train_op = VAE_optimizer.apply_gradients(VAE_grads)
@@ -828,18 +828,20 @@ def main():
                 while step_iterator.has_next or gan_step_iterator.has_next:
                     # vae training
                     for step, [x] in loop.iter_steps(limited(step_iterator, config.n_critical)):
-                        [_, batch_VAE_loss, beta_value, debug_information, train_reconstruct_energy_value, training_D_loss] = session.run(
-                            [VAE_train_op, VAE_loss, beta, debug_variable, train_reconstruct_energy, D_loss], feed_dict={
+                        [_, batch_VAE_loss, beta_value, xi_value, debug_information, train_reconstruct_energy_value,
+                         training_D_loss] = session.run(
+                            [VAE_train_op, VAE_loss, beta, xi_node, debug_variable, train_reconstruct_energy, D_loss],
+                            feed_dict={
                                 input_x: x,
                             })
                         loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
+                        loop.collect_metrics(xi=xi_value)
                         loop.collect_metrics(beta=beta_value)
                         loop.collect_metrics(debug_information=debug_information)
                         loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
                         loop.collect_metrics(training_D_loss=training_D_loss)
 
-                    # discriminator training
-                    for step, [x] in loop.iter_steps(limited(gan_step_iterator, config.n_critical)):
+                        # discriminator training
                         [_, batch_D_loss, debug_loss] = session.run(
                             [D_train_op, D_loss, debug], feed_dict={
                                 input_x: x,
@@ -848,10 +850,10 @@ def main():
                         loop.collect_metrics(debug_loss=debug_loss)
 
                     # generator training x
-                    # [_, batch_G_loss] = session.run(
-                    #     [G_train_op, G_loss], feed_dict={
-                    # })
-                    # loop.collect_metrics(G_loss=batch_G_loss)
+                    [_, batch_G_loss] = session.run(
+                        [G_train_op, G_loss], feed_dict={
+                        })
+                    loop.collect_metrics(G_loss=batch_G_loss)
                 #
                 # if epoch % config.grad_epoch_freq == 0:
                 #     array_VAE_grad = []
