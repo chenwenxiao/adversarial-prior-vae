@@ -35,8 +35,8 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 2000
-    energy_prior_start_epoch = 2000
+    max_epoch = 1500
+    energy_prior_start_epoch = 1500
     beta = 0.01
     pull_back_energy_weight = 1
 
@@ -44,7 +44,7 @@ class ExpConfig(spt.Config):
     batch_size = 128
     initial_lr = 0.0002
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [400, 800, 1200, 1600, 2000]
+    lr_anneal_epoch_freq = [300, 600, 900, 1200, 1500]
     lr_anneal_step_freq = None
 
     gradient_penalty_weight = 2
@@ -657,6 +657,9 @@ def main():
         pn_energy = tf.reduce_mean(test_pn_net['x'].log_prob().mean_energy)
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
+        kl_adv_and_gaussian = tf.reduce_mean(
+            test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob
+        )
     xi_node = get_var('p_net/xi')
     # derive the optimizer
     with tf.name_scope('optimizing'):
@@ -810,7 +813,7 @@ def main():
                          'reconstruct_energy': reconstruct_energy,
                          'real_energy': real_energy,
                          'pd_energy': pd_energy, 'pn_energy': pn_energy,
-                         'test_recon': test_recon},
+                         'test_recon': test_recon, 'kl_adv_and_gaussian': kl_adv_and_gaussian},
                 inputs=[input_x],
                 data_flow=test_flow,
                 time_metric_name='test_time'

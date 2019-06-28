@@ -35,8 +35,8 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 2000
-    energy_prior_start_epoch = 2000
+    max_epoch = 1500
+    energy_prior_start_epoch = 1500
     beta = 0.005
     pull_back_energy_weight = 1
 
