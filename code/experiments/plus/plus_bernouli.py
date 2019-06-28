@@ -664,7 +664,7 @@ def main():
     # derive the optimizer
     with tf.name_scope('optimizing'):
         VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
-            'beta') + tf.trainable_variables('p_net/xi')
+            'beta')
         D_params = tf.trainable_variables('D_psi')
         G_params = tf.trainable_variables('G_theta')
         print("========VAE_params=========")

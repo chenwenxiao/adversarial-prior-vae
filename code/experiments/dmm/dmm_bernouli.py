@@ -51,7 +51,7 @@ class ExpConfig(spt.Config):
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    n_critical = 10
+    n_critical = 5
     # evaluation parameters
     train_n_pz = 128
     train_n_qz = 1
