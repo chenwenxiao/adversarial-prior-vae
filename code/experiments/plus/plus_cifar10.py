@@ -69,9 +69,9 @@ class ExpConfig(spt.Config):
 
     @property
     def x_shape(self):
-        return (28, 28, 1)
+        return (32, 32, 3)
 
-    x_shape_multiple = 784
+    x_shape_multiple = 32 * 32 * 3
 
 
 config = ExpConfig()
@@ -414,11 +414,11 @@ def G_theta(z):
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
-        h_z = spt.layers.dense(z, 64 * 7 * 7, scope='level_0', normalizer_fn=None)
+        h_z = spt.layers.dense(z, 64 * config.x_shape[0] // 4 * config.x_shape[1] // 4, scope='level_0', normalizer_fn=None)
         h_z = spt.ops.reshape_tail(
             h_z,
             ndims=1,
-            shape=(7, 7, 64)
+            shape=(config.x_shape[0] // 4, config.x_shape[1] // 4, 64)
         )
         h_z = spt.layers.deconv2d(h_z, 64, scope='level_1')  # output: (7, 7, 64)
         h_z = spt.layers.deconv2d(h_z, 64, scope='level_2')  # output: (7, 7, 64)
