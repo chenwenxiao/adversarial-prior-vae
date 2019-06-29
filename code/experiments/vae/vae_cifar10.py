@@ -560,6 +560,10 @@ def main():
                     test_chain.vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
                 ), axis=-1)
         ) + config.x_shape_multiple * np.log(128.0)
+
+        test_recon = tf.reduce_mean(
+            test_chain.model['x'].log_prob()
+        )
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
 
     # derive the optimizer
@@ -683,7 +687,7 @@ def main():
 
             evaluator = spt.Evaluator(
                 loop,
-                metrics={'test_nll': test_nll, 'test_lb': test_lb, },
+                metrics={'test_nll': test_nll, 'test_lb': test_lb, 'test_recon': test_recon},
                 inputs=[input_x],
                 data_flow=test_flow,
                 time_metric_name='test_time'

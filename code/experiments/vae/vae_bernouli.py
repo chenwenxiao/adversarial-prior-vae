@@ -572,9 +572,6 @@ def main():
             latent_log_probs=[test_q_net['z'].log_prob()],
             axis=0
         )
-        test_recon = tf.reduce_mean(
-            log_px_given_z
-        )
         logits_labels = tf.clip_by_value(labels, clip_value_max=1 - 1e-7, clip_value_min=1e-7)
         logits_labels = tf.log(logits_labels) - tf.log1p(-logits_labels)
         test_best_recon = tf.reduce_mean(
@@ -584,6 +581,9 @@ def main():
                 ),
                 axis=list(range(-len(config.x_shape), 0))
             )
+        )
+        test_recon = tf.reduce_mean(
+            log_px_given_z
         )
         test_nll = -tf.reduce_mean(
             vi.evaluation.is_loglikelihood()

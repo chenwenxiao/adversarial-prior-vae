@@ -612,41 +612,28 @@ def main():
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta)
-
-        p = test_chain.model['x'].distribution.mean
-        p = tf.clip_by_value(p, clip_value_max=1 - 1e-7, clip_value_min=1e-7)
-        logits = tf.log(p) - tf.log1p(-p)
-        labels = tf.tile(
-            tf.expand_dims(test_chain.model['x'], axis=0),
-            tf.concat([[config.test_n_qz], [1] * spt.utils.get_rank(test_chain.model['x'])], axis=0)
-        )
-        log_px_given_z = tf.reduce_sum(
-            -tf.nn.sigmoid_cross_entropy_with_logits(
-                labels=labels, logits=logits
-            ),
-            axis=list(range(-len(config.x_shape), 0))
-        )
-        vi = spt.VariationalInference(
-            log_joint=log_px_given_z + test_chain.model['z'].log_prob(),
-            latent_log_probs=[test_q_net['z'].log_prob()],
-            axis=0
-        )
         test_recon = tf.reduce_mean(
-            log_px_given_z
+            test_chain.model['x'].log_prob()
         )
         test_nll = -tf.reduce_mean(
-            vi.evaluation.is_loglikelihood()
-        )
-        test_lb = tf.reduce_mean(vi.lower_bound.elbo())
+            spt.ops.log_mean_exp(
+                tf.reshape(
+                    test_chain.vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
+                ), axis=-1)
+        ) + config.x_shape_multiple * np.log(128.0)
+        test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
 
         vi = spt.VariationalInference(
-            log_joint=log_px_given_z + test_chain.model['z'].log_prob().log_energy_prob,
+            log_joint=test_p_net['x'].log_prob() + test_chain.model['z'].log_prob().log_energy_prob,
             latent_log_probs=[test_q_net['z'].log_prob()],
             axis=0
         )
         adv_test_nll = -tf.reduce_mean(
-            vi.evaluation.is_loglikelihood()
-        )
+            spt.ops.log_mean_exp(
+                tf.reshape(
+                    vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
+                ), axis=-1)
+        ) + config.x_shape_multiple * np.log(128.0)
         adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
 
         real_energy = tf.reduce_mean(test_p_net['x'].log_prob().energy)
