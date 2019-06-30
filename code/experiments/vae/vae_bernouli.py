@@ -28,7 +28,7 @@ class ExpConfig(spt.Config):
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
-    kernel_size = 5
+    kernel_size = 3
     shortcut_kernel_size = 1
     batch_norm = True
 

@@ -28,7 +28,7 @@ class ExpConfig(spt.Config):
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
-    kernel_size = 5
+    kernel_size = 3
     shortcut_kernel_size = 1
     batch_norm = True
 
@@ -451,9 +451,9 @@ def D_psi(x):
         h_x = spt.layers.conv2d(h_x, 64, scope='level_4')  # output: (7, 7, 64)
 
         h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
-        h_x = spt.layers.dense(h_x, 64, scope='level_5')
+        h_x = spt.layers.dense(h_x, 64, scope='level_-2')
     # sample z ~ q(z|x)
-    h_x = spt.layers.dense(h_x, 1, scope='level_6')
+    h_x = spt.layers.dense(h_x, 1, scope='level_-1')
     return tf.squeeze(h_x, axis=-1)
 
 
@@ -687,7 +687,7 @@ def main():
     # derive the plotting function
     with tf.name_scope('plotting'):
         x_plots = 256.0 * tf.reshape(
-            p_net(n_z=100, mcmc_iterator=0, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
+            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
         reconstruct_q_net = q_net(input_x)
         reconstruct_z = reconstruct_q_net['z']
         reconstruct_plots = 256.0 * tf.reshape(

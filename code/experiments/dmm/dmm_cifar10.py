@@ -24,11 +24,11 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 256
+    z_dim = 512
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
-    kernel_size = 5
+    kernel_size = 3
     shortcut_kernel_size = 1
     batch_norm = True
 
@@ -346,18 +346,18 @@ def q_net(x, observed=None, n_z=None):
     normalizer_fn = None
 
     # compute the hidden features
-    with arg_scope([spt.layers.conv2d],
+    with arg_scope([spt.layers.resnet_conv2d_block],
                    kernel_size=config.kernel_size,
-                   # shortcut_kernel_size=config.shortcut_kernel_size,
+                   shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_x = tf.to_float(x)
-        h_x = spt.layers.conv2d(h_x, 32, scope='level_0')  # output: (28, 28, 16)
-        h_x = spt.layers.conv2d(h_x, 32, strides=2, scope='level_1')  # output: (14, 14, 32)
-        h_x = spt.layers.conv2d(h_x, 64, scope='level_2')  # output: (14, 14, 32)
-        h_x = spt.layers.conv2d(h_x, 64, strides=2, scope='level_3')  # output: (7, 7, 64)
-        h_x = spt.layers.conv2d(h_x, 64, scope='level_4')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_1')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_2')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_3')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_4')  # output: (7, 7, 64)
 
     # sample z ~ q(z|x)
     h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
@@ -408,23 +408,23 @@ def G_theta(z):
     normalizer_fn = None
 
     # compute the hidden features
-    with arg_scope([spt.layers.deconv2d],
+    with arg_scope([spt.layers.resnet_deconv2d_block],
                    kernel_size=config.kernel_size,
-                   # shortcut_kernel_size=config.shortcut_kernel_size,
+                   shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
-        h_z = spt.layers.dense(z, 64 * config.x_shape[0] // 4 * config.x_shape[1] // 4, scope='level_0', normalizer_fn=None)
+        h_z = spt.layers.dense(z, 256 * config.x_shape[0] // 8 * config.x_shape[1] // 8, scope='level_0', normalizer_fn=None)
         h_z = spt.ops.reshape_tail(
             h_z,
             ndims=1,
-            shape=(config.x_shape[0] // 4, config.x_shape[1] // 4, 64)
+            shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 256)
         )
-        h_z = spt.layers.deconv2d(h_z, 64, scope='level_1')  # output: (7, 7, 64)
-        h_z = spt.layers.deconv2d(h_z, 64, scope='level_2')  # output: (7, 7, 64)
-        h_z = spt.layers.deconv2d(h_z, 64, strides=2, scope='level_3')  # output: (14, 14, 32)
-        h_z = spt.layers.deconv2d(h_z, 32, scope='level_4')  # output: (14, 14, 32)
-        h_z = spt.layers.deconv2d(h_z, 32, strides=2, scope='level_5')  # output: (28, 28, 16)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 256, strides=2, scope='level_1')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_2')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, strides=2, scope='level_3')  # output: (14, 14, 32)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_4')  # output: (14, 14, 32)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_5')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         kernel_initializer=tf.zeros_initializer()
@@ -437,23 +437,23 @@ def G_theta(z):
 def D_psi(x):
     normalizer_fn = None
 
-    with arg_scope([spt.layers.conv2d],
+    with arg_scope([spt.layers.resnet_conv2d_block],
                    kernel_size=config.kernel_size,
-                   # shortcut_kernel_size=config.shortcut_kernel_size,
+                   shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
-                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg), ):
+                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_x = tf.to_float(x)
-        h_x = spt.layers.conv2d(h_x, 32, scope='level_0')  # output: (28, 28, 16)
-        h_x = spt.layers.conv2d(h_x, 32, strides=2, scope='level_1')  # output: (14, 14, 32)
-        h_x = spt.layers.conv2d(h_x, 64, scope='level_2')  # output: (14, 14, 32)
-        h_x = spt.layers.conv2d(h_x, 64, strides=2, scope='level_3')  # output: (7, 7, 64)
-        h_x = spt.layers.conv2d(h_x, 64, scope='level_4')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_1')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_2')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_3')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_4')  # output: (7, 7, 64)
 
         h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
-        h_x = spt.layers.dense(h_x, 64, scope='level_5')
+        h_x = spt.layers.dense(h_x, 64, scope='level_-2')
     # sample z ~ q(z|x)
-    h_x = spt.layers.dense(h_x, 1, scope='level_6')
+    h_x = spt.layers.dense(h_x, 1, scope='level_-1')
     return tf.squeeze(h_x, axis=-1)
 
 
@@ -603,55 +603,55 @@ def main():
         D_loss += tf.losses.get_regularization_loss()
         G_loss += tf.losses.get_regularization_loss()
 
-    # derive the nll and logits output for testing
-    with tf.name_scope('testing'):
-        test_q_net = q_net(input_x, n_z=config.test_n_qz)
-        test_p_net = p_net(observed={'x': input_x, 'z': test_q_net['z']},
-                           n_z=config.test_n_qz, beta=beta, log_Z=get_log_Z())
-        # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
-        test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
-        test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
-                                      beta=beta)
-        test_recon = tf.reduce_mean(
-            test_chain.model['x'].log_prob()
-        )
-        test_nll = -tf.reduce_mean(
-            spt.ops.log_mean_exp(
-                tf.reshape(
-                    test_chain.vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
-                ), axis=-1)
-        ) + config.x_shape_multiple * np.log(128.0)
-        test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
+        # derive the nll and logits output for testing
+        with tf.name_scope('testing'):
+            test_q_net = q_net(input_x, n_z=config.test_n_qz)
+            test_p_net = p_net(observed={'x': input_x, 'z': test_q_net['z']},
+                               n_z=config.test_n_qz, beta=beta, log_Z=get_log_Z())
+            # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
+            test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
+            test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
+                                          beta=beta)
+            test_recon = tf.reduce_mean(
+                test_chain.model['x'].log_prob()
+            )
+            test_nll = -tf.reduce_mean(
+                spt.ops.log_mean_exp(
+                    tf.reshape(
+                        test_chain.vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
+                    ), axis=-1)
+            ) + config.x_shape_multiple * np.log(128.0)
+            test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
 
-        vi = spt.VariationalInference(
-            log_joint=test_p_net['x'].log_prob() + test_chain.model['z'].log_prob().log_energy_prob,
-            latent_log_probs=[test_q_net['z'].log_prob()],
-            axis=0
-        )
-        adv_test_nll = -tf.reduce_mean(
-            spt.ops.log_mean_exp(
-                tf.reshape(
-                    vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
-                ), axis=-1)
-        ) + config.x_shape_multiple * np.log(128.0)
-        adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
+            vi = spt.VariationalInference(
+                log_joint=test_p_net['x'].log_prob() + test_chain.model['z'].log_prob().log_energy_prob,
+                latent_log_probs=[test_q_net['z'].log_prob()],
+                axis=0
+            )
+            adv_test_nll = -tf.reduce_mean(
+                spt.ops.log_mean_exp(
+                    tf.reshape(
+                        vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
+                    ), axis=-1)
+            ) + config.x_shape_multiple * np.log(128.0)
+            adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
 
-        real_energy = tf.reduce_mean(test_p_net['x'].log_prob().energy)
-        reconstruct_energy = tf.reduce_mean(test_p_net['x'].log_prob().mean_energy)
-        pd_energy = tf.reduce_mean(
-            test_pn_net['x'].log_prob().mean_energy * tf.exp(
-                test_pn_net['z'].log_prob().log_energy_prob - test_pn_net['z'].log_prob()))
-        pn_energy = tf.reduce_mean(test_pn_net['x'].log_prob().mean_energy)
-        log_Z_compute_op = spt.ops.log_mean_exp(
-            -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
-        kl_adv_and_gaussian = tf.reduce_mean(
-            test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob
-        )
+            real_energy = tf.reduce_mean(test_p_net['x'].log_prob().energy)
+            reconstruct_energy = tf.reduce_mean(test_p_net['x'].log_prob().mean_energy)
+            pd_energy = tf.reduce_mean(
+                test_pn_net['x'].log_prob().mean_energy * tf.exp(
+                    test_pn_net['z'].log_prob().log_energy_prob - test_pn_net['z'].log_prob()))
+            pn_energy = tf.reduce_mean(test_pn_net['x'].log_prob().mean_energy)
+            log_Z_compute_op = spt.ops.log_mean_exp(
+                -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
+            kl_adv_and_gaussian = tf.reduce_mean(
+                test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob
+            )
     xi_node = get_var('p_net/xi')
     # derive the optimizer
     with tf.name_scope('optimizing'):
         VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
-            'beta') + tf.trainable_variables('p_net/xi')
+            'beta')
         D_params = tf.trainable_variables('D_psi')
         G_params = tf.trainable_variables('G_theta')
         print("========VAE_params=========")
@@ -687,7 +687,7 @@ def main():
     # derive the plotting function
     with tf.name_scope('plotting'):
         x_plots = 256.0 * tf.reshape(
-            p_net(n_z=100, mcmc_iterator=0, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
+            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
         reconstruct_q_net = q_net(input_x)
         reconstruct_z = reconstruct_q_net['z']
         reconstruct_plots = 256.0 * tf.reshape(
