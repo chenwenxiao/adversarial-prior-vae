@@ -55,10 +55,10 @@ class ExpConfig(spt.Config):
     # evaluation parameters
     train_n_pz = 128
     train_n_qz = 1
-    test_n_pz = 5000
-    test_n_qz = 100
+    test_n_pz = 1000
+    test_n_qz = 10
     test_batch_size = 64
-    test_epoch_freq = 100
+    test_epoch_freq = 10
     plot_epoch_freq = 10
 
     test_fid_n_pz = 5000
