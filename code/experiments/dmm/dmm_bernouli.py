@@ -607,8 +607,6 @@ def main():
     # derive the nll and logits output for testing
     with tf.name_scope('testing'):
         test_q_net = q_net(input_x, n_z=config.test_n_qz)
-        test_p_net = p_net(observed={'x': input_x, 'z': test_q_net['z']},
-                           n_z=config.test_n_qz, beta=beta, log_Z=get_log_Z())
         # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
@@ -650,8 +648,8 @@ def main():
         )
         adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
 
-        real_energy = tf.reduce_mean(test_p_net['x'].log_prob().energy)
-        reconstruct_energy = tf.reduce_mean(test_p_net['x'].log_prob().mean_energy)
+        real_energy = tf.reduce_mean(test_chain.model['x'].log_prob().energy)
+        reconstruct_energy = tf.reduce_mean(test_chain.model['x'].log_prob().mean_energy)
         pd_energy = tf.reduce_mean(
             test_pn_net['x'].log_prob().mean_energy * tf.exp(
                 test_pn_net['z'].log_prob().log_energy_prob - test_pn_net['z'].log_prob()))
