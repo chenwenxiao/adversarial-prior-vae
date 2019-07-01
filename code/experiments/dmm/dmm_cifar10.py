@@ -37,7 +37,7 @@ class ExpConfig(spt.Config):
     write_summary = True
     max_epoch = 1500
     energy_prior_start_epoch = 1500
-    beta = 0.0001
+    beta = 1e-8
     pull_back_energy_weight = 1
 
     max_step = None
@@ -51,11 +51,11 @@ class ExpConfig(spt.Config):
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    n_critical = 10
+    n_critical = 5
     # evaluation parameters
     train_n_pz = 128
     train_n_qz = 1
-    test_n_pz = 10000
+    test_n_pz = 5000
     test_n_qz = 100
     test_batch_size = 64
     test_epoch_freq = 100
@@ -651,7 +651,7 @@ def main():
     # derive the optimizer
     with tf.name_scope('optimizing'):
         VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
-            'beta')
+            'beta') + tf.trainable_variables('p_net/xi')
         D_params = tf.trainable_variables('D_psi')
         G_params = tf.trainable_variables('G_theta')
         print("========VAE_params=========")
