@@ -381,7 +381,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0):
                         logstd=tf.zeros([1, config.z_dim]))
     normal = normal.batch_ndims_to_value(1)
     pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=get_log_Z(), mcmc_iterator=mcmc_iterator)
-    z = net.add('z', pz, n_samples=n_z, group_ndims=1)
+    z = net.add('z', pz, n_samples=n_z)
     x_mean = G_theta(z)
     x = net.add('x', ExponentialDistribution(
         mean=x_mean,
