@@ -31,6 +31,7 @@ class ExpConfig(spt.Config):
     kernel_size = 3
     shortcut_kernel_size = 1
     batch_norm = True
+    nf_layers = 20
 
     # training parameters
     result_dir = None
@@ -332,7 +333,7 @@ def get_z_moments(z, value_ndims, name=None):
 
 @add_arg_scope
 @spt.global_reuse
-def q_net(x, observed=None, n_z=None):
+def q_net(x, posterior_flow, observed=None, n_z=None):
     net = spt.BayesianNet(observed=observed)
     normalizer_fn = None
 
@@ -355,8 +356,13 @@ def q_net(x, observed=None, n_z=None):
     h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
     z_mean = spt.layers.dense(h_x, config.z_dim, scope='z_mean', kernel_initializer=tf.zeros_initializer())
     z_logstd = spt.layers.dense(h_x, config.z_dim, scope='z_logstd', kernel_initializer=tf.zeros_initializer())
-    z = net.add('z', spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
-                n_samples=n_z, group_ndims=1)
+    z_distribution = spt.FlowDistribution(
+        spt.Normal(mean=z_mean, logstd=z_logstd),
+        posterior_flow
+    )
+    z = net.add('z', z_distribution, n_samples=n_z)
+    # z = net.add('z', spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
+    #             n_samples=n_z, group_ndims=1)
 
     return net
 
@@ -405,7 +411,8 @@ def G_theta(z):
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
-        h_z = spt.layers.dense(z, 512 * config.x_shape[0] // 8 * config.x_shape[1] // 8, scope='level_0', normalizer_fn=None)
+        h_z = spt.layers.dense(z, 512 * config.x_shape[0] // 8 * config.x_shape[1] // 8, scope='level_0',
+                               normalizer_fn=None)
         h_z = spt.ops.reshape_tail(
             h_z,
             ndims=1,
@@ -504,6 +511,7 @@ def limited(iterator, n):
     except StopIteration:
         pass
 
+
 debug_variable = None
 
 
@@ -527,6 +535,9 @@ def main():
     results.make_dirs('plotting/test.reconstruct', exist_ok=True)
     results.make_dirs('train_summary', exist_ok=True)
 
+    posterior_flow = spt.layers.planar_normalizing_flows(
+        config.nf_layers, name='posterior_flow')
+
     # input placeholders
     input_x = tf.placeholder(
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_x')
@@ -539,14 +550,14 @@ def main():
     with tf.name_scope('initialization'), \
          arg_scope([spt.layers.act_norm], initializing=True), \
          spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
-        init_q_net = q_net(input_x, n_z=config.train_n_qz)
+        init_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
         init_p_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz, beta=beta)
         init_loss = get_all_loss(init_q_net, init_p_net)
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
          arg_scope([batch_norm], training=True):
-        train_q_net = q_net(input_x, n_z=config.train_n_qz)
+        train_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']}, n_z=config.train_n_qz, beta=beta)
 
         VAE_loss = get_all_loss(train_q_net, train_p_net)
@@ -554,7 +565,7 @@ def main():
 
     # derive the nll and logits output for testing
     with tf.name_scope('testing'):
-        test_q_net = q_net(input_x, n_z=config.test_n_qz)
+        test_q_net = q_net(input_x, posterior_flow, n_z=config.test_n_qz)
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta)
         test_nll = -tf.reduce_mean(
@@ -572,7 +583,7 @@ def main():
     # derive the optimizer
     with tf.name_scope('optimizing'):
         VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
-            'beta')
+            'beta') + tf.trainable_variables('posterior_flow')
         print("========VAE_params=========")
         print(VAE_params)
         with tf.variable_scope('VAE_optimizer'):
@@ -586,7 +597,7 @@ def main():
     with tf.name_scope('plotting'):
         x_plots = 256.0 * tf.reshape(
             p_net(n_z=100, mcmc_iterator=0, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
-        reconstruct_q_net = q_net(input_x)
+        reconstruct_q_net = q_net(input_x, posterior_flow)
         reconstruct_z = reconstruct_q_net['z']
         reconstruct_plots = 256.0 * tf.reshape(
             p_net(observed={'z': reconstruct_z}, beta=beta)['x'],
@@ -677,7 +688,7 @@ def main():
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
-                           var_groups=['q_net', 'p_net'],
+                           var_groups=['q_net', 'p_net', 'posterior_flow', 'G_phi', 'D_psi'],
                            max_epoch=config.max_epoch,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
