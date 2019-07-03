@@ -65,6 +65,7 @@ class ExpConfig(spt.Config):
 
     test_fid_n_pz = 5000
     test_x_samples = 8
+    log_Z_times = 10
 
     epsilon = -20
 
@@ -893,9 +894,14 @@ def main():
                     plot_samples(loop)
 
                 if epoch % config.test_epoch_freq == 0:
-                    log_Z = session.run(log_Z_compute_op)
+                    log_Z_list = []
+                    for i in range(config.log_Z_times):
+                        log_Z_list.append(session.run(log_Z_compute_op))
+                    from scipy.misc import logsumexp
+                    log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(config.log_Z_time)
                     get_log_Z().set(log_Z)
-                    print(log_Z, get_log_Z())
+                    print('log_Z_list:{}'.format(log_Z_list))
+                    print('log_Z:{}'.format(log_Z))
                     with loop.timeit('eval_time'):
                         evaluator.run()
 
