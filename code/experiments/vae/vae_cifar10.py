@@ -575,6 +575,11 @@ def main():
         test_q_net = q_net(input_x, posterior_flow, n_z=config.test_n_qz)
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta)
+        test_mse = tf.reduce_sum(
+            (tf.round(test_chain.model['x'].distribution.mean * 128 + 127.5) - tf.round(
+                test_chain.model['x'] * 128 + 127.5)) ** 2, axis=[-1, -2, -3])  # (sample_dim, batch_dim, x_sample_dim)
+        test_mse = tf.reduce_min(test_mse, [0, 2])
+        test_mse = tf.reduce_mean(test_mse)
         test_nll = -tf.reduce_mean(
             spt.ops.log_mean_exp(
                 tf.reshape(
@@ -708,7 +713,7 @@ def main():
 
             evaluator = spt.Evaluator(
                 loop,
-                metrics={'test_nll': test_nll, 'test_lb': test_lb, 'test_recon': test_recon},
+                metrics={'test_nll': test_nll, 'test_lb': test_lb, 'test_recon': test_recon, 'test_mse': test_mse},
                 inputs=[input_x],
                 data_flow=test_flow,
                 time_metric_name='test_time'

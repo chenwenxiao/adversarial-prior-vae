@@ -630,6 +630,11 @@ def main():
         test_recon = tf.reduce_mean(
             test_chain.model['x'].log_prob()
         )
+        test_mse = tf.reduce_sum(
+            (tf.round(test_chain.model['x'].distribution.mean * 128 + 127.5) - tf.round(
+                test_chain.model['x'] * 128 + 127.5)) ** 2, axis=[-1, -2, -3]) # (sample_dim, batch_dim, x_sample_dim)
+        test_mse = tf.reduce_min(test_mse, [0, 2])
+        test_mse = tf.reduce_mean(test_mse)
         test_nll = -tf.reduce_mean(
             spt.ops.log_mean_exp(
                 tf.reshape(
@@ -816,7 +821,8 @@ def main():
                          'reconstruct_energy': reconstruct_energy,
                          'real_energy': real_energy,
                          'pd_energy': pd_energy, 'pn_energy': pn_energy,
-                         'test_recon': test_recon, 'kl_adv_and_gaussian': kl_adv_and_gaussian},
+                         'test_recon': test_recon, 'kl_adv_and_gaussian': kl_adv_and_gaussian,
+                         'test_mse': test_mse},
                 inputs=[input_x],
                 data_flow=test_flow,
                 time_metric_name='test_time'
