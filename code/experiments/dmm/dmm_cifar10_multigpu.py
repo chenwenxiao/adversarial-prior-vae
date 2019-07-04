@@ -14,7 +14,7 @@ from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
                                       bernoulli_as_pixel,
                                       bernoulli_flow,
-                                      print_with_title)
+                                      print_with_title, MultiGPU)
 from code.experiments.utils import get_inception_score, get_fid
 import numpy as np
 from scipy.misc import logsumexp
@@ -24,7 +24,7 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 512
+    z_dim = 3072
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -52,7 +52,7 @@ class ExpConfig(spt.Config):
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    n_critical = 100
+    n_critical = 10
     # evaluation parameters
     train_n_pz = 128
     train_n_qz = 1
@@ -499,8 +499,7 @@ def D_psi(x):
         h_x = spt.layers.dense(h_x, 64, scope='level_-2')
     # sample z ~ q(z|x)
     h_x = spt.layers.dense(h_x, 1, scope='level_-1')
-    h_x = tf.squeeze(h_x, axis=-1)
-    return tf.clip_by_value(h_x, -1e4, 1e4)
+    return tf.squeeze(h_x, axis=-1)
 
 
 def get_all_loss(q_net, p_net, pn_net, beta):
@@ -628,128 +627,172 @@ def main():
     beta = tf.Variable(initial_value=0.1, dtype=tf.float32, name='beta', trainable=True)
     beta = tf.clip_by_value(beta, config.beta, 1.0)
 
-    # derive the loss for initializing
-    with tf.name_scope('initialization'), \
-         arg_scope([spt.layers.act_norm], initializing=True), \
-         spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
-        init_pn_net = p_net(n_z=config.train_n_pz, beta=beta)
-        init_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
-        init_p_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz, beta=beta)
-        init_loss = sum(get_all_loss(init_q_net, init_p_net, init_pn_net, beta))
+    multi_gpu = MultiGPU()
+    collect_dict = {}
+    batch_size = spt.utils.get_batch_size(input_x)
 
-    # derive the loss and lower-bound for training
-    with tf.name_scope('training'), \
-         arg_scope([batch_norm], training=True):
-        train_pn_net = p_net(n_z=config.train_n_pz, beta=beta)
-        train_log_Z = spt.ops.log_mean_exp(-train_pn_net['z'].log_prob().energy - train_pn_net['z'].log_prob())
-        train_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
-        train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']},
-                            n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
+    VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
+    D_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
+    G_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
 
-        VAE_loss, D_loss, G_loss, debug = get_all_loss(train_q_net, train_p_net, train_pn_net, beta)
+    def collect_from_gpus(*args, **kwargs):
+        for var, value in kwargs:
+            if var not in collect_dict:
+                collect_dict[var] = []
+            collect_dict[var].append(value)
 
-        VAE_loss += tf.losses.get_regularization_loss()
-        D_loss += tf.losses.get_regularization_loss()
-        G_loss += tf.losses.get_regularization_loss()
+    def average_from_gpus(*args):
+        for var in args:
+            if var not in collect_dict:
+                yield multi_gpu.average([collect_dict[var]], batch_size)
 
-    # derive the nll and logits output for testing
-    with tf.name_scope('testing'):
-        test_q_net = q_net(input_x, posterior_flow, n_z=config.test_n_qz)
-        # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
-        test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
-        test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
-                                      beta=beta, log_Z=get_log_Z())
-        test_recon = tf.reduce_mean(
-            test_chain.model['x'].log_prob()
-        )
-        test_mse = tf.reduce_sum(
-            (tf.round(test_chain.model['x'].distribution.mean * 128 + 127.5) - tf.round(
-                test_chain.model['x'] * 128 + 127.5)) ** 2, axis=[-1, -2, -3])  # (sample_dim, batch_dim, x_sample_dim)
-        test_mse = tf.reduce_min(test_mse, axis=[0])
-        test_mse = tf.reduce_mean(tf.reduce_mean(tf.reshape(
-            test_mse, (-1, config.test_x_samples,)
-        ), axis=-1))
-        test_nll = -tf.reduce_mean(
-            spt.ops.log_mean_exp(
-                tf.reshape(
-                    test_chain.vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
-                ), axis=-1)
-        ) + config.x_shape_multiple * np.log(128.0)
-        test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
+    for dev, pre_build, [dev_input_x] in multi_gpu.data_parallel(
+            batch_size, [input_x]):
+        with tf.device(dev), multi_gpu.maybe_name_scope(dev):
+            if pre_build:
+                # derive the loss for initializing
+                with tf.name_scope('initialization'), \
+                     arg_scope([spt.layers.act_norm], initializing=True), \
+                     spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
+                    init_pn_net = p_net(n_z=config.train_n_pz, beta=beta)
+                    init_q_net = q_net(dev_input_x, posterior_flow, n_z=config.train_n_qz)
+                    init_p_net = p_net(observed={'x': dev_input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz,
+                                       beta=beta)
+                    init_loss = sum(get_all_loss(init_q_net, init_p_net, init_pn_net, beta))
+            else:
+                # derive the loss and lower-bound for training
+                with tf.name_scope('training'), \
+                     arg_scope([batch_norm], training=True):
+                    train_pn_net = p_net(n_z=config.train_n_pz, beta=beta)
+                    train_log_Z = spt.ops.log_mean_exp(
+                        -train_pn_net['z'].log_prob().energy - train_pn_net['z'].log_prob())
+                    train_q_net = q_net(dev_input_x, posterior_flow, n_z=config.train_n_qz)
+                    train_p_net = p_net(observed={'x': dev_input_x, 'z': train_q_net['z']},
+                                        n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
 
-        vi = spt.VariationalInference(
-            log_joint=test_chain.model['x'].log_prob() + test_chain.model['z'].log_prob().log_energy_prob,
-            latent_log_probs=[test_q_net['z'].log_prob()],
-            axis=0
-        )
-        adv_test_nll = -tf.reduce_mean(
-            spt.ops.log_mean_exp(
-                tf.reshape(
-                    vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
-                ), axis=-1)
-        ) + config.x_shape_multiple * np.log(128.0)
-        adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
+                    VAE_loss, D_loss, G_loss, debug = get_all_loss(train_q_net, train_p_net, train_pn_net, beta)
 
-        real_energy = tf.reduce_mean(test_chain.model['x'].log_prob().energy)
-        reconstruct_energy = tf.reduce_mean(test_chain.model['x'].log_prob().mean_energy)
-        pd_energy = tf.reduce_mean(
-            test_pn_net['x'].log_prob().mean_energy * tf.exp(
-                test_pn_net['z'].log_prob().log_energy_prob - test_pn_net['z'].log_prob()))
-        pn_energy = tf.reduce_mean(test_pn_net['x'].log_prob().mean_energy)
-        log_Z_compute_op = spt.ops.log_mean_exp(
-            -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
-        kl_adv_and_gaussian = tf.reduce_mean(
-            test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob
-        )
-    xi_node = get_var('p_net/xi')
-    # derive the optimizer
-    with tf.name_scope('optimizing'):
-        VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
-            'beta') + tf.trainable_variables('p_net/xi') + tf.trainable_variables('posterior_flow')
-        D_params = tf.trainable_variables('D_psi')
-        G_params = tf.trainable_variables('G_theta')
-        print("========VAE_params=========")
-        print(VAE_params)
-        print("========D_params=========")
-        print(D_params)
-        print("========G_params=========")
-        print(G_params)
-        with tf.variable_scope('VAE_optimizer'):
-            _VAE_grads = tf.gradients(VAE_loss, G_params)
-            VAE_grad = []
-            for grad in _VAE_grads:
-                VAE_grad.append(tf.reshape(grad, (-1,)))
-            VAE_grad = tf.concat(VAE_grad, axis=0)
-            # above is working for get the gradient for G_theta
-            VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
-            VAE_grads = VAE_optimizer.compute_gradients(VAE_loss, VAE_params)
-        with tf.variable_scope('D_optimizer'):
-            D_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
-            D_grads = D_optimizer.compute_gradients(D_loss, D_params)
-        with tf.variable_scope('G_optimizer'):
-            G_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
-            G_grads = G_optimizer.compute_gradients(G_loss, G_params)
+                    VAE_loss += tf.losses.get_regularization_loss()
+                    D_loss += tf.losses.get_regularization_loss()
+                    G_loss += tf.losses.get_regularization_loss()
+                collect_from_gpus(VAE_loss=VAE_loss, D_loss=D_loss, G_loss=G_loss)
 
-            _G_grads = tf.gradients(G_loss, G_params)
-            G_grad = [tf.reshape(grad, (-1,)) for grad in _G_grads]
-            G_grad = tf.concat(G_grad, axis=0)
-        with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
-            VAE_train_op = VAE_optimizer.apply_gradients(VAE_grads)
-            G_train_op = G_optimizer.apply_gradients(G_grads)
-        D_train_op = D_optimizer.apply_gradients(D_grads)
+                # derive the nll and logits output for testing
+                with tf.name_scope('testing'):
+                    test_q_net = q_net(dev_input_x, posterior_flow, n_z=config.test_n_qz)
+                    # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
+                    test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
+                    test_chain = test_q_net.chain(p_net, observed={'x': dev_input_x}, n_z=config.test_n_qz,
+                                                  latent_axis=0,
+                                                  beta=beta)
+                    test_recon = tf.reduce_mean(
+                        test_chain.model['x'].log_prob()
+                    )
+                    test_mse = tf.reduce_sum(
+                        (tf.round(test_chain.model['x'].distribution.mean * 128 + 127.5) - tf.round(
+                            test_chain.model['x'] * 128 + 127.5)) ** 2,
+                        axis=[-1, -2, -3])  # (sample_dim, batch_dim, x_sample_dim)
+                    test_mse = tf.reduce_min(test_mse, axis=[0])
+                    test_mse = tf.reduce_mean(tf.reduce_mean(tf.reshape(
+                        test_mse, (-1, config.test_x_samples,)
+                    ), axis=-1))
+                    test_nll = -tf.reduce_mean(
+                        spt.ops.log_mean_exp(
+                            tf.reshape(
+                                test_chain.vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
+                            ), axis=-1)
+                    ) + config.x_shape_multiple * np.log(128.0)
+                    test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
 
-    # derive the plotting function
-    with tf.name_scope('plotting'):
-        x_plots = 256.0 * tf.reshape(
-            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
-        reconstruct_q_net = q_net(input_x, posterior_flow)
-        reconstruct_z = reconstruct_q_net['z']
-        reconstruct_plots = 256.0 * tf.reshape(
-            p_net(observed={'z': reconstruct_z}, beta=beta)['x'],
-            (-1,) + config.x_shape
-        ) / 2 + 127.5
-        x_plots = tf.clip_by_value(x_plots, 0, 255)
-        reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
+                    vi = spt.VariationalInference(
+                        log_joint=test_chain.model['x'].log_prob() + test_chain.model['z'].log_prob().log_energy_prob,
+                        latent_log_probs=[test_q_net['z'].log_prob()],
+                        axis=0
+                    )
+                    adv_test_nll = -tf.reduce_mean(
+                        spt.ops.log_mean_exp(
+                            tf.reshape(
+                                vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
+                            ), axis=-1)
+                    ) + config.x_shape_multiple * np.log(128.0)
+                    adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
+
+                    real_energy = tf.reduce_mean(test_chain.model['x'].log_prob().energy)
+                    reconstruct_energy = tf.reduce_mean(test_chain.model['x'].log_prob().mean_energy)
+                    pd_energy = tf.reduce_mean(
+                        test_pn_net['x'].log_prob().mean_energy * tf.exp(
+                            test_pn_net['z'].log_prob().log_energy_prob - test_pn_net['z'].log_prob()))
+                    pn_energy = tf.reduce_mean(test_pn_net['x'].log_prob().mean_energy)
+                    log_Z_compute_op = spt.ops.log_mean_exp(
+                        -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
+                    kl_adv_and_gaussian = tf.reduce_mean(
+                        test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob
+                    )
+                collect_from_gpus(test_recon=test_recon, test_mse=test_mse, test_nll=test_nll, test_lb=test_lb,
+                                  adv_test_nll=adv_test_nll, adv_test_lb=adv_test_lb, real_energy=real_energy,
+                                  reconstruct_energy=reconstruct_energy, pd_energy=pd_energy, pn_energy=pn_energy,
+                                  log_Z_compute_op=log_Z_compute_op, kl_adv_and_gaussian=kl_adv_and_gaussian)
+
+                xi_node = get_var('p_net/xi')
+                # derive the optimizer
+                with tf.name_scope('optimizing'):
+                    VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables(
+                        'G_theta') + tf.trainable_variables(
+                        'beta') + tf.trainable_variables('p_net/xi') + tf.trainable_variables('posterior_flow')
+                    D_params = tf.trainable_variables('D_psi')
+                    G_params = tf.trainable_variables('G_theta')
+                    print("========VAE_params=========")
+                    print(VAE_params)
+                    print("========D_params=========")
+                    print(D_params)
+                    print("========G_params=========")
+                    print(G_params)
+                    with tf.variable_scope('VAE_optimizer'):
+                        # above is working for get the gradient for G_theta
+                        VAE_grads = VAE_optimizer.compute_gradients(VAE_loss, VAE_params)
+                    with tf.variable_scope('D_optimizer'):
+                        D_grads = D_optimizer.compute_gradients(D_loss, D_params)
+                    with tf.variable_scope('G_optimizer'):
+                        G_grads = G_optimizer.compute_gradients(G_loss, G_params)
+                collect_from_gpus(VAE_grads=VAE_grads, D_grads=D_grads, G_grads=G_grads)
+                print(dev)
+                if dev == '/gpu:0':
+                    # derive the plotting function
+                    with tf.name_scope('plotting'):
+                        x_plots = 256.0 * tf.reshape(
+                            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'].distribution.mean,
+                            (-1,) + config.x_shape) / 2 + 127.5
+                        reconstruct_q_net = q_net(input_x, posterior_flow)
+                        reconstruct_z = reconstruct_q_net['z']
+                        reconstruct_plots = 256.0 * tf.reshape(
+                            p_net(observed={'z': reconstruct_z}, beta=beta)['x'],
+                            (-1,) + config.x_shape
+                        ) / 2 + 127.5
+                        x_plots = tf.clip_by_value(x_plots, 0, 255)
+                        reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
+
+    [VAE_loss, D_loss, G_loss] = average_from_gpus('VAE_loss', 'D_loss', 'G_loss')
+    [VAE_grads, D_grads, G_grads] = average_from_gpus('VAE_grads', 'D_grads', 'G_grads')
+    [test_recon, test_mse, test_nll, test_lb, adv_test_nll, adv_test_lb, real_energy, reconstruct_energy,
+     pd_energy, pn_energy, log_Z_compute_op, kl_adv_and_gaussian] = average_from_gpus(
+        'test_recon', 'test_mse', 'test_nll', 'test_lb', 'adv_test_nll', 'adv_test_lb', 'real_energy',
+        'reconstruct_energy', 'pd_energy', 'pn_energy', 'log_Z_compute_op', 'kl_adv_and_gaussian')
+
+    VAE_train_op = multi_gpu.apply_grads(
+        grads=multi_gpu.average_grads(VAE_grads),
+        optimizer=VAE_optimizer,
+        control_inputs=tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    )
+    D_train_op = multi_gpu.apply_grads(
+        grads=multi_gpu.average_grads(D_grads),
+        optimizer=D_optimizer,
+        control_inputs=tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    )
+    G_train_op = multi_gpu.apply_grads(
+        grads=multi_gpu.average_grads(G_grads),
+        optimizer=G_optimizer,
+        control_inputs=tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    )
 
     def plot_samples(loop):
         with loop.timeit('plot_time'):
@@ -899,23 +942,6 @@ def main():
                         [G_train_op, G_loss], feed_dict={
                         })
                     loop.collect_metrics(G_loss=batch_G_loss)
-                #
-                # if epoch % config.grad_epoch_freq == 0:
-                #     array_VAE_grad = []
-                #     array_G_grad = []
-                #     for step, [x] in loop.iter_steps(MyIterator(train_flow)):
-                #         [batch_VAE_grad, batch_G_grad] = session.run(
-                #             [VAE_grad, G_grad], feed_dict={
-                #                 input_x: x
-                #             })
-                #         array_VAE_grad.append(batch_VAE_grad)
-                #         array_G_grad.append(batch_G_grad)
-                #     mean_VAE_grad = np.mean(np.asarray(array_VAE_grad), axis=0)
-                #     mean_G_grad = np.mean(np.asarray(array_G_grad), axis=0)
-                #     mean_VAE_grad = mean_VAE_grad / np.sqrt(np.sum(mean_VAE_grad ** 2))
-                #     mean_G_grad = mean_G_grad / np.sqrt(np.sum(mean_G_grad ** 2))
-                #     cos_grad = np.sum(mean_VAE_grad * mean_G_grad)
-                #     loop.collect_metrics(cos_grad=cos_grad)
 
                 if epoch in config.lr_anneal_epoch_freq:
                     learning_rate.anneal()

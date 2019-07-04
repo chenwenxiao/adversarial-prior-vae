@@ -598,7 +598,7 @@ def main():
         print(VAE_params)
         with tf.variable_scope('VAE_optimizer'):
             VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
-            VAE_grads = VAE_optimizer.compute_gradients(VAE_loss, VAE_params)
+            VAE_grads = VAE_optimizer.compute_gradients(VAE_loss, VAE_params )
 
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             VAE_train_op = VAE_optimizer.apply_gradients(VAE_grads)

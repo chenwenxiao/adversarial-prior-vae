@@ -610,7 +610,7 @@ def main():
         # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
-                                      beta=beta)
+                                      beta=beta, log_Z=get_log_Z())
 
         p = test_chain.model['x'].distribution.mean
         p = tf.clip_by_value(p, clip_value_max=1 - 1e-7, clip_value_min=1e-7)
@@ -883,11 +883,11 @@ def main():
                     log_Z_list = []
                     for i in range(config.test_Z_times):
                         log_Z_list.append(session.run(log_Z_compute_op))
-                    log_Z_list = np.asarray(log_Z_list)
                     from scipy.misc import logsumexp
-                    log_Z = logsumexp(log_Z_list) - np.log(len(log_Z_list))
+                    log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(config.test_Z_times)
                     get_log_Z().set(log_Z)
-                    print(log_Z, get_log_Z())
+                    print('log_Z_list:{}'.format(log_Z_list))
+                    print('log_Z:{}'.format(log_Z))
                     with loop.timeit('eval_time'):
                         evaluator.run()
 
