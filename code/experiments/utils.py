@@ -1,4 +1,6 @@
 '''
+add get_inception_score_tf and get_fid_tf
+
 computation of IS and FID is from
 https://github.com/tsc2017/inception-score
 and
@@ -26,6 +28,8 @@ altering dmm.py to use this
 
 
 '''
+from tensorflow.contrib.gan.python.eval import inception_score, frechet_inception_distance, preprocess_image
+
 from tensorflow.contrib.gan.python.eval import get_graph_def_from_url_tarball
 
 '''
@@ -66,6 +70,36 @@ activations1 = tf.placeholder(tf.float32, [None, None], name='activations1')
 activations2 = tf.placeholder(tf.float32, [None, None], name='activations2')
 fcd = tfgan.eval.frechet_classifier_distance_from_activations(activations1, activations2)
 
+
+'''
+get_fid_tf and get_inception_score_tf,
+images form must be tensor of tf as 
+"[batch, height, width]"(for 1 channel) 
+or "[batch, height, width, channels]"(for 3 channel)
+value of image must be in [0,255]
+'''
+
+def get_fid_tf(real_img,sample_img):
+
+    real_img = preprocess_image(real_img)
+    sample_img = preprocess_image(sample_img)
+    real_single = real_img.shape.ndim==3
+    sample_single = sample_img.shape.ndim==3
+    if real_single and sample_single:
+        sample_img = tf.concat([sample_img,sample_img,sample_img],3)
+        real_img = tf.concat([real_img,real_img,real_img],3)
+
+    FID=frechet_inception_distance(real_img,sample_img)
+    return FID
+
+def get_inception_score_tf(sample_img):
+    sample_img = preprocess_image(sample_img)
+    sample_single = sample_img.shape.ndim==3
+    if real_single and sample_single:
+        sample_img = tf.concat([sample_img,sample_img,sample_img],3)
+
+    IS=inception_score(sample_img)
+    return IS
 
 def inception_activations(images=inception_images, num_splits=1):
     size = 299
@@ -189,5 +223,6 @@ def get_inception_score(images, splits=10):
 if __name__ == '__main__':
     import tfsnippet as spt
     (train_x, train_y), (test_x, test_y) = spt.datasets.load_cifar10(channels_last=False)
-    print(get_inception_score(test_x))
-    print(get_fid(test_x, test_x))
+    print(get_inception_score_tf(test_x))
+    print(get_fid_tf(test_x, test_x))
+
