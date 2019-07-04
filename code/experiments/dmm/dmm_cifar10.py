@@ -486,13 +486,10 @@ def D_psi(x):
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='std_level_0')  # output: (28, 28, 16)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='std_level_1')  # output: (28, 28, 16)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='std_level_2')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='std_level_3')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='std_level_4')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 128, scope='std_level_5')  # output: (7, 7, 64)
         h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='std_level_6')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 512, scope='std_level_7')  # output: (7, 7, 64)
         h_x = spt.layers.resnet_conv2d_block(h_x, 512, strides=2, scope='std_level_8')  # output: (7, 7, 64)
 
         h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
@@ -657,7 +654,7 @@ def main():
         # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
-                                      beta=beta)
+                                      beta=beta, log_Z=get_log_Z())
         test_recon = tf.reduce_mean(
             test_chain.model['x'].log_prob()
         )
