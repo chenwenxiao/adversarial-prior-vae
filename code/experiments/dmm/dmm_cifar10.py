@@ -52,7 +52,8 @@ class ExpConfig(spt.Config):
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    n_critical = 100
+    D_clip_value = 1e5
+    n_critical = 30
     # evaluation parameters
     train_n_pz = 128
     train_n_qz = 1
@@ -360,10 +361,8 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='mean_level_2')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='mean_level_3')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='mean_level_4')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 128, scope='mean_level_5')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='mean_level_5')  # output: (7, 7, 64)
         h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='mean_level_6')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 512, scope='mean_level_7')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 512, strides=2, scope='mean_level_8')  # output: (7, 7, 64)
         final_channel = config.z_dim // (config.x_shape[0] // 8) // (config.x_shape[1] // 8)
         h_x = spt.layers.resnet_conv2d_block(h_x, final_channel, scope='mean_level_9')  # output: (7, 7, 64)
 
@@ -381,10 +380,8 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='std_level_2')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='std_level_3')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='std_level_4')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 128, scope='std_level_5')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='std_level_5')  # output: (7, 7, 64)
         h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='std_level_6')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 512, scope='std_level_7')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 512, strides=2, scope='std_level_8')  # output: (7, 7, 64)
         final_channel = config.z_dim // (config.x_shape[0] // 8) // (config.x_shape[1] // 8)
         h_x = spt.layers.resnet_conv2d_block(h_x, final_channel, scope='std_level_9')  # output: (7, 7, 64)
     z_logstd = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
@@ -456,11 +453,9 @@ def G_theta(z):
             ndims=1,
             shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, final_channel)
         )
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 512, scope='level_1')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 512, strides=2, scope='level_2')  # output: (7, 7, 64)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 256, scope='level_3')  # output: (7, 7, 64)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_4')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_5')  # output: (14, 14, 32)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, strides=2, scope='level_5')  # output: (14, 14, 32)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, strides=2, scope='level_6')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
@@ -485,22 +480,20 @@ def D_psi(x):
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_x = tf.to_float(x)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='std_level_0')  # output: (28, 28, 16)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='std_level_1')  # output: (28, 28, 16)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='std_level_2')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='std_level_3')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='std_level_4')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 128, scope='std_level_5')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='std_level_6')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 512, scope='std_level_7')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 512, strides=2, scope='std_level_8')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='mean_level_0')  # output: (28, 28, 16)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='mean_level_1')  # output: (28, 28, 16)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='mean_level_2')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='mean_level_3')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='mean_level_4')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='mean_level_5')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='mean_level_6')  # output: (7, 7, 64)
 
         h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
         h_x = spt.layers.dense(h_x, 64, scope='level_-2')
     # sample z ~ q(z|x)
     h_x = spt.layers.dense(h_x, 1, scope='level_-1')
     h_x = tf.squeeze(h_x, axis=-1)
-    return tf.clip_by_value(h_x, -1e4, 1e4)
+    return tf.clip_by_value(h_x, -config.D_clip_value, config.D_clip_value)
 
 
 def get_all_loss(q_net, p_net, pn_net, beta):
@@ -928,7 +921,7 @@ def main():
                     for i in range(config.log_Z_times):
                         log_Z_list.append(session.run(log_Z_compute_op))
                     from scipy.misc import logsumexp
-                    log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(config.log_Z_time)
+                    log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(config.log_Z_times)
                     get_log_Z().set(log_Z)
                     print('log_Z_list:{}'.format(log_Z_list))
                     print('log_Z:{}'.format(log_Z))
