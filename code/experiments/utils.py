@@ -78,7 +78,6 @@ or "[batch, height, width, channels]"(for 3 channel)
 value of image must be in [0,255]
 '''
 
-
 def get_fid_tf(real_img, sample_img):
     real_img = preprocess_image(real_img)
     sample_img = preprocess_image(sample_img)
