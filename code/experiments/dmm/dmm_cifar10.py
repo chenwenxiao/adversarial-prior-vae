@@ -37,7 +37,7 @@ class ExpConfig(spt.Config):
     result_dir = None
     write_summary = True
     max_epoch = 1500
-    energy_prior_start_epoch = 1500
+    warm_up_epoch = 600
     beta = 1e-8
     pull_back_energy_weight = 1
 
@@ -52,8 +52,8 @@ class ExpConfig(spt.Config):
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    D_clip_value = 1e5
-    n_critical = 30
+    D_clip_value = 1e3
+    n_critical = 20
     # evaluation parameters
     train_n_pz = 128
     train_n_qz = 1
@@ -496,7 +496,7 @@ def D_psi(x):
     return tf.clip_by_value(h_x, -config.D_clip_value, config.D_clip_value)
 
 
-def get_all_loss(q_net, p_net, pn_net, beta):
+def get_all_loss(q_net, p_net, pn_net, warm):
     with tf.name_scope('adv_prior_loss'):
         x = p_net['x']
         x_ = pn_net['x']
@@ -523,9 +523,8 @@ def get_all_loss(q_net, p_net, pn_net, beta):
         train_reconstruct_energy = tf.reduce_mean(p_net['x'].log_prob().mean_energy)
         log_Z_compute_op = spt.ops.log_mean_exp(
             -pn_net['z'].log_prob().energy - pn_net['z'].log_prob())
-        VAE_loss = tf.reduce_mean(
-            -log_px_z + p_net['z'].log_prob().energy + q_net['z'].log_prob()
-        ) + log_Z_compute_op
+        VAE_loss = tf.reduce_mean(-log_px_z) + warm * (
+            tf.reduce_mean(p_net['z'].log_prob().energy + q_net['z'].log_prob()) + log_Z_compute_op)
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
         adv_G_loss = tf.reduce_mean(energy_fake)
@@ -616,6 +615,8 @@ def main():
     # input placeholders
     input_x = tf.placeholder(
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_x')
+    warm = tf.placeholder(
+        dtype=tf.float32, shape=(), name='warm')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
     beta = tf.Variable(initial_value=0.1, dtype=tf.float32, name='beta', trainable=True)
@@ -628,7 +629,7 @@ def main():
         init_pn_net = p_net(n_z=config.train_n_pz, beta=beta)
         init_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
         init_p_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz, beta=beta)
-        init_loss = sum(get_all_loss(init_q_net, init_p_net, init_pn_net, beta))
+        init_loss = sum(get_all_loss(init_q_net, init_p_net, init_pn_net, warm))
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
@@ -639,7 +640,7 @@ def main():
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']},
                             n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
 
-        VAE_loss, D_loss, G_loss, debug = get_all_loss(train_q_net, train_p_net, train_pn_net, beta)
+        VAE_loss, D_loss, G_loss, debug = get_all_loss(train_q_net, train_p_net, train_pn_net, warm)
 
         VAE_loss += tf.losses.get_regularization_loss()
         D_loss += tf.losses.get_regularization_loss()
@@ -824,7 +825,7 @@ def main():
         # initialize the network
         for [x] in train_flow:
             print('Network initialized, first-batch loss is {:.6g}.\n'.
-                  format(session.run(init_loss, feed_dict={input_x: x})))
+                  format(session.run(init_loss, feed_dict={input_x: x, warm: 0.0})))
             break
 
         # train the network
@@ -870,7 +871,7 @@ def main():
                          training_D_loss] = session.run(
                             [VAE_train_op, VAE_loss, beta, xi_node, debug_variable, train_reconstruct_energy, D_loss],
                             feed_dict={
-                                input_x: x,
+                                input_x: x, warm: min(1.0 * epoch / config.warm_up_epoch, 1.0)
                             })
                         loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                         loop.collect_metrics(xi=xi_value)
