@@ -24,7 +24,7 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 512
+    z_dim = 2048
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -37,8 +37,10 @@ class ExpConfig(spt.Config):
     result_dir = None
     write_summary = True
     max_epoch = 1500
+    warm_up_start = 150
     warm_up_epoch = 600
     beta = 1e-8
+    initial_xi = 20
     pull_back_energy_weight = 1
 
     max_step = None
@@ -53,7 +55,7 @@ class ExpConfig(spt.Config):
     kl_balance_weight = 1.0
 
     D_clip_value = 1e3
-    n_critical = 20
+    n_critical = 5
     # evaluation parameters
     train_n_pz = 128
     train_n_qz = 1
@@ -420,7 +422,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0):
     normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
                         logstd=tf.zeros([1, config.z_dim]))
     normal = normal.batch_ndims_to_value(1)
-    xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(1.0),
+    xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(config.initial_xi),
                          dtype=tf.float32, trainable=True)
     xi = tf.clip_by_value(xi, 0.0, 10000.0)
     pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator)
@@ -871,7 +873,8 @@ def main():
                          training_D_loss] = session.run(
                             [VAE_train_op, VAE_loss, beta, xi_node, debug_variable, train_reconstruct_energy, D_loss],
                             feed_dict={
-                                input_x: x, warm: min(1.0 * epoch / config.warm_up_epoch, 1.0)
+                                input_x: x,
+                                warm: max(0.0, min(1.0 * (epoch - config.warm_up_start) / config.warm_up_epoch, 1.0))
                             })
                         loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                         loop.collect_metrics(xi=xi_value)
