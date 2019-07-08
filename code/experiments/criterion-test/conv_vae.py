@@ -183,6 +183,7 @@ def main():
 
         # bernoulli test
         logits = test_chain.model['x'].distribution.logits
+        logits = tf.clip_by_value(logits, clip_value_max=1 - 1e-7, clip_value_min=1e-7)
         labels = tf.tile(
             tf.expand_dims(tf.to_float(test_chain.model['x']), axis=0),
             tf.concat([[config.test_n_z], [1] * spt.utils.get_rank(test_chain.model['x'])], axis=0)
@@ -291,6 +292,7 @@ def main():
                 lambda e: results.update_metrics(bernoulli_evaluator.last_metrics_dict)
             )
             trainer.evaluate_after_epochs(evaluator, freq=10)
+            trainer.evaluate_after_epochs(bernoulli_evaluator, freq=10)
             trainer.evaluate_after_epochs(
                 functools.partial(plot_samples, loop), freq=10)
             trainer.log_after_epochs(freq=1)
