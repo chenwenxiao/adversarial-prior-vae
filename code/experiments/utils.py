@@ -1,4 +1,6 @@
 '''
+add get_inception_score_tf and get_fid_tf
+
 computation of IS and FID is from
 https://github.com/tsc2017/inception-score
 and
@@ -26,6 +28,8 @@ altering dmm.py to use this
 
 
 '''
+from tensorflow.contrib.gan.python.eval import inception_score, frechet_inception_distance, preprocess_image
+
 from tensorflow.contrib.gan.python.eval import get_graph_def_from_url_tarball
 
 '''
@@ -66,128 +70,43 @@ activations1 = tf.placeholder(tf.float32, [None, None], name='activations1')
 activations2 = tf.placeholder(tf.float32, [None, None], name='activations2')
 fcd = tfgan.eval.frechet_classifier_distance_from_activations(activations1, activations2)
 
-
-def inception_activations(images=inception_images, num_splits=1):
-    size = 299
-    images = tf.image.resize_bilinear(images, [size, size])
-    generated_images_list = array_ops.split(images, num_or_size_splits=num_splits)
-    activations = functional_ops.map_fn(
-        fn=functools.partial(tfgan.eval.run_inception, graph_def=graph_def, output_tensor='pool_3:0'),
-        elems=array_ops.stack(generated_images_list),
-        parallel_iterations=1,
-        back_prop=False,
-        swap_memory=True,
-        name='RunClassifier')
-    activations = array_ops.concat(array_ops.unstack(activations), 0)
-    return activations
-
-
-activations = inception_activations()
-
-
-def get_inception_activations(inps):
-    n_batches = inps.shape[0] // BATCH_SIZE
-    act = np.zeros([n_batches * BATCH_SIZE, 2048], dtype=np.float32)
-    for i in range(n_batches):
-        inp = inps[i * BATCH_SIZE:(i + 1) * BATCH_SIZE] / 255. * 2 - 1
-        act[i * BATCH_SIZE:(i + 1) * BATCH_SIZE] = activations.eval(feed_dict={inception_images: inp})
-    return act
-
-
-def activations2distance(act1, act2):
-    return fcd.eval(feed_dict={activations1: act1, activations2: act2})
-
-
-def get_fid(images1, images2):
-
-    assert (type(images1) == np.ndarray)
-    assert (len(images1.shape) == 4)
-    assert (images1.shape[3] == 3)
-    assert (np.min(images1[0]) >= 0 and np.max(images1[0]) > 10), 'Image values should be in the range [0, 255]'
-    assert (type(images2) == np.ndarray)
-    assert (len(images2.shape) == 4)
-    assert (images2.shape[3] == 3)
-    assert (np.min(images2[0]) >= 0 and np.max(images2[0]) > 10), 'Image values should be in the range [0, 255]'
-    assert (images1.shape == images2.shape), 'The two numpy arrays must have the same shape'
-    print('Calculating FID with %i images from each distribution' % (images1.shape[0]))
-    start_time = time.time()
-    act1 = get_inception_activations(images1)
-    act2 = get_inception_activations(images2)
-    fid = activations2distance(act1, act2)
-    print('FID calculation time: %f s' % (time.time() - start_time))
-    return fid
-
-
 '''
-From https://github.com/tsc2017/inception-score
-Code derived from https://github.com/openai/improved-gan/blob/master/inception_score/model.py
-Args:
-    images: A numpy array with values ranging from -1 to 1 and shape in the form [N, 3, HEIGHT, WIDTH] where N, HEIGHT and WIDTH can be arbitrary.
-    splits: The number of splits of the images, default is 10.
-Returns:
-    mean and standard deviation of the inception across the splits.
+get_fid_tf and get_inception_score_tf,
+images form must be tensor of tf as 
+"[batch, height, width]"(for 1 channel) 
+or "[batch, height, width, channels]"(for 3 channel)
+value of image must be in [0,255]
 '''
 
-def inception_logits(images=inception_images, num_splits=1):
-    size = 299
-    images = tf.image.resize_bilinear(images, [size, size])
-    generated_images_list = array_ops.split(
-        images, num_or_size_splits=num_splits
-    )
-    logits = functional_ops.map_fn(
-        fn=functools.partial(tfgan.eval.run_inception, graph_def=graph_def, output_tensor='logits:0'),
-        elems=array_ops.stack(generated_images_list),
-        parallel_iterations=1,
-        back_prop=False,
-        swap_memory=True,
-        name='RunClassifier'
-    )
-    logits = array_ops.concat(array_ops.unstack(logits), 0)
-    return logits
+def get_fid_tf(real_img, sample_img):
+    real_img = preprocess_image(real_img)
+    sample_img = preprocess_image(sample_img)
+    real_single = real_img.shape.ndim == 3
+    sample_single = sample_img.shape.ndim == 3
+    if real_single and sample_single:
+        sample_img = tf.concat([sample_img, sample_img, sample_img], 3)
+        real_img = tf.concat([real_img, real_img, real_img], 3)
+
+    FID = frechet_inception_distance(real_img, sample_img)
+    return FID
 
 
-logits = inception_logits()
+def get_inception_score_tf(sample_img):
+    sample_img = preprocess_image(sample_img)
+    sample_single = sample_img.shape.ndim == 3
+    if sample_single:
+        sample_img = tf.concat([sample_img, sample_img, sample_img], 3)
+
+    IS = inception_score(sample_img)
+    return IS
 
 
-def get_inception_probs(inps):
-    preds = []
-    n_batches = len(inps) // BATCH_SIZE
-    for i in range(n_batches):
-        inp = inps[i * BATCH_SIZE:(i + 1) * BATCH_SIZE]
-        pred = logits.eval({inception_images: inp})[:, :1000]
-        preds.append(pred)
-    preds = np.concatenate(preds, 0)
-    preds = np.exp(preds) / np.sum(np.exp(preds), 1, keepdims=True)
-    return preds
-
-
-def preds2score(preds, splits):
-    scores = []
-    for i in range(splits):
-        part = preds[(i * preds.shape[0] // splits):((i + 1) * preds.shape[0] // splits), :]
-        kl = part * (np.log(part) - np.log(np.expand_dims(np.mean(part, 0), 0)))
-        kl = np.mean(np.sum(kl, 1))
-        scores.append(np.exp(kl))
-    return np.mean(scores), np.std(scores)
-
-
-def get_inception_score(images, splits=10):
-    images = images / 255. * 2 - 1
-    assert (type(images) == np.ndarray)
-    assert (len(images.shape) == 4)
-    assert (images.shape[3] == 3)
-    assert (np.max(images[0]) <= 1)
-    assert (np.min(images[0]) >= -1)
-    start_time = time.time()
-    preds = get_inception_probs(images)
-    print('Inception Score for %i samples in %i splits' % (preds.shape[0], splits))
-    mean, std = preds2score(preds, splits)
-    print('Inception Score calculation time: %f s' % (time.time() - start_time))
-    return mean, std  # Reference values: 11.34 for 49984 CIFAR-10 training set images, or mean=11.31, std=0.08 if in 10 splits (default).
-
+get_fid = get_fid_tf
+get_inception_score = get_inception_score_tf
 
 if __name__ == '__main__':
     import tfsnippet as spt
+
     (train_x, train_y), (test_x, test_y) = spt.datasets.load_cifar10(channels_last=False)
-    print(get_inception_score(test_x))
-    print(get_fid(test_x, test_x))
+    print(get_inception_score_tf(test_x))
+    print(get_fid_tf(test_x, test_x))
