@@ -24,7 +24,7 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 2048
+    z_dim = 1024
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -37,11 +37,11 @@ class ExpConfig(spt.Config):
     result_dir = None
     write_summary = True
     max_epoch = 1500
-    warm_up_start = 150
-    warm_up_epoch = 600
+    warm_up_start = 300
+    warm_up_epoch = 300
     beta = 1e-8
-    initial_xi = 20
-    pull_back_energy_weight = 1
+    initial_xi = 4.0
+    pull_back_energy_weight = 16
 
     max_step = None
     batch_size = 128
@@ -54,8 +54,8 @@ class ExpConfig(spt.Config):
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    D_clip_value = 1e3
-    n_critical = 5
+    D_clip_value = 1e4
+    n_critical = 1
     # evaluation parameters
     train_n_pz = 128
     train_n_qz = 1
@@ -149,8 +149,8 @@ class EnergyDistribution(spt.Distribution):
                            default_name=spt.utils.get_default_scope_name(
                                'log_prob', self),
                            values=[given]):
-            energy = self.D(self.G(given)) * self.xi + 0.5 * tf.reduce_sum(tf.square(given),
-                                                                           axis=-1)
+            energy = config.pull_back_energy_weight * self.D(self.G(given)) * self.xi + 0.5 * tf.reduce_sum(
+                tf.square(given), axis=-1)
             log_px = self.pz.log_prob(given=given, group_ndims=group_ndims)
             log_px.log_energy_prob = -energy - self.log_Z
             log_px.energy = energy
@@ -208,7 +208,8 @@ class EnergyDistribution(spt.Distribution):
         return t
 
     def get_sgld_proposal(self, z):
-        energy_z = self.D(self.G(z)) * self.xi + 0.5 * tf.reduce_sum(tf.square(z), axis=-1)
+        energy_z = config.pull_back_energy_weight * self.D(self.G(z)) * self.xi + 0.5 * tf.reduce_sum(tf.square(z),
+                                                                                                      axis=-1)
         grad_energy_z = tf.gradients(energy_z, [z.tensor if hasattr(z, 'tensor') else z])[0]
         grad_energy_z = tf.reshape(grad_energy_z, shape=z.shape)
         eps = tf.random.normal(
@@ -358,42 +359,20 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_x = tf.to_float(x)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='mean_level_0')  # output: (28, 28, 16)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='mean_level_1')  # output: (28, 28, 16)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='mean_level_2')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='mean_level_3')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='mean_level_4')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='mean_level_5')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='mean_level_6')  # output: (7, 7, 64)
-        final_channel = config.z_dim // (config.x_shape[0] // 8) // (config.x_shape[1] // 8)
-        h_x = spt.layers.resnet_conv2d_block(h_x, final_channel, scope='mean_level_9')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_1')  # output: (28, 28, 16)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_3')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_4')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_6')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_8')  # output: (7, 7, 64)
 
-    z_mean = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
-    # compute the hidden features
-    with arg_scope([spt.layers.resnet_conv2d_block],
-                   kernel_size=config.kernel_size,
-                   shortcut_kernel_size=config.shortcut_kernel_size,
-                   activation_fn=tf.nn.leaky_relu,
-                   normalizer_fn=normalizer_fn,
-                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
-        h_x = tf.to_float(x)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='std_level_0')  # output: (28, 28, 16)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='std_level_1')  # output: (28, 28, 16)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='std_level_2')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='std_level_3')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='std_level_4')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='std_level_5')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='std_level_6')  # output: (7, 7, 64)
-        final_channel = config.z_dim // (config.x_shape[0] // 8) // (config.x_shape[1] // 8)
-        h_x = spt.layers.resnet_conv2d_block(h_x, final_channel, scope='std_level_9')  # output: (7, 7, 64)
-    z_logstd = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
     # sample z ~ q(z|x)
-    # z_mean = spt.layers.dense(h_x, config.z_dim, scope='z_mean', kernel_initializer=tf.zeros_initializer())
-    # z_logstd = spt.layers.dense(h_x, config.z_dim, scope='z_logstd', kernel_initializer=tf.zeros_initializer())
-
-    normal = spt.Normal(mean=z_mean, logstd=z_logstd)
+    h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
+    z_mean = spt.layers.dense(h_x, config.z_dim, scope='z_mean', kernel_initializer=tf.zeros_initializer())
+    z_logstd = spt.layers.dense(h_x, config.z_dim, scope='z_logstd', kernel_initializer=tf.zeros_initializer())
     z_distribution = spt.FlowDistribution(
-        normal.expand_value_ndims(1),
+        spt.Normal(mean=z_mean, logstd=z_logstd),
         posterior_flow
     )
     z = net.add('z', z_distribution, n_samples=n_z)
@@ -424,7 +403,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0):
     normal = normal.batch_ndims_to_value(1)
     xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(config.initial_xi),
                          dtype=tf.float32, trainable=True)
-    xi = tf.clip_by_value(xi, 0.0, 10000.0)
+    # xi = tf.clip_by_value(xi, 0.0, 10000.0)
     pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator)
     z = net.add('z', pz, n_samples=n_z)
     x_mean = G_theta(z)
@@ -448,17 +427,17 @@ def G_theta(z):
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
-        final_channel = config.z_dim // (config.x_shape[0] // 8) // (config.x_shape[1] // 8)
-        h_z = tf.to_float(z)
+        h_z = spt.layers.dense(z, 256 * config.x_shape[0] // 8 * config.x_shape[1] // 8, scope='level_0',
+                               normalizer_fn=None)
         h_z = spt.ops.reshape_tail(
             h_z,
             ndims=1,
-            shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, final_channel)
+            shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 256)
         )
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 256, scope='level_3')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_4')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 256, strides=2, scope='level_2')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_3')  # output: (7, 7, 64)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, strides=2, scope='level_5')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, strides=2, scope='level_6')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_6')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_9')  # output: (28, 28, 16)
@@ -482,20 +461,19 @@ def D_psi(x):
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_x = tf.to_float(x)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='mean_level_0')  # output: (28, 28, 16)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='mean_level_1')  # output: (28, 28, 16)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='mean_level_2')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='mean_level_3')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='mean_level_4')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='mean_level_5')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='mean_level_6')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_1')  # output: (28, 28, 16)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_3')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_4')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_6')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_8')  # output: (7, 7, 64)
 
         h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
         h_x = spt.layers.dense(h_x, 64, scope='level_-2')
     # sample z ~ q(z|x)
     h_x = spt.layers.dense(h_x, 1, scope='level_-1')
-    h_x = tf.squeeze(h_x, axis=-1)
-    return tf.clip_by_value(h_x, -config.D_clip_value, config.D_clip_value)
+    return tf.squeeze(h_x, axis=-1)
 
 
 def get_all_loss(q_net, p_net, pn_net, warm):
@@ -737,7 +715,7 @@ def main():
     # derive the plotting function
     with tf.name_scope('plotting'):
         x_plots = 256.0 * tf.reshape(
-            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
+            p_net(n_z=100, mcmc_iterator=0, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
         reconstruct_q_net = q_net(input_x, posterior_flow)
         reconstruct_z = reconstruct_q_net['z']
         reconstruct_plots = 256.0 * tf.reshape(
@@ -827,7 +805,7 @@ def main():
         # initialize the network
         for [x] in train_flow:
             print('Network initialized, first-batch loss is {:.6g}.\n'.
-                  format(session.run(init_loss, feed_dict={input_x: x, warm: 0.0})))
+                  format(session.run(init_loss, feed_dict={input_x: x, warm: 1.0})))
             break
 
         # train the network
@@ -841,7 +819,7 @@ def main():
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
                            checkpoint_epoch_freq=100,
-                           # restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/34/ec/6bae1ffafbe672df90d5/checkpoint/checkpoint/checkpoint.dat-2027454'
+                           # restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/b8/19/6f9d69b5d193197122d5/checkpoint/checkpoint/checkpoint.dat-117000'
                            ) as loop:
 
             evaluator = spt.Evaluator(
@@ -869,20 +847,7 @@ def main():
                 while step_iterator.has_next:
                     # vae training
                     for step, [x] in loop.iter_steps(limited(step_iterator, config.n_critical)):
-                        [_, batch_VAE_loss, beta_value, xi_value, debug_information, train_reconstruct_energy_value,
-                         training_D_loss] = session.run(
-                            [VAE_train_op, VAE_loss, beta, xi_node, debug_variable, train_reconstruct_energy, D_loss],
-                            feed_dict={
-                                input_x: x,
-                                warm: max(0.0, min(1.0 * (epoch - config.warm_up_start) / config.warm_up_epoch, 1.0))
-                            })
-                        loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
-                        loop.collect_metrics(xi=xi_value)
-                        loop.collect_metrics(beta=beta_value)
-                        loop.collect_metrics(debug_information=debug_information)
-                        loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
-                        loop.collect_metrics(training_D_loss=training_D_loss)
-
+                        # if epoch <= config.warm_up_start:
                         # discriminator training
                         [_, batch_D_loss, debug_loss] = session.run(
                             [D_train_op, D_loss, debug], feed_dict={
@@ -890,8 +855,25 @@ def main():
                             })
                         loop.collect_metrics(D_loss=batch_D_loss)
                         loop.collect_metrics(debug_loss=debug_loss)
+                        # else:
+                        if epoch > config.warm_up_start:
+                            [_, batch_VAE_loss, beta_value, xi_value, debug_information, train_reconstruct_energy_value,
+                             training_D_loss] = session.run(
+                                [VAE_train_op, VAE_loss, beta, xi_node, debug_variable, train_reconstruct_energy,
+                                 D_loss],
+                                feed_dict={
+                                    input_x: x,
+                                    warm: 1.0
+                                })
+                            loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
+                            loop.collect_metrics(xi=xi_value)
+                            loop.collect_metrics(beta=beta_value)
+                            loop.collect_metrics(debug_information=debug_information)
+                            loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
+                            loop.collect_metrics(training_D_loss=training_D_loss)
 
-                    # generator training x
+                            # if epoch <= config.warm_up_start:
+                            # generator training x
                     [_, batch_G_loss] = session.run(
                         [G_train_op, G_loss], feed_dict={
                         })
