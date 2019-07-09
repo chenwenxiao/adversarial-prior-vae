@@ -38,10 +38,9 @@ class ExpConfig(spt.Config):
     write_summary = True
     max_epoch = 1500
     warm_up_start = 300
-    warm_up_epoch = 300
     beta = 1e-8
     initial_xi = 4.0
-    pull_back_energy_weight = 16
+    pull_back_energy_weight = 64
 
     max_step = None
     batch_size = 128
@@ -54,7 +53,6 @@ class ExpConfig(spt.Config):
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    D_clip_value = 1e4
     n_critical = 1
     # evaluation parameters
     train_n_pz = 128
@@ -403,7 +401,6 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0):
     normal = normal.batch_ndims_to_value(1)
     xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(config.initial_xi),
                          dtype=tf.float32, trainable=True)
-    # xi = tf.clip_by_value(xi, 0.0, 10000.0)
     pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator)
     z = net.add('z', pz, n_samples=n_z)
     x_mean = G_theta(z)
@@ -476,7 +473,7 @@ def D_psi(x):
     return tf.squeeze(h_x, axis=-1)
 
 
-def get_all_loss(q_net, p_net, pn_net, warm):
+def get_all_loss(q_net, p_net, pn_net):
     with tf.name_scope('adv_prior_loss'):
         x = p_net['x']
         x_ = pn_net['x']
@@ -503,8 +500,9 @@ def get_all_loss(q_net, p_net, pn_net, warm):
         train_reconstruct_energy = tf.reduce_mean(p_net['x'].log_prob().mean_energy)
         log_Z_compute_op = spt.ops.log_mean_exp(
             -pn_net['z'].log_prob().energy - pn_net['z'].log_prob())
-        VAE_loss = tf.reduce_mean(-log_px_z) + warm * (
-            tf.reduce_mean(p_net['z'].log_prob().energy + q_net['z'].log_prob()) + log_Z_compute_op)
+        VAE_loss = tf.reduce_mean(
+            -log_px_z + p_net['z'].log_prob().energy + q_net['z'].log_prob()
+        ) + log_Z_compute_op
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
         adv_G_loss = tf.reduce_mean(energy_fake)
@@ -595,8 +593,6 @@ def main():
     # input placeholders
     input_x = tf.placeholder(
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_x')
-    warm = tf.placeholder(
-        dtype=tf.float32, shape=(), name='warm')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
     beta = tf.Variable(initial_value=0.1, dtype=tf.float32, name='beta', trainable=True)
@@ -609,7 +605,7 @@ def main():
         init_pn_net = p_net(n_z=config.train_n_pz, beta=beta)
         init_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
         init_p_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz, beta=beta)
-        init_loss = sum(get_all_loss(init_q_net, init_p_net, init_pn_net, warm))
+        init_loss = sum(get_all_loss(init_q_net, init_p_net, init_pn_net))
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
@@ -620,7 +616,7 @@ def main():
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']},
                             n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
 
-        VAE_loss, D_loss, G_loss, debug = get_all_loss(train_q_net, train_p_net, train_pn_net, warm)
+        VAE_loss, D_loss, G_loss, debug = get_all_loss(train_q_net, train_p_net, train_pn_net)
 
         VAE_loss += tf.losses.get_regularization_loss()
         D_loss += tf.losses.get_regularization_loss()
@@ -805,7 +801,7 @@ def main():
         # initialize the network
         for [x] in train_flow:
             print('Network initialized, first-batch loss is {:.6g}.\n'.
-                  format(session.run(init_loss, feed_dict={input_x: x, warm: 1.0})))
+                  format(session.run(init_loss, feed_dict={input_x: x})))
             break
 
         # train the network
@@ -819,7 +815,7 @@ def main():
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
                            checkpoint_epoch_freq=100,
-                           # restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/b8/19/6f9d69b5d193197122d5/checkpoint/checkpoint/checkpoint.dat-117000'
+                           # restore_checkpoint='/mnt/mfs/mlstorage-experiments/cwx17/34/ec/6bae1ffafbe672df90d5/checkpoint/checkpoint/checkpoint.dat-2027454'
                            ) as loop:
 
             evaluator = spt.Evaluator(
@@ -829,8 +825,7 @@ def main():
                          'reconstruct_energy': reconstruct_energy,
                          'real_energy': real_energy,
                          'pd_energy': pd_energy, 'pn_energy': pn_energy,
-                         'test_recon': test_recon, 'kl_adv_and_gaussian': kl_adv_and_gaussian,
-                         'test_mse': test_mse},
+                         'test_recon': test_recon, 'kl_adv_and_gaussian': kl_adv_and_gaussian, 'test_mse': test_mse},
                 inputs=[input_x],
                 data_flow=test_flow,
                 time_metric_name='test_time'
@@ -847,7 +842,19 @@ def main():
                 while step_iterator.has_next:
                     # vae training
                     for step, [x] in loop.iter_steps(limited(step_iterator, config.n_critical)):
-                        # if epoch <= config.warm_up_start:
+                        [_, batch_VAE_loss, beta_value, xi_value, debug_information, train_reconstruct_energy_value,
+                         training_D_loss] = session.run(
+                            [VAE_train_op, VAE_loss, beta, xi_node, debug_variable, train_reconstruct_energy, D_loss],
+                            feed_dict={
+                                input_x: x,
+                            })
+                        loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
+                        loop.collect_metrics(xi=xi_value)
+                        loop.collect_metrics(beta=beta_value)
+                        loop.collect_metrics(debug_information=debug_information)
+                        loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
+                        loop.collect_metrics(training_D_loss=training_D_loss)
+
                         # discriminator training
                         [_, batch_D_loss, debug_loss] = session.run(
                             [D_train_op, D_loss, debug], feed_dict={
@@ -855,25 +862,8 @@ def main():
                             })
                         loop.collect_metrics(D_loss=batch_D_loss)
                         loop.collect_metrics(debug_loss=debug_loss)
-                        # else:
-                        if epoch > config.warm_up_start:
-                            [_, batch_VAE_loss, beta_value, xi_value, debug_information, train_reconstruct_energy_value,
-                             training_D_loss] = session.run(
-                                [VAE_train_op, VAE_loss, beta, xi_node, debug_variable, train_reconstruct_energy,
-                                 D_loss],
-                                feed_dict={
-                                    input_x: x,
-                                    warm: 1.0
-                                })
-                            loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
-                            loop.collect_metrics(xi=xi_value)
-                            loop.collect_metrics(beta=beta_value)
-                            loop.collect_metrics(debug_information=debug_information)
-                            loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
-                            loop.collect_metrics(training_D_loss=training_D_loss)
 
-                            # if epoch <= config.warm_up_start:
-                            # generator training x
+                    # generator training x
                     [_, batch_G_loss] = session.run(
                         [G_train_op, G_loss], feed_dict={
                         })
