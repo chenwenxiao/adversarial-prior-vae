@@ -482,11 +482,11 @@ def get_all_loss(q_net, p_net, pn_net):
         energy_real = p_net['x'].log_prob().energy
         energy_fake = pn_net['x'].log_prob().energy
         gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
-        gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(1, len(gradient_penalty_real.shape)))
+        gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(-len(config.x_shape), 0))
         gradient_penalty_real = tf.pow(gradient_penalty_real, config.gradient_penalty_index / 2.0)
 
         gradient_penalty_fake = tf.square(tf.gradients(energy_fake, [x_.tensor if hasattr(x_, 'tensor') else x_])[0])
-        gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(1, len(gradient_penalty_fake.shape)))
+        gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(-len(config.x_shape), 0))
         gradient_penalty_fake = tf.pow(gradient_penalty_fake, config.gradient_penalty_index / 2.0)
 
         gradient_penalty = (tf.reduce_mean(gradient_penalty_fake) + tf.reduce_mean(gradient_penalty_real)) \
