@@ -36,17 +36,17 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 1500
+    max_epoch = 1800
     warm_up_start = 300
     beta = 1e-8
-    initial_xi = 4.0
-    pull_back_energy_weight = 64
+    initial_xi = 0.0
+    pull_back_energy_weight = 128
 
     max_step = None
     batch_size = 128
     initial_lr = 0.0002
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [300, 600, 900, 1200, 1500]
+    lr_anneal_epoch_freq = [300, 600, 900, 1200, 1500, 1800]
     lr_anneal_step_freq = None
 
     gradient_penalty_weight = 2
@@ -498,11 +498,9 @@ def get_all_loss(q_net, p_net, pn_net):
             tf.sqrt(tf.reduce_sum((p_net['x'] - p_net['x'].distribution.mean) ** 2, [2, 3, 4])))
         global train_reconstruct_energy
         train_reconstruct_energy = tf.reduce_mean(p_net['x'].log_prob().mean_energy)
-        log_Z_compute_op = spt.ops.log_mean_exp(
-            -pn_net['z'].log_prob().energy - pn_net['z'].log_prob())
         VAE_loss = tf.reduce_mean(
-            -log_px_z + p_net['z'].log_prob().energy + q_net['z'].log_prob()
-        ) + log_Z_compute_op
+            -log_px_z - p_net['z'].log_prob().log_energy_prob + q_net['z'].log_prob()
+        )
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
         adv_G_loss = tf.reduce_mean(energy_fake)
@@ -836,12 +834,13 @@ def main():
 
             epoch_iterator = loop.iter_epochs()
 
+            n_critical = config.n_critical
             # adversarial training
             for epoch in epoch_iterator:
                 step_iterator = MyIterator(train_flow)
                 while step_iterator.has_next:
                     # vae training
-                    for step, [x] in loop.iter_steps(limited(step_iterator, config.n_critical)):
+                    for step, [x] in loop.iter_steps(limited(step_iterator, n_critical)):
                         [_, batch_VAE_loss, beta_value, xi_value, debug_information, train_reconstruct_energy_value,
                          training_D_loss] = session.run(
                             [VAE_train_op, VAE_loss, beta, xi_node, debug_variable, train_reconstruct_energy, D_loss],
@@ -888,6 +887,7 @@ def main():
 
                 if epoch in config.lr_anneal_epoch_freq:
                     learning_rate.anneal()
+                    n_critical += 1
 
                 if epoch % config.plot_epoch_freq == 0:
                     plot_samples(loop)
