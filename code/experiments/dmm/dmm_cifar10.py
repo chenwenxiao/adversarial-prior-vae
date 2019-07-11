@@ -54,7 +54,7 @@ class ExpConfig(spt.Config):
     kl_balance_weight = 1.0
 
     n_critical = 1
-    D_limit = 30.0
+    D_limit = 10.0
     # evaluation parameters
     train_n_pz = 128
     train_n_qz = 1
@@ -883,8 +883,10 @@ def main():
                             loop.collect_metrics(D_loss=batch_D_loss)
                             loop.collect_metrics(debug_loss=debug_loss)
 
-                    if epoch <= config.warm_up_start:
-                        # generator training x
+                    # if epoch <= config.warm_up_start:
+                    # generator training x
+                    batch_G_loss = debug_loss + config.D_limit
+                    while batch_G_loss >= debug_loss + config.D_limit:
                         [_, batch_G_loss] = session.run(
                             [G_train_op, G_loss], feed_dict={
                             })
