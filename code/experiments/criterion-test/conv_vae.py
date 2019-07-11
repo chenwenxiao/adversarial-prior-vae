@@ -175,6 +175,9 @@ def main():
 
     # derive the nll and logits output for testing
     with tf.name_scope('testing'):
+        input_original_x = tf.placeholder(
+            dtype=tf.float32, shape=(None,) + config.x_shape, name='input_original_x')
+
         test_q_net = q_net(input_x, n_z=config.test_n_z)
         test_chain = test_q_net.chain(
             p_net, latent_axis=0, observed={'x': input_x})
@@ -194,7 +197,6 @@ def main():
             ),
             axis=list(range(-len(config.x_shape), 0))
         )
-
         vi = spt.VariationalInference(
             log_joint=log_px_given_z + test_chain.model['z'].log_prob(),
             latent_log_probs=[test_q_net['z'].log_prob()],
@@ -237,8 +239,12 @@ def main():
         x_train, config.batch_size, shuffle=True, skip_incomplete=True)
     test_flow = bernoulli_flow(
         x_test, config.test_batch_size, sample_now=True)
+    '''
     bernoulli_test_flow = spt.DataFlow.arrays(
         [x_test], config.test_batch_size)
+    '''
+    bernoulli_test_flow = spt.DataFlow.arrays([x_test, y_test], config.test_batch_size)
+    bernoulli_test_flow = spt.DataFlow.gather([test_flow, bernoulli_test_flow])
 
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
@@ -280,10 +286,19 @@ def main():
                 spt.EventKeys.AFTER_EXECUTION,
                 lambda e: results.update_metrics(evaluator.last_metrics_dict)
             )
+            '''
+            bernoulli_evaluator = spt.Evaluator(
+                loop,
+                metrics={'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb, 'log_px_given_z': tf.reduce_mean(log_px_given_z)},
+                inputs=[input_x],
+                data_flow=bernoulli_test_flow,
+                time_metric_name='test_time'
+            )
+            '''
             bernoulli_evaluator = spt.Evaluator(
                 loop,
                 metrics={'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb},
-                inputs=[input_x],
+                inputs=[input_x, input_original_x],
                 data_flow=bernoulli_test_flow,
                 time_metric_name='test_time'
             )
@@ -291,10 +306,10 @@ def main():
                 spt.EventKeys.AFTER_EXECUTION,
                 lambda e: results.update_metrics(bernoulli_evaluator.last_metrics_dict)
             )
-            trainer.evaluate_after_epochs(evaluator, freq=10)
-            trainer.evaluate_after_epochs(bernoulli_evaluator, freq=10)
+            trainer.evaluate_after_epochs(evaluator, freq=1)
+            trainer.evaluate_after_epochs(bernoulli_evaluator, freq=1)
             trainer.evaluate_after_epochs(
-                functools.partial(plot_samples, loop), freq=10)
+                functools.partial(plot_samples, loop), freq=1)
             trainer.log_after_epochs(freq=1)
             trainer.run()
 
