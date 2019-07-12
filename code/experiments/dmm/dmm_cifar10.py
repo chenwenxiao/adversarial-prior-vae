@@ -36,8 +36,8 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 1200
-    warm_up_start = 300
+    max_epoch = 2000
+    warm_up_start = 800
     beta = 1e-8
     initial_xi = 0.0
     pull_back_energy_weight = 64
@@ -46,7 +46,7 @@ class ExpConfig(spt.Config):
     batch_size = 128
     initial_lr = 0.0002
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200]
+    lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
     lr_anneal_step_freq = None
 
     gradient_penalty_weight = 2
@@ -434,14 +434,13 @@ def G_theta(z):
             ndims=1,
             shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 256)
         )
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 256, strides=2, scope='level_1')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_2')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 96, scope='level_3')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, strides=2, scope='level_5')  # output: (14, 14, 32)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_1')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 96, strides=2, scope='level_2')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_3')  # output: (14, 14, 32)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, strides=2, scope='level_5')  # output: (14, 14, 32)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_6')  # output:
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_7')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_9')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         kernel_initializer=tf.zeros_initializer()
@@ -904,7 +903,9 @@ def main():
 
                 if epoch in config.lr_anneal_epoch_freq:
                     learning_rate.anneal()
-                    n_critical += 1
+
+                if epoch == config.warm_up_start:
+                    learning_rate.set(config.initial_lr)
 
                 if epoch % config.plot_epoch_freq == 0:
                     plot_samples(loop)
