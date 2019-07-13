@@ -37,7 +37,7 @@ class ExpConfig(spt.Config):
     result_dir = None
     write_summary = True
     max_epoch = 2000
-    warm_up_start = 800
+    warm_up_start = 1000
     beta = 1e-8
     initial_xi = 0.0
     pull_back_energy_weight = 64
@@ -363,7 +363,6 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_3')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_4')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 96, scope='level_5')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_6')  # output: (7, 7, 64)
         h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_8')  # output: (7, 7, 64)
 
@@ -403,7 +402,6 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0):
     normal = normal.batch_ndims_to_value(1)
     xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(config.initial_xi),
                          dtype=tf.float32, trainable=True)
-    xi = tf.sigmoid(xi)
     pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator)
     z = net.add('z', pz, n_samples=n_z)
     x_mean = G_theta(z)
@@ -434,13 +432,13 @@ def G_theta(z):
             ndims=1,
             shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 256)
         )
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_1')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 96, strides=2, scope='level_2')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_3')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, strides=2, scope='level_5')  # output: (14, 14, 32)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 256, strides=2, scope='level_2')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_3')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, strides=2, scope='level_5')  # output: (14, 14, 32)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_6')  # output:
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_7')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_9')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         kernel_initializer=tf.zeros_initializer()
@@ -466,7 +464,6 @@ def D_psi(x):
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_3')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_4')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 96, scope='level_5')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_6')  # output: (7, 7, 64)
         h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_8')  # output: (7, 7, 64)
 
@@ -845,7 +842,15 @@ def main():
                 while step_iterator.has_next:
                     # vae training
                     for step, [x] in loop.iter_steps(limited(step_iterator, n_critical)):
-                        if epoch > config.warm_up_start:
+                        if epoch <= config.warm_up_start:
+                            # discriminator training
+                            [_, batch_D_loss, debug_loss] = session.run(
+                                [D_train_op, D_loss, debug], feed_dict={
+                                    input_x: x,
+                                })
+                            loop.collect_metrics(D_loss=batch_D_loss)
+                            loop.collect_metrics(debug_loss=debug_loss)
+                        else:
                             [_, batch_VAE_loss, beta_value, xi_value, debug_information, train_reconstruct_energy_value,
                              training_D_loss] = session.run(
                                 [VAE_train_op, VAE_loss, beta, xi_node, debug_variable, train_reconstruct_energy,
@@ -859,16 +864,7 @@ def main():
                             loop.collect_metrics(debug_information=debug_information)
                             loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
                             loop.collect_metrics(training_D_loss=training_D_loss)
-                        else:
-                            # discriminator training
-                            [_, batch_D_loss, debug_loss] = session.run(
-                                [D_train_op, D_loss, debug], feed_dict={
-                                    input_x: x,
-                                })
-                            loop.collect_metrics(D_loss=batch_D_loss)
-                            loop.collect_metrics(debug_loss=debug_loss)
 
-                    # generator training x
                     if epoch <= config.warm_up_start:
                         [_, batch_G_loss] = session.run(
                             [G_train_op, G_loss], feed_dict={
@@ -879,6 +875,7 @@ def main():
                             [G_loss], feed_dict={
                             })
                         while batch_G_loss >= debug_loss + config.D_limit:
+                            # generator training x
                             [_, batch_G_loss] = session.run(
                                 [G_train_op, G_loss], feed_dict={
                                 })
@@ -930,6 +927,7 @@ def main():
                         sample_img.append(session.run(x_plots))
                     sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
                     sample_img = sample_img[:len(dataset_img)]
+                    sample_img = np.asarray(sample_img)
 
                     FID = get_fid(sample_img, dataset_img)
                     # turn to numpy array
