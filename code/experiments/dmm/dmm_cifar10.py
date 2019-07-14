@@ -440,7 +440,7 @@ def G_theta(z):
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
-        kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
+        kernel_initializer=tf.zeros_initializer(), #  activation_fn=tf.nn.tanh
     )
     return x_mean
 
@@ -493,7 +493,7 @@ def get_all_loss(q_net, p_net, pn_net):
             print(interpolates)
             D_interpolates = D_psi(interpolates)
             print(D_interpolates)
-            gradient_penalty = tf.square(tf.gradients(D_interpolates, interpolates)[0])
+            gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
             gradient_penalty = tf.reduce_sum(gradient_penalty, tf.range(-len(config.x_shape), 0))
             gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
             gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
