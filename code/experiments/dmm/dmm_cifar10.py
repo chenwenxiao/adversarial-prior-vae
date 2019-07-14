@@ -24,7 +24,7 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 1024
+    z_dim = 512
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -50,11 +50,11 @@ class ExpConfig(spt.Config):
     lr_anneal_step_freq = None
 
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
-    gradient_penalty_weight = 10
+    gradient_penalty_weight = 2
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    n_critical = 1
+    n_critical = 5
     D_limit = 10.0
     # evaluation parameters
     train_n_pz = 128
@@ -360,12 +360,11 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_1')  # output: (28, 28, 16)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_3')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_4')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_6')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_8')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_3')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_4')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_6')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 512, strides=2, scope='level_8')  # output: (7, 7, 64)
 
     # sample z ~ q(z|x)
     h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
@@ -426,23 +425,22 @@ def G_theta(z):
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
-        h_z = spt.layers.dense(z, 256 * config.x_shape[0] // 8 * config.x_shape[1] // 8, scope='level_0',
+        h_z = spt.layers.dense(z, 512 * config.x_shape[0] // 8 * config.x_shape[1] // 8, scope='level_0',
                                normalizer_fn=None)
         h_z = spt.ops.reshape_tail(
             h_z,
             ndims=1,
-            shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 256)
+            shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 512)
         )
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 256, strides=2, scope='level_2')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_3')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, strides=2, scope='level_5')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_6')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 512, strides=2, scope='level_2')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 256, strides=2, scope='level_3')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_5')  # output: (14, 14, 32)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_6')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_9')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
-        kernel_initializer=tf.zeros_initializer()
+        kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
     )
     return x_mean
 
@@ -461,12 +459,11 @@ def D_psi(x):
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_1')  # output: (28, 28, 16)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_3')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_4')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_6')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_8')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_3')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_4')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_6')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 512, strides=2, scope='level_8')  # output: (7, 7, 64)
 
         h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
         h_x = spt.layers.dense(h_x, 64, scope='level_-2')
@@ -477,8 +474,8 @@ def D_psi(x):
 
 def get_all_loss(q_net, p_net, pn_net):
     with tf.name_scope('adv_prior_loss'):
-        x = p_net['x'].distribution.mean
-        x_ = pn_net['x'].distribution.mean
+        x = p_net['x']
+        x_ = pn_net['x']
         log_px_z = p_net['x'].log_prob()
         energy_real = p_net['x'].log_prob().energy
         energy_fake = pn_net['x'].log_prob().energy
@@ -489,8 +486,8 @@ def get_all_loss(q_net, p_net, pn_net):
                 tf.concat([[config.batch_size], [1] * len(config.x_shape)], axis=0),
                 minval=0, maxval=1.0
             )
-            x = tf.reshape(x, (-1, ) + config.x_shape)
-            x_ = tf.reshape(x_, (-1, ) + config.x_shape)
+            x = tf.reshape(x, (-1,) + config.x_shape)
+            x_ = tf.reshape(x_, (-1,) + config.x_shape)
             differences = x - x_
             interpolates = x_ + alpha * differences
             print(interpolates)
