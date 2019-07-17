@@ -151,7 +151,7 @@ class EnergyDistribution(spt.Distribution):
                                'log_prob', self),
                            values=[given]):
             if y is not None:
-                energy = config.pull_back_energy_weight * self.D(self.G(given), y) * self.xi + 0.5 * tf.reduce_sum(
+                energy = config.pull_back_energy_weight * self.D(self.G(given, y), y) * self.xi + 0.5 * tf.reduce_sum(
                     tf.square(given), axis=-1)
             else:
                 energy = config.pull_back_energy_weight * self.D(self.G(given)) * self.xi + 0.5 * tf.reduce_sum(
@@ -255,7 +255,7 @@ class ExponentialDistribution(spt.Distribution):
         self._N = 1
         for i in config.x_shape:
             self._N *= i
-        self._log_Z = np.log(2) + self.N / 2.0 * np.log(np.pi) + self.N * tf.log(self.beta)
+        self._log_Z = np.log(2) + self.N / 2.0 * np.log(np.pi) - self.N * tf.log(self.beta)
         bias = 0.0
         for i in range(1, self.N):
             bias += np.log(i)
@@ -291,7 +291,7 @@ class ExponentialDistribution(spt.Distribution):
                            default_name=spt.utils.get_default_scope_name('log_prob', self),
                            values=[given]):
             log_px = -tf.sqrt(
-                tf.reduce_sum(tf.square(given - self.mean), axis=tf.range(-group_ndims, 0))) / self.beta - self.log_Z
+                tf.reduce_sum(tf.square(given - self.mean), axis=tf.range(-group_ndims, 0))) * self.beta - self.log_Z
             log_px.energy = self.D(given)
             log_px.mean_energy = self.D(self.mean)
 
@@ -399,7 +399,7 @@ def get_log_Z():
 
 @add_arg_scope
 @spt.global_reuse
-def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0):
+def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, mixG=False):
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
     normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
@@ -407,7 +407,8 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0):
     normal = normal.batch_ndims_to_value(1)
     xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(config.initial_xi),
                          dtype=tf.float32, trainable=True)
-    pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator)
+    pz = EnergyDistribution(normal, G=(G_ if mixG else G_theta), D=D_psi, log_Z=log_Z, xi=xi,
+                            mcmc_iterator=mcmc_iterator)
     z = net.add('z', pz, n_samples=n_z)
     x_mean = G_theta(z)
     x = net.add('x', ExponentialDistribution(
@@ -416,6 +417,49 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0):
         D=D_psi
     ), group_ndims=3)
     return net
+
+
+def G_(z, y=None):
+    x_omega = G_omega(z)
+    x_theta = G_theta(z)
+    D_omega = D_psi(x_omega, y)
+    D_theta = D_psi(x_theta, y)
+    mask = tf.to_float(D_omega < D_theta)
+    for i in range(len(config.x_shape)):
+        mask = tf.expand_dims(mask, axis=[-1])
+    return mask * D_omega + (1 - mask) * D_theta
+
+
+@add_arg_scope
+@spt.global_reuse
+def G_omega(z):
+    normalizer_fn = None
+
+    # compute the hidden features
+    with arg_scope([spt.layers.resnet_deconv2d_block],
+                   kernel_size=config.kernel_size,
+                   shortcut_kernel_size=config.shortcut_kernel_size,
+                   activation_fn=tf.nn.leaky_relu,
+                   normalizer_fn=normalizer_fn,
+                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
+        h_z = spt.layers.dense(z, 512 * config.x_shape[0] // 8 * config.x_shape[1] // 8, scope='level_0',
+                               normalizer_fn=None)
+        h_z = spt.ops.reshape_tail(
+            h_z,
+            ndims=1,
+            shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 512)
+        )
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 512, strides=2, scope='level_2')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 256, strides=2, scope='level_3')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_5')  # output: (14, 14, 32)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_6')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
+    x_mean = spt.layers.conv2d(
+        h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
+        kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
+    )
+    return x_mean
 
 
 @add_arg_scope
@@ -482,10 +526,10 @@ def D_psi(x, y=None):
 def get_all_loss(q_net, p_net, pn_net, warm=1.0):
     with tf.name_scope('adv_prior_loss'):
         x = p_net['x']
-        x_ = pn_net['x']
+        x_ = G_omega(pn_net['z'])
         log_px_z = p_net['x'].log_prob()
-        energy_real = D_psi(p_net['x'])
-        energy_fake = D_psi(pn_net['x'])
+        energy_real = D_psi(x)
+        energy_fake = D_psi(x_)
 
         if config.gradient_penalty_algorithm == 'interpolate':
             # Sample from interpolates
@@ -632,15 +676,15 @@ def main():
     with tf.name_scope('initialization'), \
          arg_scope([spt.layers.act_norm], initializing=True), \
          spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
-        init_pn_net = p_net(n_z=config.train_n_pz, beta=beta)
+        init_pn_net = p_net(n_z=config.train_n_pz, beta=beta, mixG=True)
         init_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
-        init_p_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz, beta=beta)
+        init_p_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz, beta=beta, mixG=True)
         init_loss = sum(get_all_loss(init_q_net, init_p_net, init_pn_net))
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
          arg_scope([batch_norm], training=True):
-        train_pn_net = p_net(n_z=config.train_n_pz, beta=beta)
+        train_pn_net = p_net(n_z=config.train_n_pz, beta=beta, mixG=True)
         train_log_Z = spt.ops.log_mean_exp(-train_pn_net['z'].log_prob().energy - train_pn_net['z'].log_prob())
         train_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']},
@@ -656,9 +700,9 @@ def main():
     with tf.name_scope('testing'):
         test_q_net = q_net(input_x, posterior_flow, n_z=config.test_n_qz)
         # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
-        test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
+        test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z(), mixG=True)
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
-                                      beta=beta, log_Z=get_log_Z())
+                                      beta=beta, log_Z=get_log_Z(), mixG=True)
         test_recon = tf.reduce_mean(
             test_chain.model['x'].log_prob()
         )
@@ -709,7 +753,7 @@ def main():
         VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
             'beta') + tf.trainable_variables('p_net/xi') + tf.trainable_variables('posterior_flow')
         D_params = tf.trainable_variables('D_psi')
-        G_params = tf.trainable_variables('G_theta')
+        G_params = tf.trainable_variables('G_omega')
         print("========VAE_params=========")
         print(VAE_params)
         print("========D_params=========")
@@ -717,12 +761,6 @@ def main():
         print("========G_params=========")
         print(G_params)
         with tf.variable_scope('VAE_optimizer'):
-            _VAE_grads = tf.gradients(VAE_loss, G_params)
-            VAE_grad = []
-            for grad in _VAE_grads:
-                VAE_grad.append(tf.reshape(grad, (-1,)))
-            VAE_grad = tf.concat(VAE_grad, axis=0)
-            # above is working for get the gradient for G_theta
             VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
             VAE_grads = VAE_optimizer.compute_gradients(VAE_loss, VAE_params)
         with tf.variable_scope('D_optimizer'):
@@ -731,10 +769,6 @@ def main():
         with tf.variable_scope('G_optimizer'):
             G_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
             G_grads = G_optimizer.compute_gradients(G_loss, G_params)
-
-            _G_grads = tf.gradients(G_loss, G_params)
-            G_grad = [tf.reshape(grad, (-1,)) for grad in _G_grads]
-            G_grad = tf.concat(G_grad, axis=0)
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             VAE_train_op = VAE_optimizer.apply_gradients(VAE_grads)
             G_train_op = G_optimizer.apply_gradients(G_grads)
@@ -743,11 +777,11 @@ def main():
     # derive the plotting function
     with tf.name_scope('plotting'):
         x_plots = 256.0 * tf.reshape(
-            p_net(n_z=100, mcmc_iterator=0, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
+            p_net(n_z=100, mcmc_iterator=0, beta=beta, mixG=True)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
         reconstruct_q_net = q_net(input_x, posterior_flow)
         reconstruct_z = reconstruct_q_net['z']
         reconstruct_plots = 256.0 * tf.reshape(
-            p_net(observed={'z': reconstruct_z}, beta=beta)['x'],
+            p_net(observed={'z': reconstruct_z}, beta=beta, mixG=True)['x'],
             (-1,) + config.x_shape
         ) / 2 + 127.5
         x_plots = tf.clip_by_value(x_plots, 0, 255)
