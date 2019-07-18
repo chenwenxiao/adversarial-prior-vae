@@ -907,7 +907,7 @@ def main():
                                  D_loss],
                                 feed_dict={
                                     input_x: x,
-                                    warm: min(1.0, (1.0 * (epoch - config.warm_up_start) / config.warm_up_epoch) ** 2)
+                                    warm: 1.0 if epoch > config.warm_up_start + config.warm_up_epoch else 0.0
                                 })
                             loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                             loop.collect_metrics(xi=xi_value)
@@ -915,7 +915,6 @@ def main():
                             loop.collect_metrics(debug_information=debug_information)
                             loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
                             loop.collect_metrics(training_D_loss=training_D_loss)
-                        # loop.print_logs()
 
                 if epoch in config.lr_anneal_epoch_freq:
                     learning_rate.anneal()

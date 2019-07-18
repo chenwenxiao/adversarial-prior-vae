@@ -41,7 +41,7 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0
-    pull_back_energy_weight = 16
+    pull_back_energy_weight = 64
 
     max_step = None
     batch_size = 128
@@ -427,7 +427,7 @@ def G_(z, y=None):
     mask = tf.to_float(D_omega < D_theta)
     for i in range(len(config.x_shape)):
         mask = tf.expand_dims(mask, axis=[-1])
-    return mask * D_omega + (1 - mask) * D_theta
+    return mask * x_omega + (1 - mask) * x_theta
 
 
 @add_arg_scope
@@ -869,17 +869,17 @@ def main():
             print('Network initialized, first-batch loss is {:.6g}.\n'.
                   format(session.run(init_loss, feed_dict={input_x: x})))
             break
-
-        if config.z_dim == 512:
-            restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/48/19/6f3b6c3ef49ded8ba2d5/checkpoint/checkpoint/checkpoint.dat-390000'
-        elif config.z_dim == 1024:
-            restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/cd/19/6f9d69b5d1931e67e2d5/checkpoint/checkpoint/checkpoint.dat-390000'
-        elif config.z_dim == 2048:
-            restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/4d/19/6f9d69b5d19398c8c2d5/checkpoint/checkpoint/checkpoint.dat-390000'
-        elif config.z_dim == 3072:
-            restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
-        else:
-            restore_checkpoint = None
+        #
+        # if config.z_dim == 512:
+        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/48/19/6f3b6c3ef49ded8ba2d5/checkpoint/checkpoint/checkpoint.dat-390000'
+        # elif config.z_dim == 1024:
+        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/cd/19/6f9d69b5d1931e67e2d5/checkpoint/checkpoint/checkpoint.dat-390000'
+        # elif config.z_dim == 2048:
+        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/4d/19/6f9d69b5d19398c8c2d5/checkpoint/checkpoint/checkpoint.dat-390000'
+        # elif config.z_dim == 3072:
+        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
+        # else:
+        restore_checkpoint = None
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -941,7 +941,7 @@ def main():
                                  D_loss],
                                 feed_dict={
                                     input_x: x,
-                                    warm: min(1.0, 1.0 * (epoch - config.warm_up_start) / config.warm_up_epoch)
+                                    warm: min(1.0, 1.0 * (epoch - config.warm_up_start) / config.warm_up_epoch) ** 2
                                 })
                             loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                             loop.collect_metrics(xi=xi_value)
