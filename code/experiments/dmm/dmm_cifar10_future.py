@@ -45,7 +45,7 @@ class ExpConfig(spt.Config):
 
     max_step = None
     batch_size = 128
-    initial_lr = 0.0002
+    initial_lr = 0.0001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
     lr_anneal_step_freq = None
@@ -373,6 +373,8 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
 
     # sample z ~ q(z|x)
     h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
+    x = spt.ops.reshape_tail(x, ndims=3, shape=[-1])
+    h_x = tf.concat([h_x, x], axis=-1)
     z_mean = spt.layers.dense(h_x, config.z_dim, scope='z_mean', kernel_initializer=tf.zeros_initializer())
     z_logstd = spt.layers.dense(h_x, config.z_dim, scope='z_logstd', kernel_initializer=tf.zeros_initializer())
     z_distribution = spt.FlowDistribution(
@@ -399,7 +401,7 @@ def get_log_Z():
 
 @add_arg_scope
 @spt.global_reuse
-def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, mixG=False):
+def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0):
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
     normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
@@ -407,7 +409,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, mixG=Fa
     normal = normal.batch_ndims_to_value(1)
     xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(config.initial_xi),
                          dtype=tf.float32, trainable=True)
-    pz = EnergyDistribution(normal, G=(G_ if mixG else G_theta), D=D_psi, log_Z=log_Z, xi=xi,
+    pz = EnergyDistribution(normal, G=G_, D=D_psi, log_Z=log_Z, xi=xi,
                             mcmc_iterator=mcmc_iterator)
     z = net.add('z', pz, n_samples=n_z)
     x_mean = G_theta(z)
@@ -420,6 +422,8 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, mixG=Fa
 
 
 def G_(z, y=None):
+    if y is None:
+        return G_omega(z)
     x_omega = G_omega(z)
     x_theta = G_theta(z)
     D_omega = D_psi(x_omega, y)
@@ -427,7 +431,7 @@ def G_(z, y=None):
     mask = tf.to_float(D_omega < D_theta)
     for i in range(len(config.x_shape)):
         mask = tf.expand_dims(mask, axis=[-1])
-    return mask * x_omega + (1 - mask) * x_theta
+    return mask * x_omega + (1.0 - mask) * x_theta
 
 
 @add_arg_scope
@@ -487,9 +491,17 @@ def G_theta(z):
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_6')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
-    x_mean = spt.layers.conv2d(
-        h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
+
+    h_z = spt.ops.reshape_tail(h_z, ndims=3, shape=[-1])
+    h_z = tf.concat([h_z, z], axis=-1)
+    x_mean = spt.layers.dense(
+        h_z, config.x_shape_multiple, scope='feature_map_mean_to_pixel',
         kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
+    )
+    x_mean = spt.ops.reshape_tail(
+        x_mean,
+        ndims=1,
+        shape=config.x_shape
     )
     return x_mean
 
@@ -530,6 +542,9 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
         log_px_z = p_net['x'].log_prob()
         energy_real = D_psi(x)
         energy_fake = D_psi(x_)
+        x__ = G_theta(pn_net['z'])
+        global theta_energy
+        theta_energy = tf.reduce_mean(D_psi(x__))
 
         if config.gradient_penalty_algorithm == 'interpolate':
             # Sample from interpolates
@@ -566,9 +581,8 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
         # VAE_loss = tf.reduce_mean(
         #     -log_px_z - p_net['z'].log_prob() + q_net['z'].log_prob()
         # )
-        global debug_variable
-        debug_variable = tf.reduce_mean(
-            tf.sqrt(tf.reduce_sum((p_net['x'] - p_net['x'].distribution.mean) ** 2, [2, 3, 4])))
+        global train_recon
+        train_recon = tf.reduce_mean(-log_px_z)
         global train_reconstruct_energy
         train_reconstruct_energy = tf.reduce_mean(D_psi(p_net['x'].distribution.mean, p_net['x']))
         VAE_loss = tf.reduce_mean(-log_px_z) + warm * tf.reduce_mean(
@@ -635,8 +649,10 @@ def get_var(name):
     raise NameError('Variable {} not exist.'.format(name))
 
 
-debug_variable = None
+train_recon = None
 train_reconstruct_energy = None
+theta_energy = None
+omega_energy = None
 
 
 def main():
@@ -676,21 +692,21 @@ def main():
     with tf.name_scope('initialization'), \
          arg_scope([spt.layers.act_norm], initializing=True), \
          spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
-        init_pn_net = p_net(n_z=config.train_n_pz, beta=beta, mixG=True)
+        init_pn_net = p_net(n_z=config.train_n_pz, beta=beta)
         init_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
-        init_p_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz, beta=beta, mixG=True)
+        init_p_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz, beta=beta)
         init_loss = sum(get_all_loss(init_q_net, init_p_net, init_pn_net))
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
          arg_scope([batch_norm], training=True):
-        train_pn_net = p_net(n_z=config.train_n_pz, beta=beta, mixG=True)
+        train_pn_net = p_net(n_z=config.train_n_pz, beta=beta)
         train_log_Z = spt.ops.log_mean_exp(-train_pn_net['z'].log_prob().energy - train_pn_net['z'].log_prob())
         train_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']},
-                            n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z, mixG=True)
+                            n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
 
-        VAE_loss, D_loss, G_loss, debug = get_all_loss(train_q_net, train_p_net, train_pn_net, warm)
+        VAE_loss, D_loss, G_loss, D_real = get_all_loss(train_q_net, train_p_net, train_pn_net, warm)
 
         VAE_loss += tf.losses.get_regularization_loss()
         D_loss += tf.losses.get_regularization_loss()
@@ -700,9 +716,9 @@ def main():
     with tf.name_scope('testing'):
         test_q_net = q_net(input_x, posterior_flow, n_z=config.test_n_qz)
         # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
-        test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z(), mixG=True)
+        test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
-                                      beta=beta, log_Z=get_log_Z(), mixG=True)
+                                      beta=beta, log_Z=get_log_Z())
         test_recon = tf.reduce_mean(
             test_chain.model['x'].log_prob()
         )
@@ -739,9 +755,9 @@ def main():
         real_energy = tf.reduce_mean(D_psi(test_chain.model['x']))
         reconstruct_energy = tf.reduce_mean(D_psi(test_chain.model['x'].distribution.mean))
         pd_energy = tf.reduce_mean(
-            D_psi(test_pn_net['x'].distribution.mean) * tf.exp(
+            D_psi(G_omega(test_pn_net['z'])) * tf.exp(
                 test_pn_net['z'].log_prob().log_energy_prob - test_pn_net['z'].log_prob()))
-        pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.mean))
+        pn_energy = tf.reduce_mean(D_psi(G_omega(test_pn_net['z'])))
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
         kl_adv_and_gaussian = tf.reduce_mean(
@@ -776,12 +792,13 @@ def main():
 
     # derive the plotting function
     with tf.name_scope('plotting'):
+        plotting_net = p_net(n_z=100, mcmc_iterator=0, beta=beta)
         x_plots = 256.0 * tf.reshape(
-            p_net(n_z=100, mcmc_iterator=0, beta=beta, mixG=True)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
+            G_(plotting_net['z']), (-1,) + config.x_shape) / 2 + 127.5
         reconstruct_q_net = q_net(input_x, posterior_flow)
         reconstruct_z = reconstruct_q_net['z']
         reconstruct_plots = 256.0 * tf.reshape(
-            p_net(observed={'z': reconstruct_z}, beta=beta, mixG=True)['x'],
+            p_net(observed={'z': reconstruct_z}, beta=beta)['x'],
             (-1,) + config.x_shape
         ) / 2 + 127.5
         x_plots = tf.clip_by_value(x_plots, 0, 255)
@@ -869,15 +886,11 @@ def main():
             print('Network initialized, first-batch loss is {:.6g}.\n'.
                   format(session.run(init_loss, feed_dict={input_x: x})))
             break
-        #
-        # if config.z_dim == 512:
-        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/48/19/6f3b6c3ef49ded8ba2d5/checkpoint/checkpoint/checkpoint.dat-390000'
-        # elif config.z_dim == 1024:
-        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/cd/19/6f9d69b5d1931e67e2d5/checkpoint/checkpoint/checkpoint.dat-390000'
+
+        # if config.z_dim == 1024:
+        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/6f/19/6f9d69b5d193937333d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # elif config.z_dim == 2048:
-        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/4d/19/6f9d69b5d19398c8c2d5/checkpoint/checkpoint/checkpoint.dat-390000'
-        # elif config.z_dim == 3072:
-        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
+        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/e6/19/6ffd833e8f14095333d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
         restore_checkpoint = None
 
@@ -920,24 +933,25 @@ def main():
                 while step_iterator.has_next:
                     if epoch <= config.warm_up_start:
                         # generator training x
-                        [_, batch_G_loss] = session.run(
-                            [G_train_op, G_loss], feed_dict={
+                        [_, batch_G_loss, batch_theta_loss] = session.run(
+                            [G_train_op, G_loss, theta_energy], feed_dict={
                             })
                         loop.collect_metrics(G_loss=batch_G_loss)
+                        loop.collect_metrics(theta_energy=batch_theta_loss)
                     # vae training
                     for step, [x] in loop.iter_steps(limited(step_iterator, n_critical)):
                         if epoch <= config.warm_up_start:
                             # discriminator training
-                            [_, batch_D_loss, debug_loss] = session.run(
-                                [D_train_op, D_loss, debug], feed_dict={
+                            [_, batch_D_loss, batch_D_real] = session.run(
+                                [D_train_op, D_loss, D_real], feed_dict={
                                     input_x: x,
                                 })
                             loop.collect_metrics(D_loss=batch_D_loss)
-                            loop.collect_metrics(debug_loss=debug_loss)
+                            loop.collect_metrics(D_real=batch_D_real)
                         else:
-                            [_, batch_VAE_loss, beta_value, xi_value, debug_information, train_reconstruct_energy_value,
+                            [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_reconstruct_energy,
                              training_D_loss] = session.run(
-                                [VAE_train_op, VAE_loss, beta, xi_node, debug_variable, train_reconstruct_energy,
+                                [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_reconstruct_energy,
                                  D_loss],
                                 feed_dict={
                                     input_x: x,
@@ -946,8 +960,8 @@ def main():
                             loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                             loop.collect_metrics(xi=xi_value)
                             loop.collect_metrics(beta=beta_value)
-                            loop.collect_metrics(debug_information=debug_information)
-                            loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
+                            loop.collect_metrics(train_recon=batch_train_recon)
+                            loop.collect_metrics(train_reconstruct_energy=batch_train_reconstruct_energy)
                             loop.collect_metrics(training_D_loss=training_D_loss)
 
                 if epoch in config.lr_anneal_epoch_freq:
