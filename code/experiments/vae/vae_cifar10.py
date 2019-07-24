@@ -446,16 +446,12 @@ def G_theta(z):
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
 
-    h_z = spt.ops.reshape_tail(h_z, ndims=3, shape=[-1])
+    z = spt.ops.reshape_tail(z, ndims=1, shape=[config.x_shape[0], config.x_shape[1],
+                                                config.z_dim // config.x_shape[0] // config.x_shape[1]])
     h_z = tf.concat([h_z, z], axis=-1)
-    x_mean = spt.layers.dense(
-        h_z, config.x_shape_multiple, scope='feature_map_mean_to_pixel',
+    x_mean = spt.layers.conv2d(
+        h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
-    )
-    x_mean = spt.ops.reshape_tail(
-        x_mean,
-        ndims=1,
-        shape=config.x_shape
     )
     return x_mean
 
@@ -532,6 +528,8 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
         # VAE_loss = tf.reduce_mean(
         #     -log_px_z - p_net['z'].log_prob() + q_net['z'].log_prob()
         # )
+        global train_recon
+        train_recon = tf.reduce_mean(log_px_z)
         global debug_variable
         debug_variable = tf.reduce_mean(
             tf.sqrt(tf.reduce_sum((p_net['x'] - p_net['x'].distribution.mean) ** 2, [2, 3, 4])))
@@ -597,7 +595,7 @@ def get_var(name):
             return var
     raise NameError('Variable {} not exist.'.format(name))
 
-
+train_recon = None
 debug_variable = None
 train_reconstruct_energy = None
 
@@ -896,9 +894,9 @@ def main():
                             loop.collect_metrics(D_loss=batch_D_loss)
                             loop.collect_metrics(debug_loss=debug_loss)
                         else:
-                            [_, batch_VAE_loss, beta_value, xi_value, debug_information, train_reconstruct_energy_value,
+                            [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, train_reconstruct_energy_value,
                              training_D_loss] = session.run(
-                                [VAE_train_op, VAE_loss, beta, xi_node, debug_variable, train_reconstruct_energy,
+                                [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_reconstruct_energy,
                                  D_loss],
                                 feed_dict={
                                     input_x: x,
@@ -907,7 +905,7 @@ def main():
                             loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                             loop.collect_metrics(xi=xi_value)
                             loop.collect_metrics(beta=beta_value)
-                            loop.collect_metrics(debug_information=debug_information)
+                            loop.collect_metrics(train_recon=batch_train_recon)
                             loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
                             loop.collect_metrics(training_D_loss=training_D_loss)
                             # loop.print_logs()

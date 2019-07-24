@@ -71,7 +71,7 @@ class ExpConfig(spt.Config):
     test_x_samples = 8
     log_Z_times = 10
 
-    epsilon = -20
+    epsilon = -10
 
     @property
     def x_shape(self):
@@ -492,16 +492,12 @@ def G_theta(z):
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
 
-    h_z = spt.ops.reshape_tail(h_z, ndims=3, shape=[-1])
+    z = spt.ops.reshape_tail(z, ndims=1, shape=[config.x_shape[0], config.x_shape[1],
+                                                config.z_dim // config.x_shape[0] // config.x_shape[1]])
     h_z = tf.concat([h_z, z], axis=-1)
-    x_mean = spt.layers.dense(
-        h_z, config.x_shape_multiple, scope='feature_map_mean_to_pixel',
+    x_mean = spt.layers.conv2d(
+        h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
-    )
-    x_mean = spt.ops.reshape_tail(
-        x_mean,
-        ndims=1,
-        shape=config.x_shape
     )
     return x_mean
 
@@ -582,7 +578,7 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
         #     -log_px_z - p_net['z'].log_prob() + q_net['z'].log_prob()
         # )
         global train_recon
-        train_recon = tf.reduce_mean(-log_px_z)
+        train_recon = tf.reduce_mean(log_px_z)
         global train_reconstruct_energy
         train_reconstruct_energy = tf.reduce_mean(D_psi(p_net['x'].distribution.mean, p_net['x']))
         VAE_loss = tf.reduce_mean(-log_px_z) + warm * tf.reduce_mean(
@@ -888,9 +884,9 @@ def main():
             break
 
         # if config.z_dim == 1024:
-        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/6f/19/6f9d69b5d193937333d5/checkpoint/checkpoint/checkpoint.dat-390000'
+        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/00/29/6f9d69b5d19385cc53d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # elif config.z_dim == 2048:
-        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/e6/19/6ffd833e8f14095333d5/checkpoint/checkpoint/checkpoint.dat-390000'
+        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/99/19/6f3b6c3ef49dd6cc53d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
         restore_checkpoint = None
 
@@ -931,7 +927,7 @@ def main():
             for epoch in epoch_iterator:
                 step_iterator = MyIterator(train_flow)
                 while step_iterator.has_next:
-                    if epoch <= config.warm_up_start:
+                    if epoch <= config.warm_up_start + 5:
                         # generator training x
                         [_, batch_G_loss, batch_theta_loss] = session.run(
                             [G_train_op, G_loss, theta_energy], feed_dict={
@@ -951,11 +947,10 @@ def main():
                         else:
                             [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_reconstruct_energy,
                              training_D_loss] = session.run(
-                                [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_reconstruct_energy,
-                                 D_loss],
+                                [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_reconstruct_energy, D_loss],
                                 feed_dict={
                                     input_x: x,
-                                    warm: min(1.0, 1.0 * (epoch - config.warm_up_start) / config.warm_up_epoch) ** 2
+                                    warm: min(1.0, 1.0 * (epoch - config.warm_up_start) / config.warm_up_epoch)
                                 })
                             loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                             loop.collect_metrics(xi=xi_value)
