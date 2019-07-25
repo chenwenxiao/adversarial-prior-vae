@@ -71,7 +71,7 @@ class ExpConfig(spt.Config):
     test_x_samples = 8
     log_Z_times = 10
 
-    epsilon = -20
+    epsilon = -15
 
     @property
     def x_shape(self):
@@ -319,6 +319,12 @@ def batch_norm(inputs, training=False, scope=None):
     return tf.layers.batch_normalization(inputs, training=training, name=scope)
 
 
+@add_arg_scope
+def dropout(inputs, training=False, scope=None):
+    print(inputs, training)
+    return spt.layers.dropout(inputs, rate=0.2, training=training, name=scope)
+
+
 def get_z_moments(z, value_ndims, name=None):
     """
     Get the per-dimensional mean and variance of `z`.
@@ -362,19 +368,32 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
                    shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
-                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
+                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
+                   dropout_fn=dropout):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_3')  # output: (14, 14, 32)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_4')  # output: (14, 14, 32)
+        x = spt.ops.reshape_tail(x, ndims=3,
+                                 shape=[config.x_shape[0] // 2, config.x_shape[1] // 2, config.x_shape[2] * 4])
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_6')  # output: (7, 7, 64)
+        x = spt.ops.reshape_tail(x, ndims=3,
+                                 shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, config.x_shape[2] * 16])
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 512, strides=2, scope='level_8')  # output: (7, 7, 64)
+        x = spt.ops.reshape_tail(x, ndims=3,
+                                 shape=[config.x_shape[0] // 8, config.x_shape[1] // 8, config.x_shape[2] * 64])
+        h_x = tf.concat([h_x, x], axis=-1)
 
     # sample z ~ q(z|x)
     h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
-    x = spt.ops.reshape_tail(x, ndims=3, shape=[-1])
-    h_x = tf.concat([h_x, x], axis=-1)
+    # x = spt.ops.reshape_tail(x, ndims=3, shape=[-1])
+    # h_x = tf.concat([h_x, x], axis=-1)
     z_mean = spt.layers.dense(h_x, config.z_dim, scope='z_mean', kernel_initializer=tf.zeros_initializer())
     z_logstd = spt.layers.dense(h_x, config.z_dim, scope='z_logstd', kernel_initializer=tf.zeros_initializer())
     z_distribution = spt.FlowDistribution(
@@ -434,21 +453,28 @@ def G_theta(z):
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_z = spt.layers.dense(z, 512 * config.x_shape[0] // 8 * config.x_shape[1] // 8, scope='level_0',
                                normalizer_fn=None)
-        h_z = spt.ops.reshape_tail(
-            h_z,
-            ndims=1,
-            shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 512)
-        )
+        h_z = spt.ops.reshape_tail(h_z, ndims=1, shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 512))
+        z = spt.ops.reshape_tail(z, ndims=1, shape=[config.x_shape[0] // 8, config.x_shape[1] // 8,
+                                                    config.z_dim // config.x_shape[0] // config.x_shape[1] * 64])
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 512, strides=2, scope='level_2')  # output: (7, 7, 64)
+        z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 4, config.x_shape[1] // 4,
+                                                    config.z_dim // config.x_shape[0] // config.x_shape[1] * 16])
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 256, strides=2, scope='level_3')  # output: (7, 7, 64)
+        z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 2, config.x_shape[1] // 2,
+                                                    config.z_dim // config.x_shape[0] // config.x_shape[1] * 4])
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_5')  # output: (14, 14, 32)
+        z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0], config.x_shape[1],
+                                                    config.z_dim // config.x_shape[0] // config.x_shape[1]])
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_6')  # output:
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
-
-    z = spt.ops.reshape_tail(z, ndims=1, shape=[config.x_shape[0], config.x_shape[1],
-                                                config.z_dim // config.x_shape[0] // config.x_shape[1]])
-    h_z = tf.concat([h_z, z], axis=-1)
+        h_z = tf.concat([h_z, z], axis=-1)
     x_mean = spt.layers.conv2d(
         h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
@@ -503,9 +529,9 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
             x_ = tf.reshape(x_, (-1,) + config.x_shape)
             differences = x - x_
             interpolates = x_ + alpha * differences
-            print(interpolates)
+            # print(interpolates)
             D_interpolates = D_psi(interpolates)
-            print(D_interpolates)
+            # print(D_interpolates)
             gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
             gradient_penalty = tf.reduce_sum(gradient_penalty, tf.range(-len(config.x_shape), 0))
             gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
@@ -595,6 +621,7 @@ def get_var(name):
             return var
     raise NameError('Variable {} not exist.'.format(name))
 
+
 train_recon = None
 debug_variable = None
 train_reconstruct_energy = None
@@ -644,7 +671,7 @@ def main():
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
-         arg_scope([batch_norm], training=True):
+         arg_scope([batch_norm, dropout], training=True):
         train_pn_net = p_net(n_z=config.train_n_pz, beta=beta)
         train_log_Z = spt.ops.log_mean_exp(-train_pn_net['z'].log_prob().energy - train_pn_net['z'].log_prob())
         train_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
