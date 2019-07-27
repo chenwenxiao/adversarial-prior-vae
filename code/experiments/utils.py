@@ -206,6 +206,8 @@ def activations2distance(act1, act2):
 
 
 def get_fid(images1, images2):
+    images1=images1.transpose(0,3,1,2)
+    images2=images2.transpose(0,3,1,2)
     assert (type(images1) == np.ndarray)
     assert (len(images1.shape) == 4)
     assert (images1.shape[1] == 3)
@@ -262,6 +264,7 @@ def preds2score(preds, splits=10):
     return np.mean(scores), np.std(scores)
 
 def get_inception_score(images, splits=10):
+    images=images.transpose(0,3,1,2)
     assert(type(images) == np.ndarray)
     assert(len(images.shape) == 4)
     assert(images.shape[1] == 3)
