@@ -42,7 +42,7 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0
-    pull_back_energy_weight = 2048
+    pull_back_energy_weight = 512
 
     max_step = None
     batch_size = 128
@@ -56,7 +56,7 @@ class ExpConfig(spt.Config):
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    n_critical = 10
+    n_critical = 3
     # evaluation parameters
     train_n_pz = 128
     train_n_qz = 1
