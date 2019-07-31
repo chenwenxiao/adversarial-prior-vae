@@ -554,8 +554,8 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
         # )
         global train_recon
         train_recon = tf.reduce_mean(log_px_z)
-        global train_reconstruct_energy
-        train_reconstruct_energy = tf.reduce_mean(D_psi(p_net['x'].distribution.mean, p_net['x']))
+        global train_recon_energy
+        train_recon_energy = tf.reduce_mean(D_psi(p_net['x'].distribution.mean, p_net['x']))
         VAE_loss = tf.reduce_mean(-log_px_z) + warm * tf.reduce_mean(
             -p_net['z'].distribution.log_prob(p_net['z'], group_ndims=1, y=p_net['x']).log_energy_prob +
             q_net['z'].log_prob()
@@ -621,7 +621,7 @@ def get_var(name):
 
 
 train_recon = None
-train_reconstruct_energy = None
+train_recon_energy = None
 
 
 def main():
@@ -923,9 +923,9 @@ def main():
                         loop.collect_metrics(D_loss=batch_D_loss)
                         loop.collect_metrics(D_real=batch_D_real)
 
-                        [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, train_reconstruct_energy_value,
-                         training_D_loss] = session.run(
-                            [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_reconstruct_energy,
+                        [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
+                         batch_D_loss] = session.run(
+                            [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
                              D_loss],
                             feed_dict={
                                 input_x: x,
@@ -935,8 +935,8 @@ def main():
                         loop.collect_metrics(xi=xi_value)
                         loop.collect_metrics(beta=beta_value)
                         loop.collect_metrics(train_recon=batch_train_recon)
-                        loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
-                        loop.collect_metrics(training_D_loss=training_D_loss)
+                        loop.collect_metrics(train_recon_energy=batch_train_recon_energy)
+                        loop.collect_metrics(D_loss=batch_D_loss)
 
                     # generator training x
                     [_, batch_G_loss] = session.run(
