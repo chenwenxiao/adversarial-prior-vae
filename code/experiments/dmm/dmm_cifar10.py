@@ -14,6 +14,7 @@ from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
                                       bernoulli_as_pixel,
                                       bernoulli_flow,
+                                      bernoulli_flow,
                                       print_with_title)
 from code.experiments.utils import get_inception_score, get_fid
 import numpy as np
@@ -24,7 +25,7 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 512
+    z_dim = 2048
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -36,18 +37,18 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 2000
-    warm_up_start = 1000
+    max_epoch = 1000
+    warm_up_start = 0
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0
-    pull_back_energy_weight = 64
+    pull_back_energy_weight = 2048
 
     max_step = None
     batch_size = 128
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
+    lr_anneal_epoch_freq = [200, 400, 600, 800, 1000]
     lr_anneal_step_freq = None
 
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
@@ -55,8 +56,7 @@ class ExpConfig(spt.Config):
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    n_critical = 5
-    D_limit = 3.0
+    n_critical = 10
     # evaluation parameters
     train_n_pz = 128
     train_n_qz = 1
@@ -318,6 +318,10 @@ class ExponentialDistribution(spt.Distribution):
 def batch_norm(inputs, training=False, scope=None):
     return tf.layers.batch_normalization(inputs, training=training, name=scope)
 
+@add_arg_scope
+def dropout(inputs, training=False, scope=None):
+    print(inputs, training)
+    return spt.layers.dropout(inputs, rate=0.2, training=training, name=scope)
 
 def get_z_moments(z, value_ndims, name=None):
     """
@@ -362,17 +366,32 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
                    shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
-                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
+                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
+                   dropout_fn=dropout):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_3')  # output: (14, 14, 32)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_4')  # output: (14, 14, 32)
+        x = spt.ops.reshape_tail(x, ndims=3,
+                                 shape=[config.x_shape[0] // 2, config.x_shape[1] // 2, config.x_shape[2] * 4])
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_6')  # output: (7, 7, 64)
+        x = spt.ops.reshape_tail(x, ndims=3,
+                                 shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, config.x_shape[2] * 16])
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 512, strides=2, scope='level_8')  # output: (7, 7, 64)
+        x = spt.ops.reshape_tail(x, ndims=3,
+                                 shape=[config.x_shape[0] // 8, config.x_shape[1] // 8, config.x_shape[2] * 64])
+        h_x = tf.concat([h_x, x], axis=-1)
 
     # sample z ~ q(z|x)
     h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
+    # x = spt.ops.reshape_tail(x, ndims=3, shape=[-1])
+    # h_x = tf.concat([h_x, x], axis=-1)
     z_mean = spt.layers.dense(h_x, config.z_dim, scope='z_mean', kernel_initializer=tf.zeros_initializer())
     z_logstd = spt.layers.dense(h_x, config.z_dim, scope='z_logstd', kernel_initializer=tf.zeros_initializer())
     z_distribution = spt.FlowDistribution(
@@ -432,17 +451,28 @@ def G_theta(z):
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_z = spt.layers.dense(z, 512 * config.x_shape[0] // 8 * config.x_shape[1] // 8, scope='level_0',
                                normalizer_fn=None)
-        h_z = spt.ops.reshape_tail(
-            h_z,
-            ndims=1,
-            shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 512)
-        )
+        h_z = spt.ops.reshape_tail(h_z, ndims=1, shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 512))
+        z = spt.ops.reshape_tail(z, ndims=1, shape=[config.x_shape[0] // 8, config.x_shape[1] // 8,
+                                                    config.z_dim // config.x_shape[0] // config.x_shape[1] * 64])
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 512, strides=2, scope='level_2')  # output: (7, 7, 64)
+        z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 4, config.x_shape[1] // 4,
+                                                    config.z_dim // config.x_shape[0] // config.x_shape[1] * 16])
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 256, strides=2, scope='level_3')  # output: (7, 7, 64)
+        z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 2, config.x_shape[1] // 2,
+                                                    config.z_dim // config.x_shape[0] // config.x_shape[1] * 4])
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_5')  # output: (14, 14, 32)
+        z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0], config.x_shape[1],
+                                                    config.z_dim // config.x_shape[0] // config.x_shape[1]])
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_6')  # output:
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
+        h_z = tf.concat([h_z, z], axis=-1)
     x_mean = spt.layers.conv2d(
         h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
@@ -497,9 +527,9 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
             x_ = tf.reshape(x_, (-1,) + config.x_shape)
             differences = x - x_
             interpolates = x_ + alpha * differences
-            print(interpolates)
+            # print(interpolates)
             D_interpolates = D_psi(interpolates)
-            print(D_interpolates)
+            # print(D_interpolates)
             gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
             gradient_penalty = tf.reduce_sum(gradient_penalty, tf.range(-len(config.x_shape), 0))
             gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
@@ -522,9 +552,8 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
         # VAE_loss = tf.reduce_mean(
         #     -log_px_z - p_net['z'].log_prob() + q_net['z'].log_prob()
         # )
-        global debug_variable
-        debug_variable = tf.reduce_mean(
-            tf.sqrt(tf.reduce_sum((p_net['x'] - p_net['x'].distribution.mean) ** 2, [2, 3, 4])))
+        global train_recon
+        train_recon = tf.reduce_mean(log_px_z)
         global train_reconstruct_energy
         train_reconstruct_energy = tf.reduce_mean(D_psi(p_net['x'].distribution.mean, p_net['x']))
         VAE_loss = tf.reduce_mean(-log_px_z) + warm * tf.reduce_mean(
@@ -591,7 +620,7 @@ def get_var(name):
     raise NameError('Variable {} not exist.'.format(name))
 
 
-debug_variable = None
+train_recon = None
 train_reconstruct_energy = None
 
 
@@ -646,7 +675,7 @@ def main():
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']},
                             n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
 
-        VAE_loss, D_loss, G_loss, debug = get_all_loss(train_q_net, train_p_net, train_pn_net, warm)
+        VAE_loss, D_loss, G_loss, D_real = get_all_loss(train_q_net, train_p_net, train_pn_net, warm)
 
         VAE_loss += tf.losses.get_regularization_loss()
         D_loss += tf.losses.get_regularization_loss()
@@ -836,16 +865,16 @@ def main():
                   format(session.run(init_loss, feed_dict={input_x: x})))
             break
 
-        if config.z_dim == 512:
-            restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/48/19/6f3b6c3ef49ded8ba2d5/checkpoint/checkpoint/checkpoint.dat-390000'
-        elif config.z_dim == 1024:
-            restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/cd/19/6f9d69b5d1931e67e2d5/checkpoint/checkpoint/checkpoint.dat-390000'
-        elif config.z_dim == 2048:
-            restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/4d/19/6f9d69b5d19398c8c2d5/checkpoint/checkpoint/checkpoint.dat-390000'
-        elif config.z_dim == 3072:
-            restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
-        else:
-            restore_checkpoint = None
+        # if config.z_dim == 512:
+        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/48/19/6f3b6c3ef49ded8ba2d5/checkpoint/checkpoint/checkpoint.dat-390000'
+        # elif config.z_dim == 1024:
+        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/cd/19/6f9d69b5d1931e67e2d5/checkpoint/checkpoint/checkpoint.dat-390000'
+        # elif config.z_dim == 2048:
+        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/4d/19/6f9d69b5d19398c8c2d5/checkpoint/checkpoint/checkpoint.dat-390000'
+        # elif config.z_dim == 3072:
+        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
+        # else:
+        restore_checkpoint = None
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -884,43 +913,39 @@ def main():
             for epoch in epoch_iterator:
                 step_iterator = MyIterator(train_flow)
                 while step_iterator.has_next:
-                    if epoch <= config.warm_up_start:
-                        # generator training x
-                        [_, batch_G_loss] = session.run(
-                            [G_train_op, G_loss], feed_dict={
-                            })
-                        loop.collect_metrics(G_loss=batch_G_loss)
                     # vae training
                     for step, [x] in loop.iter_steps(limited(step_iterator, n_critical)):
-                        if epoch <= config.warm_up_start:
-                            # discriminator training
-                            [_, batch_D_loss, debug_loss] = session.run(
-                                [D_train_op, D_loss, debug], feed_dict={
-                                    input_x: x,
-                                })
-                            loop.collect_metrics(D_loss=batch_D_loss)
-                            loop.collect_metrics(debug_loss=debug_loss)
-                        else:
-                            [_, batch_VAE_loss, beta_value, xi_value, debug_information, train_reconstruct_energy_value,
-                             training_D_loss] = session.run(
-                                [VAE_train_op, VAE_loss, beta, xi_node, debug_variable, train_reconstruct_energy,
-                                 D_loss],
-                                feed_dict={
-                                    input_x: x,
-                                    warm: 1.0 if epoch > config.warm_up_start + config.warm_up_epoch else 0.0
-                                })
-                            loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
-                            loop.collect_metrics(xi=xi_value)
-                            loop.collect_metrics(beta=beta_value)
-                            loop.collect_metrics(debug_information=debug_information)
-                            loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
-                            loop.collect_metrics(training_D_loss=training_D_loss)
+                        # discriminator training
+                        [_, batch_D_loss, batch_D_real] = session.run(
+                            [D_train_op, D_loss, D_real], feed_dict={
+                                input_x: x,
+                            })
+                        loop.collect_metrics(D_loss=batch_D_loss)
+                        loop.collect_metrics(D_real=batch_D_real)
+
+                        [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, train_reconstruct_energy_value,
+                         training_D_loss] = session.run(
+                            [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_reconstruct_energy,
+                             D_loss],
+                            feed_dict={
+                                input_x: x,
+                                warm: min(1.0, 1.0 * epoch / config.warm_up_epoch)
+                            })
+                        loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
+                        loop.collect_metrics(xi=xi_value)
+                        loop.collect_metrics(beta=beta_value)
+                        loop.collect_metrics(train_recon=batch_train_recon)
+                        loop.collect_metrics(train_reconstruct_energy=train_reconstruct_energy_value)
+                        loop.collect_metrics(training_D_loss=training_D_loss)
+
+                    # generator training x
+                    [_, batch_G_loss] = session.run(
+                        [G_train_op, G_loss], feed_dict={
+                        })
+                    loop.collect_metrics(G_loss=batch_G_loss)
 
                 if epoch in config.lr_anneal_epoch_freq:
                     learning_rate.anneal()
-
-                if epoch == config.warm_up_start:
-                    learning_rate.set(config.initial_lr)
 
                 if epoch % config.plot_epoch_freq == 0:
                     plot_samples(loop)
