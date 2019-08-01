@@ -45,7 +45,7 @@ class ExpConfig(spt.Config):
     pull_back_energy_weight = 2048
 
     max_step = None
-    batch_size = 128
+    batch_size = 256
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = [200, 400, 600, 800, 1000]
@@ -58,7 +58,7 @@ class ExpConfig(spt.Config):
 
     n_critical = 3
     # evaluation parameters
-    train_n_pz = 128
+    train_n_pz = 256
     train_n_qz = 1
     test_n_pz = 1000
     test_n_qz = 10
@@ -456,15 +456,15 @@ def G_theta(z):
                                normalizer_fn=None)
         h_z = spt.ops.reshape_tail(h_z, ndims=1, shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 512))
         z = spt.ops.reshape_tail(z, ndims=1, shape=[config.x_shape[0] // 8, config.x_shape[1] // 8,
-                                                    config.z_dim // config.x_shape[0] // config.x_shape[1] * 64])
+                                                    64 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
         h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 512, strides=2, scope='level_2')  # output: (7, 7, 64)
         z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 4, config.x_shape[1] // 4,
-                                                    config.z_dim // config.x_shape[0] // config.x_shape[1] * 16])
+                                                    16 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
         h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 256, strides=2, scope='level_3')  # output: (7, 7, 64)
         z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 2, config.x_shape[1] // 2,
-                                                    config.z_dim // config.x_shape[0] // config.x_shape[1] * 4])
+                                                    4 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
         h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_5')  # output: (14, 14, 32)
         z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0], config.x_shape[1],
@@ -562,7 +562,7 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
         VAE_loss = tf.reduce_mean(-log_px_z) + warm * tf.reduce_mean(
             -p_net['z'].distribution.log_prob(p_net['z'], group_ndims=1, y=p_net['x']).log_energy_prob +
             q_net['z'].log_prob()
-        ) + gradient_penalty * 128
+        ) + gradient_penalty * 1024.0
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
         adv_G_loss = tf.reduce_mean(energy_fake)
