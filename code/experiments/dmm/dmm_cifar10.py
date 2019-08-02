@@ -42,7 +42,7 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0
-    pull_back_energy_weight = 2048
+    pull_back_energy_weight = 256
 
     max_step = None
     batch_size = 256
@@ -487,7 +487,7 @@ def G_theta(z):
 @spt.global_reuse
 def D_psi(x, y=None):
     if y is not None:
-        return D_psi(y) + 0.05 * tf.sqrt(tf.reduce_sum((x - y) ** 2, axis=tf.range(-len(config.x_shape), 0)))
+        return D_psi(y) + 0.1 * tf.sqrt(tf.reduce_sum((x - y) ** 2, axis=tf.range(-len(config.x_shape), 0)))
     normalizer_fn = None
     # x = tf.round(256.0 * x / 2 + 127.5)
     # x = (x - 127.5) / 256.0 * 2
@@ -558,11 +558,13 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
         global train_recon
         train_recon = tf.reduce_mean(log_px_z)
         global train_recon_energy
+        global train_kl
         train_recon_energy = tf.reduce_mean(D_psi(p_net['x'].distribution.mean, p_net['x']))
-        VAE_loss = tf.reduce_mean(-log_px_z) + warm * tf.reduce_mean(
+        train_kl = tf.reduce_mean(
             -p_net['z'].distribution.log_prob(p_net['z'], group_ndims=1, y=p_net['x']).log_energy_prob +
             q_net['z'].log_prob()
-        ) + gradient_penalty * 1024.0
+        )
+        VAE_loss = -train_recon + warm * train_kl + gradient_penalty * 128.0
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
         adv_G_loss = tf.reduce_mean(energy_fake)
@@ -625,6 +627,7 @@ def get_var(name):
 
 train_recon = None
 train_recon_energy = None
+train_kl
 
 
 def main():
@@ -918,9 +921,9 @@ def main():
                         # loop.collect_metrics(D_real=batch_D_real)
 
                         [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
-                         batch_D_loss, batch_D_real] = session.run(
+                         batch_D_loss, batch_D_real, batch_train_kl] = session.run(
                             [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
-                             D_loss, D_real],
+                             D_loss, D_real, train_kl],
                             feed_dict={
                                 input_x: x,
                                 warm: min(1.0, 1.0 * epoch / config.warm_up_epoch)
@@ -932,6 +935,7 @@ def main():
                         loop.collect_metrics(train_recon_energy=batch_train_recon_energy)
                         loop.collect_metrics(D_loss=batch_D_loss)
                         loop.collect_metrics(D_real=batch_D_real)
+                        loop.collect_metrics(train_kl=batch_train_kl)
 
                         # loop.print_logs()
 
