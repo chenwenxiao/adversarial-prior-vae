@@ -41,7 +41,7 @@ class ExpConfig(spt.Config):
     warm_up_start = 0
     warm_up_epoch = 500
     beta = 1e-8
-    initial_xi = 0.0
+    initial_xi = -2.0  # TODO
     pull_back_energy_weight = 256
 
     max_step = None
@@ -56,7 +56,7 @@ class ExpConfig(spt.Config):
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    n_critical = 3
+    n_critical = 10  # TODO
     # evaluation parameters
     train_n_pz = 256
     train_n_qz = 1
@@ -428,7 +428,8 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0):
     normal = normal.batch_ndims_to_value(1)
     xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(config.initial_xi),
                          dtype=tf.float32, trainable=True)
-    # xi = tf.nn.sigmoid(xi)
+    # xi = tf.square(xi)
+    xi = tf.nn.sigmoid(xi)  # TODO
     pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator)
     z = net.add('z', pz, n_samples=n_z)
     x_mean = G_theta(z)
@@ -486,8 +487,9 @@ def G_theta(z):
 @add_arg_scope
 @spt.global_reuse
 def D_psi(x, y=None):
-    if y is not None:
-        return D_psi(y) + 0.1 * tf.sqrt(tf.reduce_sum((x - y) ** 2, axis=tf.range(-len(config.x_shape), 0)))
+    # if y is not None:
+    #     return D_psi(y) + 0.1 * tf.sqrt(tf.reduce_sum((x - y) ** 2, axis=tf.range(-len(config.x_shape), 0)))
+    # TODO
     normalizer_fn = None
     # x = tf.round(256.0 * x / 2 + 127.5)
     # x = (x - 127.5) / 256.0 * 2
@@ -564,6 +566,7 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
             -p_net['z'].distribution.log_prob(p_net['z'], group_ndims=1, y=p_net['x']).log_energy_prob +
             q_net['z'].log_prob()
         )
+        train_kl = tf.maximum(train_kl, 0.0)  # TODO
         VAE_loss = -train_recon + warm * train_kl + gradient_penalty * 128.0
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
@@ -944,6 +947,7 @@ def main():
                         [G_train_op, G_loss], feed_dict={
                         })
                     loop.collect_metrics(G_loss=batch_G_loss)
+                    # TODO
 
                 if epoch in config.lr_anneal_epoch_freq:
                     learning_rate.anneal()
