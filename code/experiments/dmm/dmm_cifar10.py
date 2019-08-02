@@ -428,7 +428,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0):
     normal = normal.batch_ndims_to_value(1)
     xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(config.initial_xi),
                          dtype=tf.float32, trainable=True)
-    xi = tf.nn.sigmoid(xi)
+    # xi = tf.nn.sigmoid(xi)
     pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator)
     z = net.add('z', pz, n_samples=n_z)
     x_mean = G_theta(z)
@@ -627,7 +627,7 @@ def get_var(name):
 
 train_recon = None
 train_recon_energy = None
-train_kl
+train_kl = None
 
 
 def main():
