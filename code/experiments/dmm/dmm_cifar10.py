@@ -41,7 +41,7 @@ class ExpConfig(spt.Config):
     warm_up_start = 0
     warm_up_epoch = 500
     beta = 1e-8
-    initial_xi = -2.0  # TODO
+    initial_xi = 0.0  # TODO
     pull_back_energy_weight = 256
 
     max_step = None
@@ -561,11 +561,13 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
         train_recon = tf.reduce_mean(log_px_z)
         global train_recon_energy
         global train_kl
+        global train_grad_penalty
         train_recon_energy = tf.reduce_mean(D_psi(p_net['x'].distribution.mean, p_net['x']))
         train_kl = tf.reduce_mean(
             -p_net['z'].distribution.log_prob(p_net['z'], group_ndims=1, y=p_net['x']).log_energy_prob +
             q_net['z'].log_prob()
         )
+        train_grad_penalty = gradient_penalty
         train_kl = tf.maximum(train_kl, 0.0)  # TODO
         VAE_loss = -train_recon + warm * train_kl + gradient_penalty * 128.0
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
@@ -631,6 +633,7 @@ def get_var(name):
 train_recon = None
 train_recon_energy = None
 train_kl = None
+train_grad_penalty = None
 
 
 def main():
@@ -924,12 +927,12 @@ def main():
                         # loop.collect_metrics(D_real=batch_D_real)
 
                         [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
-                         batch_D_loss, batch_D_real, batch_train_kl] = session.run(
+                         batch_D_loss, batch_D_real, batch_train_kl, batch_train_grad_penalty] = session.run(
                             [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
-                             D_loss, D_real, train_kl],
+                             D_loss, D_real, train_kl, train_grad_penalty],
                             feed_dict={
                                 input_x: x,
-                                warm: min(1.0, 1.0 * epoch / config.warm_up_epoch)
+                                warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
                             })
                         loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                         loop.collect_metrics(xi=xi_value)
@@ -939,6 +942,7 @@ def main():
                         loop.collect_metrics(D_loss=batch_D_loss)
                         loop.collect_metrics(D_real=batch_D_real)
                         loop.collect_metrics(train_kl=batch_train_kl)
+                        loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
 
                         # loop.print_logs()
 
