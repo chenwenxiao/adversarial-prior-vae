@@ -56,7 +56,7 @@ class ExpConfig(spt.Config):
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    n_critical = 10  # TODO
+    n_critical = 2  # TODO
     # evaluation parameters
     train_n_pz = 256
     train_n_qz = 1
@@ -569,10 +569,10 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
         )
         train_grad_penalty = gradient_penalty
         train_kl = tf.maximum(train_kl, 0.0)  # TODO
-        VAE_loss = -train_recon + warm * train_kl + gradient_penalty * 128.0
+        VAE_loss = -train_recon + warm * train_kl + gradient_penalty * 256.0
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
-        adv_G_loss = tf.reduce_mean(energy_fake)
+        adv_G_loss = -train_recon + tf.reduce_mean(energy_fake) * 256.0
     return VAE_loss, adv_D_loss, adv_G_loss, tf.reduce_mean(energy_real)
 
 
@@ -885,7 +885,7 @@ def main():
                            max_epoch=config.max_epoch,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
-                           if config.write_summary else None),
+                                        if config.write_summary else None),
                            summary_graph=tf.get_default_graph(),
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
@@ -932,7 +932,7 @@ def main():
                              D_loss, D_real, train_kl, train_grad_penalty],
                             feed_dict={
                                 input_x: x,
-                                warm: min(1.0, 1.0 * epoch / config.warm_up_epoch)
+                                warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
                             })
                         loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                         loop.collect_metrics(xi=xi_value)
@@ -949,6 +949,7 @@ def main():
                     # generator training x
                     [_, batch_G_loss] = session.run(
                         [G_train_op, G_loss], feed_dict={
+                            input_x: x
                         })
                     loop.collect_metrics(G_loss=batch_G_loss)
                     # TODO

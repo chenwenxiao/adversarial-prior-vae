@@ -38,10 +38,10 @@ class ExpConfig(spt.Config):
     write_summary = True
     max_epoch = 1000
     warm_up_start = 500
-    warm_up_epoch = 200
+    warm_up_epoch = 300
     beta = 1e-8
     initial_xi = 0.0
-    pull_back_energy_weight = 128
+    pull_back_energy_weight = 2048 * 2
 
     max_step = None
     batch_size = 128
@@ -427,6 +427,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0):
     normal = normal.batch_ndims_to_value(1)
     xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(config.initial_xi),
                          dtype=tf.float32, trainable=True)
+    xi = tf.sigmoid(xi)
     pz = EnergyDistribution(normal, G=G_, D=D_psi, log_Z=log_Z, xi=xi,
                             mcmc_iterator=mcmc_iterator)
     z = net.add('z', pz, n_samples=n_z)
@@ -442,14 +443,8 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0):
 def G_(z, y=None):
     if y is None:
         return G_omega(z)
-    x_omega = G_omega(z)
-    x_theta = G_theta(z)
-    D_omega = D_psi(x_omega, y)
-    D_theta = D_psi(x_theta, y)
-    mask = tf.to_float(D_omega < D_theta)
-    for i in range(len(config.x_shape)):
-        mask = tf.expand_dims(mask, axis=[-1])
-    return mask * x_omega + (1.0 - mask) * x_theta
+    else:
+        return G_theta(z)
 
 
 @add_arg_scope
@@ -530,8 +525,8 @@ def G_theta(z):
 @add_arg_scope
 @spt.global_reuse
 def D_psi(x, y=None):
-    if y is not None:
-        return D_psi(y) + 0.05 * tf.sqrt(tf.reduce_sum((x - y) ** 2, axis=tf.range(-len(config.x_shape), 0)))
+    # if y is not None:
+    #     return D_psi(y) + 0.05 * tf.sqrt(tf.reduce_sum((x - y) ** 2, axis=tf.range(-len(config.x_shape), 0)))
     # Important, Remember to remove -10.0
     normalizer_fn = None
     # x = tf.round(256.0 * x / 2 + 127.5)
@@ -613,7 +608,7 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
         VAE_loss = tf.reduce_mean(-log_px_z) + warm * tf.reduce_mean(
             -p_net['z'].distribution.log_prob(p_net['z'], group_ndims=1, y=p_net['x']).log_energy_prob +
             q_net['z'].log_prob()
-        )
+        ) + gradient_penalty * 3072.0 * np.log(2.0)
         D_real = tf.reduce_mean(energy_real)
         adv_D_loss = -adv_G_loss + D_real + gradient_penalty
         adv_D_extra_loss = -train_min_G_loss + D_real + gradient_penalty
@@ -916,13 +911,13 @@ def main():
             print('Network initialized, first-batch loss is {:.6g}.\n'.
                   format(session.run(init_loss, feed_dict={input_x: x})))
             break
-        #
-        # if config.z_dim == 1024:
-        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/00/29/6f9d69b5d19385cc53d5/checkpoint/checkpoint/checkpoint.dat-390000'
-        # elif config.z_dim == 2048:
-        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/c8/19/6ffd833e8f14270cb3d5/checkpoint/checkpoint/checkpoint.dat-390000'
-        # else:
-        restore_checkpoint = None
+
+        if config.z_dim == 1024:
+            restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/00/29/6f9d69b5d19385cc53d5/checkpoint/checkpoint/checkpoint.dat-390000'
+        elif config.z_dim == 2048:
+            restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/fe/19/6fc8930042bc98ead3d5/checkpoint/checkpoint/checkpoint.dat-195000'
+        else:
+            restore_checkpoint = None
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -981,13 +976,12 @@ def main():
                             loop.collect_metrics(G_loss=batch_G_loss)
                         else:
                             [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_reconstruct_energy,
-                             training_D_loss, batch_theta_loss, batch_train_log_Z] = session.run(
+                             training_D_loss, batch_theta_loss, batch_train_log_Z, batch_D_real, batch_G_loss] = session.run(
                                 [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_reconstruct_energy, D_loss,
-                                 theta_energy, train_log_Z],
+                                 theta_energy, train_log_Z, D_real, G_loss],
                                 feed_dict={
                                     input_x: x,
-                                    warm: min(1.0, 1.0 * (
-                                        epoch - config.warm_up_start - config.disc_epoch) / config.warm_up_epoch)
+                                    warm: min(1.0, 1.0 * (epoch - config.warm_up_start) / config.warm_up_epoch)
                                 })
                             loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                             loop.collect_metrics(xi=xi_value)
@@ -997,6 +991,8 @@ def main():
                             loop.collect_metrics(training_D_loss=training_D_loss)
                             loop.collect_metrics(theta_energy=batch_theta_loss)
                             loop.collect_metrics(train_log_Z=batch_train_log_Z)
+                            loop.collect_metrics(D_real=batch_D_real)
+                            loop.collect_metrics(G_loss=batch_G_loss)
                         # loop.print_logs()
 
                 if epoch in config.lr_anneal_epoch_freq:
