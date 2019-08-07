@@ -39,7 +39,7 @@ class ExpConfig(spt.Config):
     write_summary = True
     max_epoch = 1000
     warm_up_start = 0
-    warm_up_epoch = 500
+    warm_up_epoch = 300
     beta = 1e-8
     initial_xi = 0.0  # TODO
     pull_back_energy_weight = 256
@@ -775,7 +775,7 @@ def main():
     # derive the plotting function
     with tf.name_scope('plotting'):
         x_plots = 256.0 * tf.reshape(
-            p_net(n_z=100, mcmc_iterator=0, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
+            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
         reconstruct_q_net = q_net(input_x, posterior_flow)
         reconstruct_z = reconstruct_q_net['z']
         reconstruct_plots = 256.0 * tf.reshape(
@@ -932,7 +932,7 @@ def main():
                              D_loss, D_real, train_kl, train_grad_penalty],
                             feed_dict={
                                 input_x: x,
-                                warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
+                                warm: min(1.0, 1.0 * epoch / config.warm_up_epoch)
                             })
                         loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                         loop.collect_metrics(xi=xi_value)
