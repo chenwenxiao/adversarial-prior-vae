@@ -39,7 +39,7 @@ class ExpConfig(spt.Config):
     write_summary = True
     max_epoch = 1000
     warm_up_start = 0
-    warm_up_epoch = 300
+    warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0  # TODO
     pull_back_energy_weight = 256
@@ -56,7 +56,7 @@ class ExpConfig(spt.Config):
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    n_critical = 2  # TODO
+    n_critical = 5  # TODO
     # evaluation parameters
     train_n_pz = 256
     train_n_qz = 1
@@ -196,7 +196,7 @@ class EnergyDistribution(spt.Distribution):
                     tf.exp(log_ratio_1 + log_ratio_2), 0.0, 1.0
                 )
                 # print(ratio.mean().item())
-                rnd_u = tf.random.normal(
+                rnd_u = tf.random.uniform(
                     shape=ratio.shape
                 )
                 mask = tf.cast(tf.less(rnd_u, ratio), tf.float32)
@@ -569,10 +569,9 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
         )
         train_grad_penalty = gradient_penalty
         train_kl = tf.maximum(train_kl, 0.0)  # TODO
-        VAE_loss = -train_recon + warm * train_kl + gradient_penalty * 256.0
-        adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
-            energy_real) + gradient_penalty
-        adv_G_loss = -train_recon + tf.reduce_mean(energy_fake) * 256.0
+        VAE_loss = -train_recon + train_kl + gradient_penalty * 128.0
+        adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(energy_real) + gradient_penalty
+        adv_G_loss = -train_recon + train_kl + tf.reduce_mean(energy_fake) * 128.0
     return VAE_loss, adv_D_loss, adv_G_loss, tf.reduce_mean(energy_real)
 
 
@@ -747,7 +746,7 @@ def main():
     xi_node = get_var('p_net/xi')
     # derive the optimizer
     with tf.name_scope('optimizing'):
-        VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
+        VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables(
             'beta') + tf.trainable_variables('D_psi') + tf.trainable_variables(
             'posterior_flow') + tf.trainable_variables('p_net/xi')
         D_params = tf.trainable_variables('D_psi')
@@ -775,7 +774,7 @@ def main():
     # derive the plotting function
     with tf.name_scope('plotting'):
         x_plots = 256.0 * tf.reshape(
-            p_net(n_z=100, mcmc_iterator=20, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
+            p_net(n_z=100, mcmc_iterator=100, beta=beta)['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
         reconstruct_q_net = q_net(input_x, posterior_flow)
         reconstruct_z = reconstruct_q_net['z']
         reconstruct_plots = 256.0 * tf.reshape(
@@ -885,7 +884,7 @@ def main():
                            max_epoch=config.max_epoch,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
-                                        if config.write_summary else None),
+                           if config.write_summary else None),
                            summary_graph=tf.get_default_graph(),
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
