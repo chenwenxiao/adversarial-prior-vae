@@ -541,7 +541,7 @@ def D_psi(x, y=None):
 
 @add_arg_scope
 @spt.global_reuse
-def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial_z=None, G_func=G_theta):
+def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial_z=None):
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
     normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
@@ -555,6 +555,30 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
                             initial_z=initial_z)
     z = net.add('z', pz, n_samples=n_z)
     x_mean = G_theta(z)
+    x = net.add('x', ExponentialDistribution(
+        mean=x_mean,
+        beta=beta,
+        D=D_psi
+    ), group_ndims=3)
+    return net
+
+
+@add_arg_scope
+@spt.global_reuse
+def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial_z=None):
+    net = spt.BayesianNet(observed=observed)
+    # sample z ~ p(z)
+    normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
+                        logstd=tf.zeros([1, config.z_dim]))
+    normal = normal.batch_ndims_to_value(1)
+    xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(config.initial_xi),
+                         dtype=tf.float32, trainable=True)
+    # xi = tf.square(xi)
+    xi = tf.nn.sigmoid(xi)  # TODO
+    pz = EnergyDistribution(normal, G=G_omega, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator,
+                            initial_z=initial_z)
+    z = net.add('z', pz, n_samples=n_z)
+    x_mean = G_omega(z)
     x = net.add('x', ExponentialDistribution(
         mean=x_mean,
         beta=beta,
@@ -731,7 +755,7 @@ def main():
     with tf.name_scope('training'), \
          arg_scope([batch_norm], training=True):
         train_pn_theta = p_net(n_z=config.train_n_pz, beta=beta)
-        train_pn_omega = p_net(n_z=config.train_n_pz, beta=beta, G_func=G_omega)
+        train_pn_omega = p_omega_net(n_z=config.train_n_pz, beta=beta)
         train_log_Z = spt.ops.log_mean_exp(-train_pn_theta['z'].log_prob().energy - train_pn_theta['z'].log_prob())
         train_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']},
@@ -832,8 +856,8 @@ def main():
     # derive the plotting function
     with tf.name_scope('plotting'):
         sample_n_z = 100
-        gan_plots = tf.reshape(p_net(n_z=sample_n_z, beta=beta, G_func=G_omega)['x'].distribution.mean,
-                                (-1,) + config.x_shape)
+        gan_plots = tf.reshape(p_omega_net(n_z=sample_n_z, beta=beta)['x'].distribution.mean,
+                               (-1,) + config.x_shape)
         initial_z = q_net(gan_plots, posterior_flow)['z']
         initial_z = tf.expand_dims(initial_z, axis=1)
         plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z)
@@ -865,7 +889,7 @@ def main():
                     images[2::3, ...] = np.round(session.run(
                         reconstruct_plots, feed_dict={input_x: x}))
                     batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
-                    print(np.mean(batch_reconstruct_z ** 2, axis=-1))
+                    # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
                     save_images_collection(
                         images=images,
                         filename='plotting/train.reconstruct/{}.png'.format(loop.epoch),
@@ -890,22 +914,22 @@ def main():
                     )
                     break
                 # plot samples
-                [images, gan_images, batch_history_e_z, batch_history_z, batch_history_pure_e_z, batch_history_ratio] = session.run(
+                [images, gan_images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
+                 batch_history_ratio] = session.run(
                     [x_plots, gan_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio])
                 # print(batch_history_e_z)
                 # print(np.mean(batch_history_z ** 2, axis=-1))
                 # print(batch_history_pure_e_z)
                 # print(batch_history_ratio)
                 save_images_collection(
-                    images=np.round(images),
-                    filename='plotting/sample/{}.png'.format(loop.epoch),
+                    images=np.round(gan_images),
+                    filename='plotting/sample/gan-{}.png'.format(loop.epoch),
                     grid_size=(10, 10),
                     results=results,
                 )
-
                 save_images_collection(
-                    images=np.round(gan_images),
-                    filename='plotting/sample/gan-{}.png'.format(loop.epoch),
+                    images=np.round(images),
+                    filename='plotting/sample/{}.png'.format(loop.epoch),
                     grid_size=(10, 10),
                     results=results,
                 )
