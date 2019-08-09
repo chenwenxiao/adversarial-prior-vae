@@ -37,8 +37,8 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 2000
-    warm_up_start = 1000
+    max_epoch = 1000
+    warm_up_start = 0
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0  # TODO
@@ -56,7 +56,7 @@ class ExpConfig(spt.Config):
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    n_critical = 5  # TODO
+    n_critical = 10  # TODO
     # evaluation parameters
     train_n_pz = 256
     train_n_qz = 1
@@ -803,8 +803,7 @@ def main():
             'beta') + tf.trainable_variables('D_psi') + tf.trainable_variables(
             'posterior_flow') + tf.trainable_variables('p_net/xi')
         D_params = tf.trainable_variables('D_psi')
-        VAE_G_params = tf.trainable_variables('G_theta')
-        G_params = tf.trainable_variables('G_omega')
+        G_params = tf.trainable_variables('G_theta')
         print("========VAE_params=========")
         print(VAE_params)
         print("========D_params=========")
@@ -814,9 +813,6 @@ def main():
         with tf.variable_scope('VAE_optimizer'):
             VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
             VAE_grads = VAE_optimizer.compute_gradients(VAE_loss, VAE_params)
-        with tf.variable_scope('VAE_G_optimizer'):
-            VAE_G_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
-            VAE_G_grads = VAE_G_optimizer.compute_gradients(VAE_G_loss, VAE_G_params)
         with tf.variable_scope('D_optimizer'):
             D_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
             D_grads = D_optimizer.compute_gradients(D_loss, D_params)
@@ -825,17 +821,14 @@ def main():
             G_grads = G_optimizer.compute_gradients(G_loss, G_params)
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             VAE_train_op = VAE_optimizer.apply_gradients(VAE_grads)
-            VAE_G_train_op = VAE_optimizer.apply_gradients(VAE_G_grads)
             G_train_op = G_optimizer.apply_gradients(G_grads)
-            D_train_op = D_optimizer.apply_gradients(D_grads)
+        D_train_op = D_optimizer.apply_gradients(D_grads)
 
     # derive the plotting function
     with tf.name_scope('plotting'):
         sample_n_z = 100
-        gan_plots = tf.reshape(p_net(n_z=sample_n_z, beta=beta, G_func=G_omega)['x'].distribution.mean,
-                                (-1,) + config.x_shape)
-        initial_z = q_net(gan_plots, posterior_flow)['z']
-        initial_z = tf.expand_dims(initial_z, axis=1)
+        gan_images = tf.reshape(p_net(n_z=sample_n_z, beta=beta, G_func=G_omega)['x'].distribution.mean, (-1,) + config.x_shape)
+        initial_z = q_net(gan_images, posterior_flow)['z']
         plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z)
         plot_history_e_z = plot_net['z'].history_e_z
         plot_history_z = plot_net['z'].history_z
@@ -889,23 +882,22 @@ def main():
                         results=results,
                     )
                     break
-                # plot samples
-                [images, gan_images, batch_history_e_z, batch_history_z, batch_history_pure_e_z, batch_history_ratio] = session.run(
-                    [x_plots, gan_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio])
-                # print(batch_history_e_z)
-                # print(np.mean(batch_history_z ** 2, axis=-1))
-                # print(batch_history_pure_e_z)
-                # print(batch_history_ratio)
-                save_images_collection(
-                    images=np.round(images),
-                    filename='plotting/sample/{}.png'.format(loop.epoch),
-                    grid_size=(10, 10),
-                    results=results,
-                )
 
+                batch_initial_z = np.expand_dims(batch_reconstruct_z, axis=1)
+
+                # plot samples
+                [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z, batch_history_ratio] = session.run(
+                    [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio], feed_dict={
+                        initial_z: batch_initial_z
+                    })
+                print(batch_history_e_z)
+                print(np.mean(batch_history_z ** 2, axis=-1))
+                print(batch_history_pure_e_z)
+                print(batch_history_ratio)
+                images = np.round(images)
                 save_images_collection(
-                    images=np.round(gan_images),
-                    filename='plotting/sample/gan-{}.png'.format(loop.epoch),
+                    images=images,
+                    filename='plotting/sample/{}.png'.format(loop.epoch),
                     grid_size=(10, 10),
                     results=results,
                 )
@@ -952,12 +944,12 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = None
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/3a/19/6ffd833e8f14e99654d5/checkpoint/checkpoint/checkpoint.dat-195000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi'],
-                           max_epoch=config.max_epoch,
+                           max_epoch=config.max_epoch + 1,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
@@ -989,83 +981,35 @@ def main():
             n_critical = config.n_critical
             # adversarial training
             for epoch in epoch_iterator:
-                step_iterator = MyIterator(train_flow)
-                while step_iterator.has_next:
-                    if epoch < config.warm_up_start:
-                        # discriminator training
-                        for step, [x] in loop.iter_steps(limited(step_iterator, n_critical)):
-                            [_, batch_D_loss, batch_D_real] = session.run(
-                                [D_train_op, D_loss, D_real], feed_dict={
-                                    input_x: x,
-                                })
-                            loop.collect_metrics(D_loss=batch_D_loss)
-                            loop.collect_metrics(D_real=batch_D_real)
 
-                        # generator training x
-                        [_, batch_G_loss] = session.run(
-                            [G_train_op, G_loss], feed_dict={
-                            })
-                        loop.collect_metrics(G_loss=batch_G_loss)
-                    else:
-                        # vae training
-                        for step, [x] in loop.iter_steps(limited(step_iterator, n_critical)):
-                            [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
-                             batch_VAE_D_real, batch_train_kl, batch_train_grad_penalty] = session.run(
-                                [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy, VAE_D_real,
-                                 train_kl, train_grad_penalty],
-                                feed_dict={
-                                    input_x: x,
-                                    warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
-                                })
-                            loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
-                            loop.collect_metrics(xi=xi_value)
-                            loop.collect_metrics(beta=beta_value)
-                            loop.collect_metrics(train_recon=batch_train_recon)
-                            loop.collect_metrics(train_recon_energy=batch_train_recon_energy)
-                            loop.collect_metrics(D_real=batch_VAE_D_real)
-                            loop.collect_metrics(train_kl=batch_train_kl)
-                            loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
-                            # loop.print_logs()
+                plot_samples(loop)
 
-                        # generator training x
-                        [_, batch_VAE_G_loss] = session.run(
-                            [VAE_G_train_op, VAE_G_loss], feed_dict={
-                            })
-                        loop.collect_metrics(VAE_G_loss=batch_VAE_G_loss)
+                log_Z_list = []
+                for i in range(config.log_Z_times):
+                    log_Z_list.append(session.run(log_Z_compute_op))
+                from scipy.misc import logsumexp
+                log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(config.log_Z_times)
+                get_log_Z().set(log_Z)
+                print('log_Z_list:{}'.format(log_Z_list))
+                print('log_Z:{}'.format(log_Z))
+                with loop.timeit('eval_time'):
+                    evaluator.run()
+                loop.print_logs()
 
-                if epoch in config.lr_anneal_epoch_freq:
-                    learning_rate.anneal()
+                dataset_img = np.concatenate([_x_train, _x_test], axis=0)
 
-                if epoch % config.plot_epoch_freq == 0:
-                    plot_samples(loop)
+                sample_img = []
+                for i in range((len(x_train) + len(x_test)) // 100 + 1):
+                    sample_img.append(session.run(x_plots))
+                sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
+                sample_img = sample_img[:len(dataset_img)]
+                sample_img = np.asarray(sample_img)
 
-                if epoch % config.test_epoch_freq == 0:
-                    log_Z_list = []
-                    for i in range(config.log_Z_times):
-                        log_Z_list.append(session.run(log_Z_compute_op))
-                    from scipy.misc import logsumexp
-                    log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(config.log_Z_times)
-                    get_log_Z().set(log_Z)
-                    print('log_Z_list:{}'.format(log_Z_list))
-                    print('log_Z:{}'.format(log_Z))
-                    with loop.timeit('eval_time'):
-                        evaluator.run()
-
-                if epoch == config.max_epoch:
-                    dataset_img = np.concatenate([_x_train, _x_test], axis=0)
-
-                    sample_img = []
-                    for i in range((len(x_train) + len(x_test)) // 100 + 1):
-                        sample_img.append(session.run(x_plots))
-                    sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
-                    sample_img = sample_img[:len(dataset_img)]
-                    sample_img = np.asarray(sample_img)
-
-                    FID = get_fid(sample_img, dataset_img)
-                    # turn to numpy array
-                    IS_mean, IS_std = get_inception_score(sample_img)
-                    loop.collect_metrics(FID=FID)
-                    loop.collect_metrics(IS=IS_mean)
+                FID = get_fid(sample_img, dataset_img)
+                # turn to numpy array
+                IS_mean, IS_std = get_inception_score(sample_img)
+                loop.collect_metrics(FID=FID)
+                loop.collect_metrics(IS=IS_mean)
 
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
