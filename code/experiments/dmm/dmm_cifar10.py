@@ -64,7 +64,7 @@ class ExpConfig(spt.Config):
     test_n_qz = 10
     test_batch_size = 64
     test_epoch_freq = 100
-    plot_epoch_freq = 1
+    plot_epoch_freq = 10
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
@@ -642,7 +642,7 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
         )
         train_grad_penalty = gradient_penalty
         train_kl = tf.maximum(train_kl, 0.0)  # TODO
-        VAE_loss = -train_recon + warm * train_kl + gradient_penalty * 128.0
+        VAE_loss = -train_recon + warm * train_kl  # + gradient_penalty * 128.0
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
         adv_G_loss = tf.reduce_mean(energy_fake)
@@ -824,8 +824,7 @@ def main():
     # derive the optimizer
     with tf.name_scope('optimizing'):
         VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
-            'beta') + tf.trainable_variables('D_psi') + tf.trainable_variables(
-            'posterior_flow') + tf.trainable_variables('p_net/xi')
+            'beta') + tf.trainable_variables('posterior_flow') + tf.trainable_variables('p_net/xi')
         D_params = tf.trainable_variables('D_psi')
         VAE_G_params = tf.trainable_variables('G_theta')
         G_params = tf.trainable_variables('G_omega')
@@ -859,6 +858,7 @@ def main():
         gan_plots = tf.reshape(p_omega_net(n_z=sample_n_z, beta=beta)['x'].distribution.mean,
                                (-1,) + config.x_shape)
         initial_z = q_net(gan_plots, posterior_flow)['z']
+        gan_plots = 256.0 * gan_plots / 2 + 127.5
         initial_z = tf.expand_dims(initial_z, axis=1)
         plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z)
         plot_history_e_z = plot_net['z'].history_e_z
@@ -874,6 +874,7 @@ def main():
             (-1,) + config.x_shape
         ) / 2 + 127.5
         plot_reconstruct_energy = D_psi(reconstruct_plots)
+        gan_plots = tf.clip_by_value(gan_plots, 0, 255)
         x_plots = tf.clip_by_value(x_plots, 0, 255)
         reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
 
@@ -1015,7 +1016,7 @@ def main():
             for epoch in epoch_iterator:
                 step_iterator = MyIterator(train_flow)
                 while step_iterator.has_next:
-                    if epoch < config.warm_up_start:
+                    if epoch <= config.warm_up_start:
                         # discriminator training
                         for step, [x] in loop.iter_steps(limited(step_iterator, n_critical)):
                             [_, batch_D_loss, batch_D_real] = session.run(
@@ -1059,6 +1060,9 @@ def main():
 
                 if epoch in config.lr_anneal_epoch_freq:
                     learning_rate.anneal()
+
+                if epoch == config.warm_up_start:
+                    learning_rate.set(config.initial_lr)
 
                 if epoch % config.plot_epoch_freq == 0:
                     plot_samples(loop)
