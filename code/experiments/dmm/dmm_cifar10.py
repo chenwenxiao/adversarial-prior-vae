@@ -589,8 +589,8 @@ def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, i
 
 def get_all_loss(q_net, p_net, pn_net, warm=1.0):
     with tf.name_scope('adv_prior_loss'):
-        x = p_net['x']
-        x_ = pn_net['x']
+        x = p_net['x'].distribution.mean
+        x_ = pn_net['x'].distribution.mean
         log_px_z = x.log_prob()
         energy_real = D_psi(x)
         energy_fake = D_psi(x_)
@@ -870,7 +870,7 @@ def main():
         reconstruct_q_net = q_net(input_x, posterior_flow)
         reconstruct_z = reconstruct_q_net['z']
         reconstruct_plots = 256.0 * tf.reshape(
-            p_net(observed={'z': reconstruct_z}, beta=beta)['x'],
+            p_net(observed={'z': reconstruct_z}, beta=beta)['x'].distribution.mean,
             (-1,) + config.x_shape
         ) / 2 + 127.5
         plot_reconstruct_energy = D_psi(reconstruct_plots)
@@ -1053,10 +1053,10 @@ def main():
                             # loop.print_logs()
 
                         # generator training x
-                        [_, batch_VAE_G_loss] = session.run(
-                            [VAE_G_train_op, VAE_G_loss], feed_dict={
-                            })
-                        loop.collect_metrics(VAE_G_loss=batch_VAE_G_loss)
+                        # [_, batch_VAE_G_loss] = session.run(
+                        #     [VAE_G_train_op, VAE_G_loss], feed_dict={
+                        #     })
+                        # loop.collect_metrics(VAE_G_loss=batch_VAE_G_loss)
 
                 if epoch in config.lr_anneal_epoch_freq:
                     learning_rate.anneal()
