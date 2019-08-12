@@ -237,7 +237,6 @@ class EnergyDistribution(spt.Distribution):
     def get_sgld_proposal(self, z):
         energy_z = config.pull_back_energy_weight * self.D(self.G(z)) * self.xi + 0.5 * tf.reduce_sum(tf.square(z),
                                                                                                       axis=-1)
-        energy_z = energy_z * 0.1
         pure_energy_z = self.D(self.G(z))
         # energy_z = pure_energy_z  # TODO
         grad_energy_z = tf.gradients(energy_z, [z.tensor if hasattr(z, 'tensor') else z])[0]
@@ -1018,7 +1017,7 @@ def main():
                             [_, batch_D_loss, batch_D_real] = session.run(
                                 [D_train_op, D_loss, D_real], feed_dict={
                                     input_x: x,
-                                    input_origin_x: x
+                                    input_origin_x: origin_x
                                 })
                             loop.collect_metrics(D_loss=batch_D_loss)
                             loop.collect_metrics(D_real=batch_D_real)
@@ -1037,7 +1036,7 @@ def main():
                                  train_kl, train_grad_penalty],
                                 feed_dict={
                                     input_x: x,
-                                    input_origin_x: x,
+                                    input_origin_x: origin_x,
                                     warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
                                 })
                             loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
