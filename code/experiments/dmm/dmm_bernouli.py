@@ -237,7 +237,6 @@ class EnergyDistribution(spt.Distribution):
     def get_sgld_proposal(self, z):
         energy_z = config.pull_back_energy_weight * self.D(self.G(z)) * self.xi + 0.5 * tf.reduce_sum(tf.square(z),
                                                                                                       axis=-1)
-        energy_z = energy_z * 0.1
         pure_energy_z = self.D(self.G(z))
         # energy_z = pure_energy_z  # TODO
         grad_energy_z = tf.gradients(energy_z, [z.tensor if hasattr(z, 'tensor') else z])[0]
