@@ -28,8 +28,8 @@ def _bernoulli_mean(self):
         self._mean = tf.sigmoid(self.logits)
     return self._mean
 
-spt.Bernoulli.mean = property(_bernoulli_mean)
 
+spt.Bernoulli.mean = property(_bernoulli_mean)
 
 
 class ExpConfig(spt.Config):
@@ -774,7 +774,8 @@ def main():
         )
         test_mse = tf.reduce_sum(
             (tf.round(test_chain.model['x'].distribution.mean * 255.0) - tf.round(
-                tf.to_float(test_chain.model['x']) * 255.0)) ** 2, axis=[-1, -2, -3])  # (sample_dim, batch_dim, x_sample_dim)
+                tf.to_float(test_chain.model['x']) * 255.0)) ** 2,
+            axis=[-1, -2, -3])  # (sample_dim, batch_dim, x_sample_dim)
         test_mse = tf.reduce_min(test_mse, axis=[0])
         test_mse = tf.reduce_mean(tf.reduce_mean(tf.reshape(
             test_mse, (-1, config.test_x_samples,)
@@ -981,7 +982,7 @@ def main():
                            max_epoch=config.max_epoch,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
-                                        if config.write_summary else None),
+                           if config.write_summary else None),
                            summary_graph=tf.get_default_graph(),
                            early_stopping=False,
                            checkpoint_dir=results.system_path('checkpoint'),
