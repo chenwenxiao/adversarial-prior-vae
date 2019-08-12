@@ -1018,7 +1018,7 @@ def main():
                             [_, batch_D_loss, batch_D_real] = session.run(
                                 [D_train_op, D_loss, D_real], feed_dict={
                                     input_x: x,
-                                    input_origin_x: x
+                                    input_origin_x: origin_x
                                 })
                             loop.collect_metrics(D_loss=batch_D_loss)
                             loop.collect_metrics(D_real=batch_D_real)
@@ -1037,7 +1037,7 @@ def main():
                                  train_kl, train_grad_penalty],
                                 feed_dict={
                                     input_x: x,
-                                    input_origin_x: x,
+                                    input_origin_x: origin_x,
                                     warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
                                 })
                             loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)

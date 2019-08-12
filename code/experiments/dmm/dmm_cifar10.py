@@ -388,23 +388,23 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
                    dropout_fn=dropout):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
-        h_x = tf.concat([h_x, x], axis=-1)
+        # h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
-        h_x = tf.concat([h_x, x], axis=-1)
+        # h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_3')  # output: (14, 14, 32)
-        h_x = tf.concat([h_x, x], axis=-1)
+        # h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_4')  # output: (14, 14, 32)
-        x = spt.ops.reshape_tail(x, ndims=3,
-                                 shape=[config.x_shape[0] // 2, config.x_shape[1] // 2, config.x_shape[2] * 4])
-        h_x = tf.concat([h_x, x], axis=-1)
+        # x = spt.ops.reshape_tail(x, ndims=3,
+        #                          shape=[config.x_shape[0] // 2, config.x_shape[1] // 2, config.x_shape[2] * 4])
+        # h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_6')  # output: (7, 7, 64)
-        x = spt.ops.reshape_tail(x, ndims=3,
-                                 shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, config.x_shape[2] * 16])
-        h_x = tf.concat([h_x, x], axis=-1)
+        # x = spt.ops.reshape_tail(x, ndims=3,
+        #                          shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, config.x_shape[2] * 16])
+        # h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 512, strides=2, scope='level_8')  # output: (7, 7, 64)
-        x = spt.ops.reshape_tail(x, ndims=3,
-                                 shape=[config.x_shape[0] // 8, config.x_shape[1] // 8, config.x_shape[2] * 64])
-        h_x = tf.concat([h_x, x], axis=-1)
+        # x = spt.ops.reshape_tail(x, ndims=3,
+        #                          shape=[config.x_shape[0] // 8, config.x_shape[1] // 8, config.x_shape[2] * 64])
+        # h_x = tf.concat([h_x, x], axis=-1)
 
     # sample z ~ q(z|x)
     h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
@@ -449,27 +449,27 @@ def G_theta(z):
         h_z = spt.layers.dense(z, 512 * config.x_shape[0] // 8 * config.x_shape[1] // 8, scope='level_0',
                                normalizer_fn=None)
         h_z = spt.ops.reshape_tail(h_z, ndims=1, shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 512))
-        z = spt.ops.reshape_tail(z, ndims=1, shape=[config.x_shape[0] // 8, config.x_shape[1] // 8,
-                                                    64 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
-        h_z = tf.concat([h_z, z], axis=-1)
+        # z = spt.ops.reshape_tail(z, ndims=1, shape=[config.x_shape[0] // 8, config.x_shape[1] // 8,
+        #                                             64 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 512, strides=2, scope='level_2')  # output: (7, 7, 64)
-        z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 4, config.x_shape[1] // 4,
-                                                    16 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
-        h_z = tf.concat([h_z, z], axis=-1)
+        # z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 4, config.x_shape[1] // 4,
+        #                                             16 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 256, strides=2, scope='level_3')  # output: (7, 7, 64)
-        z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 2, config.x_shape[1] // 2,
-                                                    4 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
-        h_z = tf.concat([h_z, z], axis=-1)
+        # z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 2, config.x_shape[1] // 2,
+        #                                             4 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_5')  # output: (14, 14, 32)
-        z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0], config.x_shape[1],
-                                                    config.z_dim // config.x_shape[0] // config.x_shape[1]])
-        h_z = tf.concat([h_z, z], axis=-1)
+        # z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0], config.x_shape[1],
+        #                                             config.z_dim // config.x_shape[0] // config.x_shape[1]])
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_6')  # output:
-        h_z = tf.concat([h_z, z], axis=-1)
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
-        h_z = tf.concat([h_z, z], axis=-1)
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
-        h_z = tf.concat([h_z, z], axis=-1)
+        # h_z = tf.concat([h_z, z], axis=-1)
     x_mean = spt.layers.conv2d(
         h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
@@ -589,7 +589,7 @@ def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, i
 
 def get_all_loss(q_net, p_net, pn_net, warm=1.0):
     with tf.name_scope('adv_prior_loss'):
-        x = p_net['x'].distribution.mean
+        x = p_net['x']
         x_ = pn_net['x'].distribution.mean
         log_px_z = x.log_prob()
         energy_real = D_psi(x)
