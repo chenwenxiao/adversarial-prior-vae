@@ -68,12 +68,12 @@ class ExpConfig(spt.Config):
     n_critical = 5  # TODO
     # evaluation parameters
     train_n_pz = 256
-    train_n_qz = 1
+    train_n_qz = 10
     test_n_pz = 1000
     test_n_qz = 10
     test_batch_size = 64
     test_epoch_freq = 100
-    plot_epoch_freq = 10
+    plot_epoch_freq = 1
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
@@ -780,11 +780,10 @@ def main():
             test_mse, (-1, config.test_x_samples,)
         ), axis=-1))
         test_nll = -tf.reduce_mean(
-            spt.ops.log_mean_exp(
-                tf.reshape(
-                    test_chain.vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
-                ), axis=-1)
-        ) + config.x_shape_multiple * np.log(128.0)
+            tf.reshape(
+                test_chain.vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
+            )
+        )
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
 
         vi = spt.VariationalInference(
@@ -795,11 +794,10 @@ def main():
             axis=0
         )
         adv_test_nll = -tf.reduce_mean(
-            spt.ops.log_mean_exp(
-                tf.reshape(
-                    vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
-                ), axis=-1)
-        ) + config.x_shape_multiple * np.log(128.0)
+            tf.reshape(
+                vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
+            )
+        )
         adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
 
         real_energy = tf.reduce_mean(D_psi(test_chain.model['x']))
@@ -850,7 +848,9 @@ def main():
         sample_n_z = 100
         gan_plots = tf.reshape(p_omega_net(n_z=sample_n_z, beta=beta)['x'].distribution.mean,
                                (-1,) + config.x_shape)
-        initial_z = q_net(gan_plots, posterior_flow)['z']
+        input_plot_x = tf.placeholder(
+            dtype=tf.int32, shape=(sample_n_z,) + config.x_shape, name='input_plot_x')
+        initial_z = q_net(input_plot_x, posterior_flow)['z']
         gan_plots = 255.0 * gan_plots
         initial_z = tf.expand_dims(initial_z, axis=1)
         plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z)
@@ -891,7 +891,6 @@ def main():
                         results=results,
                     )
                     break
-
                 # plot reconstructs
                 for [x] in reconstruct_test_flow:
                     x_samples = bernouli_sampler.sample(x)
@@ -908,15 +907,24 @@ def main():
                     )
                     break
                 # plot samples
-                [images, gan_images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
-                 batch_history_ratio] = session.run(
-                    [x_plots, gan_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio])
+                gan_images = session.run(gan_plots)
+                gan_bernouli_images = bernouli_sampler.sample(gan_images / 255.0)
+                [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z, batch_history_ratio] = session(
+                    [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio], feed_dict={
+                        input_plot_x: gan_bernouli_images
+                    })
                 # print(batch_history_e_z)
                 # print(np.mean(batch_history_z ** 2, axis=-1))
                 # print(batch_history_pure_e_z)
                 # print(batch_history_ratio)
                 save_images_collection(
                     images=np.round(gan_images),
+                    filename='plotting/sample/gan-{}.png'.format(loop.epoch),
+                    grid_size=(10, 10),
+                    results=results,
+                )
+                save_images_collection(
+                    images=np.round(gan_bernouli_images),
                     filename='plotting/sample/gan-{}.png'.format(loop.epoch),
                     grid_size=(10, 10),
                     results=results,
@@ -973,7 +981,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = None
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/7d/19/6f3b6c3ef49de83205d5/checkpoint/checkpoint/checkpoint.dat-234000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1081,7 +1089,12 @@ def main():
 
                     sample_img = []
                     for i in range((len(x_train) + len(x_test)) // 100 + 1):
-                        sample_img.append(session.run(x_plots))
+                        gan_images = session.run(gan_plots)
+                        gan_bernouli_images = bernouli_sampler.sample(gan_images / 255.0) * 255.0
+                        images = session(x_plots, feed_dict={
+                            input_plot_x: gan_bernouli_images
+                        })
+                        sample_img.append(images)
                     sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
                     sample_img = sample_img[:len(dataset_img)]
                     sample_img = np.asarray(sample_img)
