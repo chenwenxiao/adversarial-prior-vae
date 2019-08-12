@@ -68,12 +68,12 @@ class ExpConfig(spt.Config):
     n_critical = 5  # TODO
     # evaluation parameters
     train_n_pz = 256
-    train_n_qz = 10
+    train_n_qz = 1
     test_n_pz = 1000
     test_n_qz = 10
     test_batch_size = 64
     test_epoch_freq = 100
-    plot_epoch_freq = 1
+    plot_epoch_freq = 10
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
