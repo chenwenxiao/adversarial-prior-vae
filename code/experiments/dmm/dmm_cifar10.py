@@ -387,23 +387,23 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
                    dropout_fn=dropout):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
-        # h_x = tf.concat([h_x, x], axis=-1)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
-        # h_x = tf.concat([h_x, x], axis=-1)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_3')  # output: (14, 14, 32)
-        # h_x = tf.concat([h_x, x], axis=-1)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_4')  # output: (14, 14, 32)
-        # x = spt.ops.reshape_tail(x, ndims=3,
-        #                          shape=[config.x_shape[0] // 2, config.x_shape[1] // 2, config.x_shape[2] * 4])
-        # h_x = tf.concat([h_x, x], axis=-1)
+        x = spt.ops.reshape_tail(x, ndims=3,
+                                 shape=[config.x_shape[0] // 2, config.x_shape[1] // 2, config.x_shape[2] * 4])
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_6')  # output: (7, 7, 64)
-        # x = spt.ops.reshape_tail(x, ndims=3,
-        #                          shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, config.x_shape[2] * 16])
-        # h_x = tf.concat([h_x, x], axis=-1)
+        x = spt.ops.reshape_tail(x, ndims=3,
+                                 shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, config.x_shape[2] * 16])
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 512, strides=2, scope='level_8')  # output: (7, 7, 64)
-        # x = spt.ops.reshape_tail(x, ndims=3,
-        #                          shape=[config.x_shape[0] // 8, config.x_shape[1] // 8, config.x_shape[2] * 64])
-        # h_x = tf.concat([h_x, x], axis=-1)
+        x = spt.ops.reshape_tail(x, ndims=3,
+                                 shape=[config.x_shape[0] // 8, config.x_shape[1] // 8, config.x_shape[2] * 64])
+        h_x = tf.concat([h_x, x], axis=-1)
 
     # sample z ~ q(z|x)
     h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
