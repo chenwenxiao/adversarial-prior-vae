@@ -51,13 +51,13 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0  # TODO
-    pull_back_energy_weight = 256
+    pull_back_energy_weight = 8
 
     max_step = None
     batch_size = 256
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [200, 400, 600, 800, 1000]
+    lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
     lr_anneal_step_freq = None
 
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
@@ -98,7 +98,7 @@ class EnergyDistribution(spt.Distribution):
     function `x = G(z)`, where `p(z) = exp(-xi * D(G(z)) - 0.5 * z^2) / Z`.
     """
 
-    def __init__(self, pz, G, D, log_Z=0., xi=1.0, mcmc_iterator=0, mcmc_alpha=0.01, mcmc_algorithm='mala',
+    def __init__(self, pz, G, D, log_Z=0., xi=1.0, mcmc_iterator=0, mcmc_alpha=0.001, mcmc_algorithm='mala',
                  mcmc_space='z', initial_z=None):
         """
         Construct a new :class:`EnergyDistribution`.
@@ -909,7 +909,7 @@ def main():
                 # plot samples
                 gan_images = session.run(gan_plots)
                 gan_bernouli_images = bernouli_sampler.sample(gan_images / 255.0)
-                [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z, batch_history_ratio] = session(
+                [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z, batch_history_ratio] = session.run(
                     [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio], feed_dict={
                         input_plot_x: gan_bernouli_images
                     })
@@ -925,7 +925,7 @@ def main():
                 )
                 save_images_collection(
                     images=np.round(gan_bernouli_images),
-                    filename='plotting/sample/gan-{}.png'.format(loop.epoch),
+                    filename='plotting/sample/gan-ber{}.png'.format(loop.epoch),
                     grid_size=(10, 10),
                     results=results,
                 )

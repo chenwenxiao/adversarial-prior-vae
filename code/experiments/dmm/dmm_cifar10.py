@@ -48,7 +48,7 @@ class ExpConfig(spt.Config):
     batch_size = 256
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [200, 400, 600, 800, 1000]
+    lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
     lr_anneal_step_freq = None
 
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
@@ -89,7 +89,7 @@ class EnergyDistribution(spt.Distribution):
     function `x = G(z)`, where `p(z) = exp(-xi * D(G(z)) - 0.5 * z^2) / Z`.
     """
 
-    def __init__(self, pz, G, D, log_Z=0., xi=1.0, mcmc_iterator=0, mcmc_alpha=0.01, mcmc_algorithm='mala',
+    def __init__(self, pz, G, D, log_Z=0., xi=1.0, mcmc_iterator=0, mcmc_alpha=0.001, mcmc_algorithm='mala',
                  mcmc_space='z', initial_z=None):
         """
         Construct a new :class:`EnergyDistribution`.
@@ -448,27 +448,27 @@ def G_theta(z):
         h_z = spt.layers.dense(z, 512 * config.x_shape[0] // 8 * config.x_shape[1] // 8, scope='level_0',
                                normalizer_fn=None)
         h_z = spt.ops.reshape_tail(h_z, ndims=1, shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 512))
-        # z = spt.ops.reshape_tail(z, ndims=1, shape=[config.x_shape[0] // 8, config.x_shape[1] // 8,
-        #                                             64 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
-        # h_z = tf.concat([h_z, z], axis=-1)
+        z = spt.ops.reshape_tail(z, ndims=1, shape=[config.x_shape[0] // 8, config.x_shape[1] // 8,
+                                                    64 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 512, strides=2, scope='level_2')  # output: (7, 7, 64)
-        # z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 4, config.x_shape[1] // 4,
-        #                                             16 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
-        # h_z = tf.concat([h_z, z], axis=-1)
+        z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 4, config.x_shape[1] // 4,
+                                                    16 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 256, strides=2, scope='level_3')  # output: (7, 7, 64)
-        # z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 2, config.x_shape[1] // 2,
-        #                                             4 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
-        # h_z = tf.concat([h_z, z], axis=-1)
+        z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 2, config.x_shape[1] // 2,
+                                                    4 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_5')  # output: (14, 14, 32)
-        # z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0], config.x_shape[1],
-        #                                             config.z_dim // config.x_shape[0] // config.x_shape[1]])
-        # h_z = tf.concat([h_z, z], axis=-1)
+        z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0], config.x_shape[1],
+                                                    config.z_dim // config.x_shape[0] // config.x_shape[1]])
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_6')  # output:
-        # h_z = tf.concat([h_z, z], axis=-1)
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
-        # h_z = tf.concat([h_z, z], axis=-1)
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
-        # h_z = tf.concat([h_z, z], axis=-1)
+        h_z = tf.concat([h_z, z], axis=-1)
     x_mean = spt.layers.conv2d(
         h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
@@ -976,7 +976,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = None
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/e7/29/6f9d69b5d193a39cf4d5/checkpoint/checkpoint/checkpoint.dat-195000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
