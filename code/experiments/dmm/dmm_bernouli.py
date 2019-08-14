@@ -1085,10 +1085,10 @@ def main():
                         evaluator.run()
 
                 if epoch == config.max_epoch:
-                    dataset_img = np.concatenate([_x_train, _x_test], axis=0)
+                    dataset_img = _x_train
 
                     sample_img = []
-                    for i in range((len(x_train) + len(x_test)) // 100 + 1):
+                    for i in range((len(x_train)) // 100 + 1):
                         gan_images = session.run(gan_plots)
                         gan_bernouli_images = bernouli_sampler.sample(gan_images / 255.0) * 255.0
                         images = session(x_plots, feed_dict={

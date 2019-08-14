@@ -1079,10 +1079,10 @@ def main():
                         evaluator.run()
 
                 if epoch == config.max_epoch:
-                    dataset_img = np.concatenate([_x_train, _x_test], axis=0)
+                    dataset_img = _x_train
 
                     sample_img = []
-                    for i in range((len(x_train) + len(x_test)) // 100 + 1):
+                    for i in range((len(x_train)) // 100 + 1):
                         sample_img.append(session.run(x_plots))
                     sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
                     sample_img = sample_img[:len(dataset_img)]
