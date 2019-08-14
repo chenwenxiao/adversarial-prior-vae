@@ -881,7 +881,7 @@ def main():
                     images[::3, ...] = np.round(255.0 * x)
                     images[1::3, ...] = np.round(255.0 * x_samples)
                     images[2::3, ...] = np.round(session.run(
-                        reconstruct_plots, feed_dict={input_x: x}))
+                        reconstruct_plots, feed_dict={input_x: x_samples}))
                     batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
                     # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
                     save_images_collection(
@@ -898,7 +898,7 @@ def main():
                     images[::3, ...] = np.round(255.0 * x)
                     images[1::3, ...] = np.round(255.0 * x_samples)
                     images[2::3, ...] = np.round(session.run(
-                        reconstruct_plots, feed_dict={input_x: x}))
+                        reconstruct_plots, feed_dict={input_x: x_samples}))
                     save_images_collection(
                         images=images,
                         filename='plotting/test.reconstruct/{}.png'.format(loop.epoch),
