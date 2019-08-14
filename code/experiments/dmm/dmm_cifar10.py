@@ -41,7 +41,7 @@ class ExpConfig(spt.Config):
     warm_up_start = 1000
     warm_up_epoch = 500
     beta = 1e-8
-    initial_xi = 0.0  # TODO
+    initial_xi = 0.0
     pull_back_energy_weight = 256
 
     max_step = None
@@ -56,7 +56,7 @@ class ExpConfig(spt.Config):
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    n_critical = 5  # TODO
+    n_critical = 5
     # evaluation parameters
     train_n_pz = 256
     train_n_qz = 1
@@ -513,7 +513,6 @@ def G_omega(z):
 def D_psi(x, y=None):
     # if y is not None:
     #     return D_psi(y) + 0.1 * tf.sqrt(tf.reduce_sum((x - y) ** 2, axis=tf.range(-len(config.x_shape), 0)))
-    # TODO
     normalizer_fn = None
     # x = tf.round(256.0 * x / 2 + 127.5)
     # x = (x - 127.5) / 256.0 * 2
@@ -573,7 +572,7 @@ def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, i
     xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(config.initial_xi),
                          dtype=tf.float32, trainable=True)
     # xi = tf.square(xi)
-    xi = tf.nn.sigmoid(xi)  # TODO
+    xi = tf.nn.sigmoid(xi)
     pz = EnergyDistribution(normal, G=G_omega, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator,
                             initial_z=initial_z)
     z = net.add('z', pz, n_samples=n_z)
@@ -640,7 +639,7 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
             q_net['z'].log_prob()
         )
         train_grad_penalty = gradient_penalty
-        train_kl = tf.maximum(train_kl, 0.0)  # TODO
+        train_kl = tf.maximum(train_kl, 0.0)
         VAE_loss = -train_recon + warm * train_kl  # + gradient_penalty * 128.0
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
@@ -1079,10 +1078,10 @@ def main():
                         evaluator.run()
 
                 if epoch == config.max_epoch:
-                    dataset_img = _x_train
+                    dataset_img = np.concatenate([_x_train, _x_test], axis=0)
 
                     sample_img = []
-                    for i in range((len(x_train)) // 100 + 1):
+                    for i in range((len(x_train) + len(x_test)) // 100 + 1):
                         sample_img.append(session.run(x_plots))
                     sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
                     sample_img = sample_img[:len(dataset_img)]
