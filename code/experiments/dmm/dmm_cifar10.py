@@ -229,7 +229,7 @@ class EnergyDistribution(spt.Distribution):
         energy_z = config.pull_back_energy_weight * self.D(self.G(z)) * self.xi + 0.5 * tf.reduce_sum(tf.square(z),
                                                                                                       axis=-1)
         pure_energy_z = self.D(self.G(z))
-        # energy_z = pure_energy_z  # TODO
+        # energy_z = pure_energy_z
         grad_energy_z = tf.gradients(energy_z, [z.tensor if hasattr(z, 'tensor') else z])[0]
         grad_energy_z = tf.reshape(grad_energy_z, shape=z.shape)
         eps = tf.random.normal(
@@ -548,7 +548,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
     xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(config.initial_xi),
                          dtype=tf.float32, trainable=True)
     # xi = tf.square(xi)
-    xi = tf.nn.sigmoid(xi)  # TODO
+    xi = tf.nn.sigmoid(xi)
     pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator,
                             initial_z=initial_z)
     z = net.add('z', pz, n_samples=n_z)
