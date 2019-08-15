@@ -25,7 +25,7 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 2048
+    z_dim = 256
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -433,6 +433,8 @@ def get_log_Z():
     return __log_Z
 
 
+
+
 @add_arg_scope
 @spt.global_reuse
 def G_theta(z):
@@ -447,28 +449,17 @@ def G_theta(z):
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_z = spt.layers.dense(z, 512 * config.x_shape[0] // 8 * config.x_shape[1] // 8, scope='level_0',
                                normalizer_fn=None)
-        h_z = spt.ops.reshape_tail(h_z, ndims=1, shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 512))
-        z = spt.ops.reshape_tail(z, ndims=1, shape=[config.x_shape[0] // 8, config.x_shape[1] // 8,
-                                                    64 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
-        h_z = tf.concat([h_z, z], axis=-1)
+        h_z = spt.ops.reshape_tail(
+            h_z,
+            ndims=1,
+            shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 512)
+        )
         h_z = spt.layers.resnet_deconv2d_block(h_z, 512, strides=2, scope='level_2')  # output: (7, 7, 64)
-        z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 4, config.x_shape[1] // 4,
-                                                    16 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
-        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 256, strides=2, scope='level_3')  # output: (7, 7, 64)
-        z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 2, config.x_shape[1] // 2,
-                                                    4 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
-        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_5')  # output: (14, 14, 32)
-        z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0], config.x_shape[1],
-                                                    config.z_dim // config.x_shape[0] // config.x_shape[1]])
-        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_6')  # output:
-        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
-        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
-        h_z = tf.concat([h_z, z], axis=-1)
     x_mean = spt.layers.conv2d(
         h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
