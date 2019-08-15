@@ -226,6 +226,8 @@ def get_fid(images1, images2):
     return fid
 
 
+
+
 def inception_logits(images = inception_images, num_splits = 1):
     images = tf.transpose(images, [0, 2, 3, 1])
     size = 299
@@ -277,17 +279,48 @@ def get_inception_score(images, splits=10):
     print('Inception Score calculation time: %f s' % (time.time() - start_time))
     return mean, std  # Reference values: 11.34 for 49984 CIFAR-10 training set images, or mean=11.31, std=0.08 if in 10 splits.
 
+from code.experiments.ttur_fid import create_inception_graph,calculate_frechet_distance,calculate_activation_statistics
+
+def get_fid_ttur(sample_images,real_images):
+    # loads all images into memory (this might require a lot of RAM!)
+    # print("load images..", end=" " , flush=True)
+    # image_list = glob.glob(os.path.join(data_path, '*.jpg'))
+    # images = np.array([imread(str(fn)).astype(np.float32) for fn in image_list])
+    # print("%d images found and loaded" % len(images))
+
+    print("create inception graph..", end=" ", flush=True)
+    # create_inception_graph(inception_path)  # load the graph into the current TF graph
+    tf.import_graph_def(graph_def, name='FID_Inception_Net')
+    print("ok")
+
+    print("calculte FID stats..", end=" ", flush=True)
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        mu_gen, sigma_gen = calculate_activation_statistics(sample_images, sess, batch_size=100)
+        mu_real, sigma_real = calculate_activation_statistics(real_images, sess, batch_size=100)
+        # np.savez_compressed(output_path, mu=mu, sigma=sigma)
+        fid_value = calculate_frechet_distance(mu_gen, sigma_gen, mu_real, sigma_real)
+    print("finished")
+    return fid_value
 
 if __name__ == '__main__':
 
     (train_x, train_y), (test_x, test_y) = spt.datasets.load_cifar10(channels_last=True)
 
-    x = train_x
-    x=x.transpose(0, 3, 1, 2)
-    # x = tf.convert_to_tensor(x)
-    # x = preprocess_image(x)
-    x = get_fid(x,x)
-    print(x)
+    x1 = test_x
+    x2 = train_x
+    print("ttur fid's calculating")
+    ttur = get_fid_ttur(x1,x2)
+    print(f"ttur fid's {ttur}")
+    print("tsc fid's calculating")
+    if len(x1)>len(x2):
+        x1 = x1[:len(x2)]
+    else:
+        x2 = x2[:len(x1)]
+    tsc = get_fid(x1,x2)
+    print(f"tsc fid's {tsc}")
+    print(f"compare tsc:{tsc}, ttur :{ttur}")
+
 
     # print(get_inception_score_tf(test_x))
     # print(get_fid_tf(test_x, test_x))
