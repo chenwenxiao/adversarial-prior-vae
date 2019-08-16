@@ -448,9 +448,7 @@ def G_theta(z):
         h_z = spt.layers.dense(z, 512 * config.x_shape[0] // 8 * config.x_shape[1] // 8, scope='level_0',
                                normalizer_fn=None)
         h_z = spt.ops.reshape_tail(h_z, ndims=1, shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 512))
-        z = spt.ops.reshape_tail(z, ndims=1, shape=[config.x_shape[0] // 8, config.x_shape[1] // 8,
-                                                    64 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
-        h_z = tf.concat([h_z, z], axis=-1)
+        z = h_z
         h_z = spt.layers.resnet_deconv2d_block(h_z, 512, strides=2, scope='level_2')  # output: (7, 7, 64)
         z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 4, config.x_shape[1] // 4,
                                                     16 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
