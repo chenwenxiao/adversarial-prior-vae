@@ -205,7 +205,7 @@ def activations2distance(act1, act2):
     return fcd.eval(feed_dict={activations1: act1, activations2: act2})
 
 
-def get_fid(images1, images2):
+def get_fid_tsc(images1, images2):
     images1=images1.transpose(0,3,1,2)
     images2=images2.transpose(0,3,1,2)
     assert (type(images1) == np.ndarray)
@@ -279,7 +279,10 @@ def get_inception_score(images, splits=10):
     print('Inception Score calculation time: %f s' % (time.time() - start_time))
     return mean, std  # Reference values: 11.34 for 49984 CIFAR-10 training set images, or mean=11.31, std=0.08 if in 10 splits.
 
-from code.experiments.ttur_fid import create_inception_graph,calculate_frechet_distance,calculate_activation_statistics
+from code.experiments.ttur_fid import create_inception_graph,calculate_frechet_distance\
+    ,calculate_activation_statistics, get_activations
+
+import scipy
 
 def get_fid_ttur(sample_images,real_images):
     # loads all images into memory (this might require a lot of RAM!)
@@ -303,23 +306,81 @@ def get_fid_ttur(sample_images,real_images):
     print("finished")
     return fid_value
 
+
+def get_fid_google(sample,real):
+    """Returns the FID based on activations.
+
+    Args:
+      fake_activations: NumPy array with fake activations.
+      real_activations: NumPy array with real activations.
+    Returns:
+      A float, the Frechet Inception Distance.
+    """
+    tf.import_graph_def(graph_def, name='FID_Inception_Net')
+    with tf.Session() as sess:
+        fake_activations = get_activations(sample,sess)
+        real_activations = get_activations(real,sess)
+        fake_activations = tf.convert_to_tensor(fake_activations)
+        real_activations = tf.convert_to_tensor(real_activations)
+        fid = tfgan.eval.frechet_classifier_distance_from_activations(
+            real_activations=real_activations,
+            generated_activations=fake_activations)
+        fid = sess.run(fid)
+    return fid
+
+def get_mean_cov( ims, sess,batch_size=100):
+    n, c, w, h = ims.shape
+    print('Batch size:', batch_size)
+    print('Total number of images:', n)
+    pred = get_activations(ims,sess)
+    mean = np.mean(pred, axis=0)
+    cov = np.cov(pred)
+    return mean, cov
+
+def FID(m0, c0, m1, c1):
+    ret = 0
+    ret += np.sum((m0 - m1) ** 2)
+    ret += np.trace(c0 + c1 - 2.0 * scipy.linalg.sqrtm(np.dot(c0, c1)))
+    return np.real(ret)
+
+def get_fid_sngan(sample,real, batchsize=100):
+    """Frechet Inception Distance proposed by https://arxiv.org/abs/1706.08500"""
+
+    tf.import_graph_def(graph_def, name='FID_Inception_Net')
+
+    with tf.Session() as sess:
+        m1,c1 = get_mean_cov(sample,sess);
+        m2,c2 = get_mean_cov(real,sess);
+    fid = FID(m1,c1,m2,c2)
+    return fid
+
+get_fid = get_fid_google
+
 if __name__ == '__main__':
 
     (train_x, train_y), (test_x, test_y) = spt.datasets.load_cifar10(channels_last=True)
 
     x1 = test_x
     x2 = train_x
-    print("ttur fid's calculating")
-    ttur = get_fid_ttur(x1,x2)
-    print(f"ttur fid's {ttur}")
-    print("tsc fid's calculating")
+
     if len(x1)>len(x2):
         x1 = x1[:len(x2)]
     else:
         x2 = x2[:len(x1)]
-    tsc = get_fid(x1,x2)
-    print(f"tsc fid's {tsc}")
-    print(f"compare tsc:{tsc}, ttur :{ttur}")
+
+    print("ttur fid's calculating")
+    ttur = get_fid_ttur(x1,x2)
+    print(f"ttur fid's {ttur}")
+
+    print("sngan fid's calculating")
+    sngan = get_fid_sngan(x1,x2)
+    print(f"sngan fid's {sngan}")
+
+    print("google fid's calculating")
+    google = get_fid_google(x1,x2)
+    print(f"google fid's {google}")
+
+    print(f"compare\n google: {google}\n sngan: {sngan}\n ttur: {ttur}\n")
 
 
     # print(get_inception_score_tf(test_x))
