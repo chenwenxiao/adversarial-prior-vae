@@ -16,7 +16,7 @@ from tfsnippet.examples.utils import (MLResults,
                                       bernoulli_flow,
                                       bernoulli_flow,
                                       print_with_title)
-from code.experiments.utils import get_inception_score, get_fid
+from code.experiments.utils import get_inception_score, get_fid_google
 import numpy as np
 from scipy.misc import logsumexp
 
@@ -558,8 +558,8 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
 def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial_z=None):
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
-    normal = spt.Normal(mean=tf.zeros([1, 128]),
-                        logstd=tf.zeros([1, 128]))
+    normal = spt.Normal(mean=tf.zeros([1, 256]),
+                        logstd=tf.zeros([1, 256]))
     normal = normal.batch_ndims_to_value(1)
     xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(config.initial_xi),
                          dtype=tf.float32, trainable=True)
@@ -936,7 +936,7 @@ def main():
     x_test = (_x_test - 127.5) / 256.0 * 2
     uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0, dtype=np.float)
     train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
-    train_flow = train_flow.map(uniform_sampler)
+    # train_flow = train_flow.map(uniform_sampler)
     gan_train_flow = spt.DataFlow.arrays(
         [np.concatenate([x_train, x_test], axis=0)], config.batch_size, shuffle=True, skip_incomplete=True)
     gan_train_flow = gan_train_flow.map(uniform_sampler)
@@ -1078,7 +1078,7 @@ def main():
                     sample_img = sample_img[:len(dataset_img)]
                     sample_img = np.asarray(sample_img)
 
-                    FID = get_fid(sample_img, dataset_img)
+                    FID = get_fid_google(sample_img, dataset_img)
                     # turn to numpy array
                     IS_mean, IS_std = get_inception_score(sample_img)
                     loop.collect_metrics(FID=FID)

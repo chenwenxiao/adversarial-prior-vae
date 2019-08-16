@@ -15,7 +15,7 @@ from tfsnippet.examples.utils import (MLResults,
                                       bernoulli_as_pixel,
                                       bernoulli_flow,
                                       print_with_title)
-from code.experiments.utils import get_inception_score, get_fid
+from code.experiments.utils import get_inception_score, get_fid_google
 import numpy as np
 from scipy.misc import logsumexp
 
@@ -1026,7 +1026,7 @@ def main():
                     sample_img = sample_img[:len(dataset_img)]
                     sample_img = np.asarray(sample_img)
 
-                    FID = get_fid(sample_img, dataset_img)
+                    FID = get_fid_google(sample_img, dataset_img)
                     # turn to numpy array
                     IS_mean, IS_std = get_inception_score(sample_img)
                     loop.collect_metrics(FID=FID)

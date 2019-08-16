@@ -10,7 +10,7 @@ from matplotlib import pyplot
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
-from code.experiments.utils import get_inception_score, get_fid
+from code.experiments.utils import get_inception_score, get_fid_google
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
                                       bernoulli_as_pixel,
@@ -760,7 +760,7 @@ def main():
                     sample_img = np.concatenate((sample_img, sample_img, sample_img), axis=3)
                     sample_img = sample_img[:len(dataset_img)]
 
-                    FID = get_fid(sample_img, dataset_img)
+                    FID = get_fid_google(sample_img, dataset_img)
                     # turn to numpy array
                     IS_mean, IS_std = get_inception_score(sample_img)
                     loop.collect_metrics(FID=FID)
