@@ -42,7 +42,7 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0
-    pull_back_energy_weight = 256
+    pull_back_energy_weight = 128
 
     max_step = None
     batch_size = 256
@@ -63,7 +63,7 @@ class ExpConfig(spt.Config):
     test_n_pz = 1000
     test_n_qz = 10
     test_batch_size = 64
-    test_epoch_freq = 100
+    test_epoch_freq = 200
     plot_epoch_freq = 10
     grad_epoch_freq = 10
 
@@ -448,7 +448,9 @@ def G_theta(z):
         h_z = spt.layers.dense(z, 512 * config.x_shape[0] // 8 * config.x_shape[1] // 8, scope='level_0',
                                normalizer_fn=None)
         h_z = spt.ops.reshape_tail(h_z, ndims=1, shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 512))
-        z = h_z
+        z = spt.ops.reshape_tail(z, ndims=1, shape=[config.x_shape[0] // 8, config.x_shape[1] // 8,
+                                                    64 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 512, strides=2, scope='level_2')  # output: (7, 7, 64)
         z = spt.ops.reshape_tail(z, ndims=3, shape=[config.x_shape[0] // 4, config.x_shape[1] // 4,
                                                     16 * config.z_dim // config.x_shape[0] // config.x_shape[1]])
@@ -564,8 +566,8 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
 def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial_z=None):
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
-    normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
-                        logstd=tf.zeros([1, config.z_dim]))
+    normal = spt.Normal(mean=tf.zeros([1, 256]),
+                        logstd=tf.zeros([1, 256]))
     normal = normal.batch_ndims_to_value(1)
     xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(config.initial_xi),
                          dtype=tf.float32, trainable=True)
@@ -604,7 +606,7 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
             # print(interpolates)
             D_interpolates = D_psi(interpolates)
             # print(D_interpolates)
-            gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
+            gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])  # WGAN-GP
             gradient_penalty = tf.reduce_sum(gradient_penalty, tf.range(-len(config.x_shape), 0))
             gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
             gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
@@ -638,7 +640,7 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
         )
         train_grad_penalty = gradient_penalty
         train_kl = tf.maximum(train_kl, 0.0)
-        VAE_loss = -train_recon + warm * train_kl  # + gradient_penalty * 128.0
+        VAE_loss = -train_recon + warm * train_kl + gradient_penalty * 128.0
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
         adv_G_loss = tf.reduce_mean(energy_fake)
@@ -820,7 +822,7 @@ def main():
     # derive the optimizer
     with tf.name_scope('optimizing'):
         VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
-            'beta') + tf.trainable_variables('posterior_flow') + tf.trainable_variables('p_net/xi')
+            'beta') + tf.trainable_variables('posterior_flow') + tf.trainable_variables('p_net/xi') + tf.trainable_variables('D_psi')
         D_params = tf.trainable_variables('D_psi')
         VAE_G_params = tf.trainable_variables('G_theta')
         G_params = tf.trainable_variables('G_omega')
@@ -943,9 +945,8 @@ def main():
     uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0, dtype=np.float)
     train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     train_flow = train_flow.map(uniform_sampler)
-    gan_train_flow = spt.DataFlow.arrays(
-        [np.concatenate([x_train, x_test], axis=0)], config.batch_size, shuffle=True, skip_incomplete=True)
-    gan_train_flow = gan_train_flow.map(uniform_sampler)
+    gan_train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
+    # gan_train_flow = gan_train_flow.map(uniform_sampler)
     reconstruct_train_flow = spt.DataFlow.arrays(
         [x_train], 100, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(
@@ -973,7 +974,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/e7/29/6f9d69b5d193a39cf4d5/checkpoint/checkpoint/checkpoint.dat-195000'
+        restore_checkpoint = None
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1010,9 +1011,9 @@ def main():
             n_critical = config.n_critical
             # adversarial training
             for epoch in epoch_iterator:
-                step_iterator = MyIterator(train_flow)
-                while step_iterator.has_next:
-                    if epoch <= config.warm_up_start:
+                if epoch <= config.warm_up_start:
+                    step_iterator = MyIterator(gan_train_flow)
+                    while step_iterator.has_next:
                         # discriminator training
                         for step, [x] in loop.iter_steps(limited(step_iterator, n_critical)):
                             [_, batch_D_loss, batch_D_real] = session.run(
@@ -1027,7 +1028,9 @@ def main():
                             [G_train_op, G_loss], feed_dict={
                             })
                         loop.collect_metrics(G_loss=batch_G_loss)
-                    else:
+                else:
+                    step_iterator = MyIterator(train_flow)
+                    while step_iterator.has_next:
                         # vae training
                         for step, [x] in loop.iter_steps(limited(step_iterator, n_critical)):
                             [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
@@ -1048,11 +1051,11 @@ def main():
                             loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
                             # loop.print_logs()
 
-                        # generator training x
-                        # [_, batch_VAE_G_loss] = session.run(
-                        #     [VAE_G_train_op, VAE_G_loss], feed_dict={
-                        #     })
-                        # loop.collect_metrics(VAE_G_loss=batch_VAE_G_loss)
+                            # generator training x
+                            # [_, batch_VAE_G_loss] = session.run(
+                            #     [VAE_G_train_op, VAE_G_loss], feed_dict={
+                            #     })
+                            # loop.collect_metrics(VAE_G_loss=batch_VAE_G_loss)
 
                 if epoch in config.lr_anneal_epoch_freq:
                     learning_rate.anneal()
@@ -1075,18 +1078,29 @@ def main():
                     with loop.timeit('eval_time'):
                         evaluator.run()
 
-                if epoch == config.max_epoch:
-                    dataset_img = np.concatenate([_x_train, _x_test], axis=0)
+                    dataset_img =_x_train
+                    sample_img = []
+                    for i in range((len(x_train)) // 100 + 1):
+                        sample_img.append(session.run(gan_plots))
+                    sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
+                    sample_img = sample_img[:len(dataset_img)]
+                    sample_img = np.asarray(sample_img)
+                    # print(sample_img, dataset_img)
+
+                    FID = get_fid_google(sample_img, dataset_img)
+                    # turn to numpy array
+                    IS_mean, IS_std = get_inception_score(sample_img)
+                    loop.collect_metrics(FID_gan=FID)
+                    loop.collect_metrics(IS_gan=IS_mean)
 
                     sample_img = []
-                    for i in range((len(x_train) + len(x_test)) // 100 + 1):
+                    for i in range((len(x_train)) // 100 + 1):
                         sample_img.append(session.run(x_plots))
                     sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
                     sample_img = sample_img[:len(dataset_img)]
                     sample_img = np.asarray(sample_img)
 
                     FID = get_fid_google(sample_img, dataset_img)
-                    # turn to numpy array
                     IS_mean, IS_std = get_inception_score(sample_img)
                     loop.collect_metrics(FID=FID)
                     loop.collect_metrics(IS=IS_mean)

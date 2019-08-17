@@ -630,7 +630,7 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0, input_origin_x=None):
         )
         train_grad_penalty = gradient_penalty
         train_kl = tf.maximum(train_kl, 0.0)  # TODO
-        VAE_loss = -train_recon + warm * train_kl  # + gradient_penalty * 128.0
+        VAE_loss = -train_recon + warm * train_kl + gradient_penalty * 8.0
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
         adv_G_loss = tf.reduce_mean(energy_fake)
@@ -815,7 +815,7 @@ def main():
     # derive the optimizer
     with tf.name_scope('optimizing'):
         VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
-            'beta') + tf.trainable_variables('posterior_flow') + tf.trainable_variables('p_net/xi')
+            'beta') + tf.trainable_variables('posterior_flow') + tf.trainable_variables('p_net/xi') + tf.trainable_variables('D_psi')
         D_params = tf.trainable_variables('D_psi')
         VAE_G_params = tf.trainable_variables('G_theta')
         G_params = tf.trainable_variables('G_omega')
@@ -1084,26 +1084,26 @@ def main():
                     with loop.timeit('eval_time'):
                         evaluator.run()
 
-                if epoch == config.max_epoch:
-                    dataset_img = _x_train
-
-                    sample_img = []
-                    for i in range((len(x_train)) // 100 + 1):
-                        gan_images = session.run(gan_plots)
-                        gan_bernouli_images = bernouli_sampler.sample(gan_images / 255.0) * 255.0
-                        images = session(x_plots, feed_dict={
-                            input_plot_x: gan_bernouli_images
-                        })
-                        sample_img.append(images)
-                    sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
-                    sample_img = sample_img[:len(dataset_img)]
-                    sample_img = np.asarray(sample_img)
-
-                    FID = get_fid_google(sample_img, dataset_img)
-                    # turn to numpy array
-                    IS_mean, IS_std = get_inception_score(sample_img)
-                    loop.collect_metrics(FID=FID)
-                    loop.collect_metrics(IS=IS_mean)
+                # if epoch == config.max_epoch:
+                #     dataset_img = _x_train
+                #
+                #     sample_img = []
+                #     for i in range((len(x_train)) // 100 + 1):
+                #         gan_images = session.run(gan_plots)
+                #         gan_bernouli_images = bernouli_sampler.sample(gan_images / 255.0) * 255.0
+                #         images = session(x_plots, feed_dict={
+                #             input_plot_x: gan_bernouli_images
+                #         })
+                #         sample_img.append(images)
+                #     sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
+                #     sample_img = sample_img[:len(dataset_img)]
+                #     sample_img = np.asarray(sample_img)
+                #
+                #     FID = get_fid_google(sample_img, dataset_img)
+                #     # turn to numpy array
+                #     IS_mean, IS_std = get_inception_score(sample_img)
+                #     loop.collect_metrics(FID=FID)
+                #     loop.collect_metrics(IS=IS_mean)
 
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
