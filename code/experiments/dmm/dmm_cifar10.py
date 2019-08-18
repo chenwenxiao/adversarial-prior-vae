@@ -839,7 +839,7 @@ def main():
             VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
             VAE_grads = VAE_optimizer.compute_gradients(VAE_loss, VAE_params)
         with tf.variable_scope('VAE_nD_optimizer'):
-            VAE_nD_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
+            VAE_nD_optimizer = tf.train.AdamOptimizer(learning_rate)
             VAE_nD_grads = VAE_nD_optimizer.compute_gradients(VAE_nD_loss, VAE_nD_params)
         with tf.variable_scope('D_optimizer'):
             D_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)

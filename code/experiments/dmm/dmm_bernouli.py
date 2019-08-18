@@ -630,11 +630,12 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0, input_origin_x=None):
         )
         train_grad_penalty = gradient_penalty
         train_kl = tf.maximum(train_kl, 0.0)  # TODO
-        VAE_loss = -train_recon + warm * train_kl + gradient_penalty * 8.0
+        VAE_nD_loss = -train_recon + warm * train_kl
+        VAE_loss = VAE_nD_loss + gradient_penalty * 128.0
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
         adv_G_loss = tf.reduce_mean(energy_fake)
-    return VAE_loss, adv_D_loss, adv_G_loss, tf.reduce_mean(energy_real)
+    return VAE_nD_loss, VAE_loss, adv_D_loss, adv_G_loss, tf.reduce_mean(energy_real)
 
 
 class MyIterator(object):
@@ -751,13 +752,11 @@ def main():
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']},
                             n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
 
-        VAE_loss, _, VAE_G_loss, VAE_D_real = get_all_loss(train_q_net, train_p_net, train_pn_theta, warm,
-                                                           input_origin_x)
-        _, D_loss, G_loss, D_real = get_all_loss(train_q_net, train_p_net, train_pn_omega, warm,
-                                                 input_origin_x)
+        VAE_nD_loss, VAE_loss, _, VAE_G_loss, VAE_D_real = get_all_loss(train_q_net, train_p_net, train_pn_theta, warm)
+        _, __, D_loss, G_loss, D_real = get_all_loss(train_q_net, train_p_net, train_pn_omega, warm)
 
         VAE_loss += tf.losses.get_regularization_loss()
-        VAE_G_loss += tf.losses.get_regularization_loss()
+        VAE_nD_loss += tf.losses.get_regularization_loss()
         D_loss += tf.losses.get_regularization_loss()
         G_loss += tf.losses.get_regularization_loss()
 
@@ -816,8 +815,9 @@ def main():
     with tf.name_scope('optimizing'):
         VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
             'beta') + tf.trainable_variables('posterior_flow') + tf.trainable_variables('p_net/xi') + tf.trainable_variables('D_psi')
+        VAE_nD_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
+            'beta') + tf.trainable_variables('posterior_flow') + tf.trainable_variables('p_net/xi')
         D_params = tf.trainable_variables('D_psi')
-        VAE_G_params = tf.trainable_variables('G_theta')
         G_params = tf.trainable_variables('G_omega')
         print("========VAE_params=========")
         print(VAE_params)
@@ -828,9 +828,9 @@ def main():
         with tf.variable_scope('VAE_optimizer'):
             VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
             VAE_grads = VAE_optimizer.compute_gradients(VAE_loss, VAE_params)
-        with tf.variable_scope('VAE_G_optimizer'):
-            VAE_G_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
-            VAE_G_grads = VAE_G_optimizer.compute_gradients(VAE_G_loss, VAE_G_params)
+        with tf.variable_scope('VAE_nD_optimizer'):
+            VAE_nD_optimizer = tf.train.AdamOptimizer(learning_rate)
+            VAE_nD_grads = VAE_nD_optimizer.compute_gradients(VAE_nD_loss, VAE_nD_params)
         with tf.variable_scope('D_optimizer'):
             D_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
             D_grads = D_optimizer.compute_gradients(D_loss, D_params)
@@ -839,7 +839,7 @@ def main():
             G_grads = G_optimizer.compute_gradients(G_loss, G_params)
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             VAE_train_op = VAE_optimizer.apply_gradients(VAE_grads)
-            VAE_G_train_op = VAE_optimizer.apply_gradients(VAE_G_grads)
+            VAE_nD_train_op = VAE_optimizer.apply_gradients(VAE_nD_grads)
             G_train_op = G_optimizer.apply_gradients(G_grads)
             D_train_op = D_optimizer.apply_gradients(D_grads)
 
