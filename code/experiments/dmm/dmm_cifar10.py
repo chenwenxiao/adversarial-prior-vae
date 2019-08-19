@@ -48,7 +48,7 @@ class ExpConfig(spt.Config):
     batch_size = 256
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000, 2200, 2400, 2600, 2800, 3000]
+    lr_anneal_epoch_freq = [400, 800, 1200, 1600, 2000, 2200, 2400, 2600, 2800, 3000]
     lr_anneal_step_freq = None
 
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
@@ -1081,6 +1081,7 @@ def main():
                     with loop.timeit('eval_time'):
                         evaluator.run()
 
+                if epoch == config.warm_up_start:
                     dataset_img = _x_train
                     sample_img = []
                     for i in range((len(x_train)) // 100 + 1):
@@ -1096,6 +1097,8 @@ def main():
                     loop.collect_metrics(FID_gan=FID)
                     loop.collect_metrics(IS_gan=IS_mean)
 
+                if epoch == config.max_epoch:
+                    dataset_img = _x_train
                     sample_img = []
                     for i in range((len(x_train)) // 100 + 1):
                         sample_img.append(session.run(x_plots))
