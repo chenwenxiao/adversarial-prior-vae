@@ -384,7 +384,7 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
-                   dropout_fn=dropout):
+                   dropout_fn=None):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
         h_x = tf.concat([h_x, x], axis=-1)
@@ -977,7 +977,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = None
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/74/29/6fc8930042bc475e85d5/checkpoint/checkpoint/checkpoint.dat-390000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),

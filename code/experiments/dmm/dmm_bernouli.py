@@ -51,7 +51,7 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0  # TODO
-    pull_back_energy_weight = 2
+    pull_back_energy_weight = 2.0
 
     max_step = None
     batch_size = 256
@@ -629,7 +629,9 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0, input_origin_x=None):
             q_net['z'].log_prob()
         )
         train_grad_penalty = gradient_penalty
-        train_kl = tf.maximum(train_kl, 0.0)  # TODO
+        lower_bound_kl = config.z_dim * 0.5 + np.log(60000 * 1000)
+        gate_of_lower_bounnd = tf.to_float(train_recon > -100.0)
+        train_kl = tf.maximum(train_kl, lower_bound_kl * gate_of_lower_bounnd)  # TODO
         VAE_nD_loss = -train_recon + warm * train_kl
         VAE_loss = VAE_nD_loss + gradient_penalty * 128.0
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
@@ -983,7 +985,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = None
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/54/29/6fc8930042bcf78c85d5/checkpoint/checkpoint/checkpoint.dat-234000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
