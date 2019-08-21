@@ -633,7 +633,7 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0, input_origin_x=None):
         gate_of_lower_bounnd = tf.to_float(train_recon > -100.0)
         train_kl = tf.maximum(train_kl, lower_bound_kl * gate_of_lower_bounnd)  # TODO
         VAE_nD_loss = -train_recon + warm * train_kl
-        VAE_loss = VAE_nD_loss + gradient_penalty * 128.0
+        VAE_loss = VAE_nD_loss + gradient_penalty * config.pull_back_energy_weight
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gradient_penalty
         adv_G_loss = tf.reduce_mean(energy_fake)
