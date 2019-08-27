@@ -37,7 +37,7 @@ spt.Bernoulli.mean = property(_bernoulli_mean)
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 80
+    z_dim = 64
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -75,7 +75,7 @@ class ExpConfig(spt.Config):
     test_n_pz = 1000
     test_n_qz = 10
     test_batch_size = 64
-    test_epoch_freq = 100
+    test_epoch_freq = 1
     plot_epoch_freq = 10
     grad_epoch_freq = 10
 
@@ -818,6 +818,9 @@ def main():
             test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob
         )
     xi_node = get_var('p_net/xi')
+
+    xi_value = tf.placeholder(tf.float32, shape=(), name='xi_value')
+    xi_op = tf.assign(xi_node, xi_value)
     # derive the optimizer
     with tf.name_scope('optimizing'):
         VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
@@ -988,12 +991,12 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/54/29/6fc8930042bcf78c85d5/checkpoint/checkpoint/checkpoint.dat-234000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/fe/19/6f3b6c3ef49df459f5d5/checkpoint/checkpoint/checkpoint.dat-468000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi'],
-                           max_epoch=config.max_epoch,
+                           max_epoch=config.max_epoch + 100,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary') if config.write_summary else None),
                            summary_graph=tf.get_default_graph(),
@@ -1024,52 +1027,10 @@ def main():
             n_critical = config.n_critical
             # adversarial training
             for epoch in epoch_iterator:
-                step_iterator = MyIterator(train_flow)
-                while step_iterator.has_next:
-                    if epoch <= config.warm_up_start:
-                        # discriminator training
-                        for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
-                            [_, batch_D_loss, batch_D_real] = session.run(
-                                [D_train_op, D_loss, D_real], feed_dict={
-                                    input_x: x,
-                                    input_origin_x: origin_x
-                                })
-                            loop.collect_metrics(D_loss=batch_D_loss)
-                            loop.collect_metrics(D_real=batch_D_real)
-
-                        # generator training x
-                        [_, batch_G_loss] = session.run(
-                            [G_train_op, G_loss], feed_dict={
-                            })
-                        loop.collect_metrics(G_loss=batch_G_loss)
-                    else:
-                        # vae training
-                        for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
-                            [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
-                             batch_VAE_D_real, batch_train_kl, batch_train_grad_penalty] = session.run(
-                                [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy, VAE_D_real,
-                                 train_kl, train_grad_penalty],
-                                feed_dict={
-                                    input_x: x,
-                                    input_origin_x: origin_x,
-                                    warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
-                                })
-                            loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
-                            loop.collect_metrics(xi=xi_value)
-                            loop.collect_metrics(beta=beta_value)
-                            loop.collect_metrics(train_recon=batch_train_recon)
-                            loop.collect_metrics(train_recon_energy=batch_train_recon_energy)
-                            loop.collect_metrics(D_real=batch_VAE_D_real)
-                            loop.collect_metrics(train_kl=batch_train_kl)
-                            loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
-                            # loop.print_logs()
-
-                            # generator training x
-                            # [_, batch_VAE_G_loss] = session.run(
-                            #     [VAE_G_train_op, VAE_G_loss], feed_dict={
-                            #     })
-                            # loop.collect_metrics(VAE_G_loss=batch_VAE_G_loss)
-
+                session.run(xi_op, feed_dict={
+                    xi_value: 10.0 - 20.0 * (epoch - config.max_epoch) / 100.0
+                })
+                loop.collect_metrics(xi=session.run(xi_node))
                 if epoch in config.lr_anneal_epoch_freq:
                     learning_rate.anneal()
 
@@ -1086,7 +1047,7 @@ def main():
                     from scipy.misc import logsumexp
                     log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(config.log_Z_times)
                     get_log_Z().set(log_Z)
-                    print('log_Z_list:{}'.format(log_Z_list))
+                    # print('log_Z_list:{}'.format(log_Z_list))
                     print('log_Z:{}'.format(log_Z))
                     with loop.timeit('eval_time'):
                         evaluator.run()
@@ -1112,7 +1073,7 @@ def main():
                 #     loop.collect_metrics(FID=FID)
                 #     loop.collect_metrics(IS=IS_mean)
 
-                loop.collect_metrics(lr=learning_rate.get())
+                # loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
 
     # print the final metrics and close the results object
