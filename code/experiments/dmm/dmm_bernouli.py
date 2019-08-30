@@ -416,7 +416,7 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
         z_distribution,
         posterior_flow
     )
-    z = net.add('z', z_distribution, n_samples=n_z)
+    z = net.add('z', z_distribution, n_samples=n_z, group_ndims=1)
     # z = net.add('z', spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
     #             n_samples=n_z, group_ndims=1)
 
