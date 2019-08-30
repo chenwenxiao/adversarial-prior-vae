@@ -22,7 +22,6 @@ from scipy.misc import logsumexp
 
 from tfsnippet.preprocessing import UniformNoiseSampler, BernoulliSampler
 
-
 spt.settings.check_numerics = spt.settings.enable_assertions = False
 
 
@@ -75,15 +74,15 @@ class ExpConfig(spt.Config):
     test_n_pz = 1000
     test_n_qz = 10
     test_batch_size = 64
-    test_epoch_freq = 100
+    test_epoch_freq = 200
     plot_epoch_freq = 10
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
     test_x_samples = 8
-    log_Z_times = 100000
+    log_Z_times = 1000
 
-    epsilon = -20
+    epsilon = -5
 
     @property
     def x_shape(self):
@@ -411,8 +410,10 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
     # h_x = tf.concat([h_x, x], axis=-1)
     z_mean = spt.layers.dense(h_x, config.z_dim, scope='z_mean', kernel_initializer=tf.zeros_initializer())
     z_logstd = spt.layers.dense(h_x, config.z_dim, scope='z_logstd', kernel_initializer=tf.zeros_initializer())
-    z_distribution = spt.FlowDistribution(
-        spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
+
+    z_distribution = spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon))
+    z_flow_distribution = spt.FlowDistribution(
+        z_distribution,
         posterior_flow
     )
     z = net.add('z', z_distribution, n_samples=n_z)
@@ -757,10 +758,10 @@ def main():
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']},
                             n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
 
-        VAE_nD_loss, VAE_loss, _, VAE_G_loss, VAE_D_real = get_all_loss(train_q_net, train_p_net, train_pn_theta, warm,
-                                                           input_origin_x)
+        VAE_nD_loss, VAE_loss, _, VAE_G_loss, VAE_D_real = get_all_loss(train_q_net, train_p_net, train_p_net, warm,
+                                                                        input_origin_x)
         _, __, D_loss, G_loss, D_real = get_all_loss(train_q_net, train_p_net, train_pn_omega, warm,
-                                                 input_origin_x)
+                                                     input_origin_x)
 
         VAE_loss += tf.losses.get_regularization_loss()
         VAE_nD_loss += tf.losses.get_regularization_loss()
@@ -821,7 +822,8 @@ def main():
     # derive the optimizer
     with tf.name_scope('optimizing'):
         VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
-            'beta') + tf.trainable_variables('posterior_flow') + tf.trainable_variables('p_net/xi') + tf.trainable_variables('D_psi')
+            'beta') + tf.trainable_variables('posterior_flow') + tf.trainable_variables(
+            'p_net/xi') + tf.trainable_variables('D_psi')
         VAE_nD_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
             'beta') + tf.trainable_variables('posterior_flow') + tf.trainable_variables('p_net/xi')
         D_params = tf.trainable_variables('D_psi')
@@ -988,7 +990,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = None
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/ff/19/6f3b6c3ef49d9fd766d5/checkpoint/checkpoint/checkpoint.dat-58000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1079,15 +1081,16 @@ def main():
                 if epoch % config.plot_epoch_freq == 0:
                     plot_samples(loop)
 
-                if epoch % config.test_epoch_freq == 0:
-                    log_Z_list = []
-                    for i in range(config.log_Z_times):
-                        log_Z_list.append(session.run(log_Z_compute_op))
-                    from scipy.misc import logsumexp
-                    log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(config.log_Z_times)
-                    get_log_Z().set(log_Z)
-                    print('log_Z_list:{}'.format(log_Z_list))
-                    print('log_Z:{}'.format(log_Z))
+                if epoch % config.test_epoch_freq == 0 and epoch > config.warm_up_start:
+                    with loop.timeit('compute_Z_time'):
+                        log_Z_list = []
+                        for i in range(config.log_Z_times):
+                            log_Z_list.append(session.run(log_Z_compute_op))
+                        from scipy.misc import logsumexp
+                        log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(config.log_Z_times)
+                        get_log_Z().set(log_Z)
+                        print('log_Z_list:{}'.format(log_Z_list))
+                        print('log_Z:{}'.format(log_Z))
                     with loop.timeit('eval_time'):
                         evaluator.run()
 
