@@ -82,6 +82,8 @@ class ExpConfig(spt.Config):
     test_x_samples = 8
     log_Z_times = 1000
 
+    len_train = 60000
+
     epsilon = -5
 
     @property
@@ -155,6 +157,10 @@ class EnergyDistribution(spt.Distribution):
     @property
     def log_Z(self):
         return self._log_Z
+
+    def set_log_Z(self, new_log_Z):
+        self._log_Z = new_log_Z
+        return new_log_Z
 
     def log_prob(self, given, group_ndims=0, name=None, y=None):
         given = tf.convert_to_tensor(given)
@@ -627,6 +633,15 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0, input_origin_x=None):
         global train_recon_energy
         global train_kl
         global train_grad_penalty
+        another_log_Z = spt.ops.log_mean_exp(
+            -p_net['z'].log_prob().energy - q_net['z'].log_prob() + np.log(config.len_train)
+        )
+        train_log_Z = spt.ops.log_mean_exp(
+            tf.stack(
+                [p_net['z'].distribution.log_Z, another_log_Z], axis=0
+            )
+        )
+        p_net['z'].distribution.set_log_Z(train_log_Z)
         train_recon_energy = tf.reduce_mean(D_psi(p_net['x'].distribution.mean, p_net['x']))
         train_kl = tf.reduce_mean(
             -p_net['z'].distribution.log_prob(p_net['z'], group_ndims=1, y=p_net['x']).log_energy_prob +
@@ -815,6 +830,9 @@ def main():
         pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.mean))
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
+        another_log_Z_compute_op = spt.ops.log_mean_exp(
+            -test_chain.model['z'].log_prob().energy - test_q_net['z'].log_prob() + np.log(config.len_train)
+        )
         kl_adv_and_gaussian = tf.reduce_mean(
             test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob
         )
@@ -1087,10 +1105,24 @@ def main():
                         for i in range(config.log_Z_times):
                             log_Z_list.append(session.run(log_Z_compute_op))
                         from scipy.misc import logsumexp
-                        log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(config.log_Z_times)
-                        get_log_Z().set(log_Z)
-                        print('log_Z_list:{}'.format(log_Z_list))
+                        log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
+                        # print('log_Z_list:{}'.format(log_Z_list))
                         print('log_Z:{}'.format(log_Z))
+
+                        log_Z_list = []
+                        for [x, origin_x] in test_flow:
+                            log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
+                                input_x: x,
+                                input_origin_x: origin_x
+                            }))
+                        from scipy.misc import logsumexp
+                        another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
+                        # print('log_Z_list:{}'.format(log_Z_list))
+                        print('another_log_Z:{}'.format(another_log_Z))
+                        final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
+                        get_log_Z().set(final_log_Z)
+
+
                     with loop.timeit('eval_time'):
                         evaluator.run()
 
