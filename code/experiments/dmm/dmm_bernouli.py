@@ -1110,11 +1110,13 @@ def main():
                         print('log_Z:{}'.format(log_Z))
 
                         log_Z_list = []
-                        for [x, origin_x] in test_flow:
-                            log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                                input_x: x,
-                                input_origin_x: origin_x
-                            }))
+                        for [x, origin_x] in train_flow:
+                            for i in range(0, len(x), 32):
+                                j = min(len(x), i + 32)
+                                log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
+                                    input_x: x[i: j],
+                                    input_origin_x: origin_x[i: j]
+                                }))
                         from scipy.misc import logsumexp
                         another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
                         # print('log_Z_list:{}'.format(log_Z_list))
