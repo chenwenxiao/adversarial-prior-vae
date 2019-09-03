@@ -80,7 +80,7 @@ class ExpConfig(spt.Config):
 
     test_fid_n_pz = 5000
     test_x_samples = 8
-    log_Z_times = 1000
+    log_Z_times = 10000
 
     len_train = 60000
 
