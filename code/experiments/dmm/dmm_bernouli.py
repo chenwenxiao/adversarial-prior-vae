@@ -56,7 +56,7 @@ class ExpConfig(spt.Config):
     pull_back_energy_weight = 2.0
 
     max_step = None
-    batch_size = 1024
+    batch_size = 256
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
@@ -69,7 +69,7 @@ class ExpConfig(spt.Config):
 
     n_critical = 5  # TODO
     # evaluation parameters
-    train_n_pz = 1024
+    train_n_pz = 256
     train_n_qz = 1
     test_n_pz = 1000
     test_n_qz = 10
@@ -591,40 +591,42 @@ def get_gradient_penalty(a, b, space='x'):
         x_ = b
         energy_real = D_psi(G_theta(x))
         energy_fake = D_psi(G_theta(x_))
+        x_shape = (config.z_dim,)
     else:
         x = a
         x_ = b
         energy_real = D_psi(x)
         energy_fake = D_psi(x_)
+        x_shape = config.x_shape
     gradient_penalty = 0.0
 
     if config.gradient_penalty_algorithm == 'interpolate':
         # Sample from interpolates
         alpha = tf.random_uniform(
-            tf.concat([[config.batch_size], [1] * len(config.x_shape)], axis=0),
+            tf.concat([[config.batch_size], [1] * len(x_shape)], axis=0),
             minval=0, maxval=1.0
         )
-        x = tf.reshape(x, (-1,) + config.x_shape)
-        x_ = tf.reshape(x_, (-1,) + config.x_shape)
+        x = tf.reshape(x, (-1,) + x_shape)
+        x_ = tf.reshape(x_, (-1,) + x_shape)
         differences = x - x_
         interpolates = x_ + alpha * differences
         # print(interpolates)
-        D_interpolates = D_psi(interpolates)
+        D_interpolates = D_psi(G_theta(interpolates)) if space == 'z' else D_psi(interpolates)
         # print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
-        gradient_penalty = tf.reduce_sum(gradient_penalty, tf.range(-len(config.x_shape), 0))
+        gradient_penalty = tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0))
         gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
     if config.gradient_penalty_algorithm == 'both':
         # Sample from fake and real
         gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
-        gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(-len(config.x_shape), 0))
+        gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(-len(x_shape), 0))
         gradient_penalty_real = tf.pow(gradient_penalty_real, config.gradient_penalty_index / 2.0)
 
         gradient_penalty_fake = tf.square(
             tf.gradients(energy_fake, [x_.tensor if hasattr(x_, 'tensor') else x_])[0])
-        gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(-len(config.x_shape), 0))
+        gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(-len(x_shape), 0))
         gradient_penalty_fake = tf.pow(gradient_penalty_fake, config.gradient_penalty_index / 2.0)
 
         gradient_penalty = (tf.reduce_mean(gradient_penalty_fake) + tf.reduce_mean(gradient_penalty_real)) \
@@ -635,7 +637,7 @@ def get_gradient_penalty(a, b, space='x'):
 def get_all_loss(q_net, p_net, pn_net, gan_net, warm=1.0, input_origin_x=None):
     with tf.name_scope('adv_prior_loss'):
         gan_gradient_penalty = get_gradient_penalty(input_origin_x, gan_net['x'].distribution.mean, 'x')
-        vae_gradient_penalty = get_gradient_penalty(p_net['z'], pn_net['z'], 'z')
+        vae_gradient_penalty = get_gradient_penalty(p_net['x'].distribution.mean, pn_net['x'].distribution.mean, 'x')
 
         log_px_z = p_net['x'].log_prob()
 
@@ -773,10 +775,12 @@ def main():
     with tf.name_scope('initialization'), \
          arg_scope([spt.layers.act_norm], initializing=True), \
          spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
-        init_pn_net = p_omega_net(n_z=config.train_n_pz, beta=beta)
+        init_pn_theta = p_net(n_z=config.train_n_pz, beta=beta)
+        init_pn_omega = p_omega_net(n_z=config.train_n_pz, beta=beta)
         init_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
         init_p_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz, beta=beta)
-        init_loss = sum(get_all_loss(init_q_net, init_p_net, init_pn_net, input_origin_x=input_origin_x))
+        init_loss = sum(
+            get_all_loss(init_q_net, init_p_net, init_pn_theta, init_pn_omega, input_origin_x=input_origin_x))
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
