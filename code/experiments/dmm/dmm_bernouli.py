@@ -36,7 +36,7 @@ spt.Bernoulli.mean = property(_bernoulli_mean)
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 40
+    z_dim = 64
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -53,10 +53,10 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0  # TODO
-    pull_back_energy_weight = 2.0
+    pull_back_energy_weight = 1.0
 
     max_step = None
-    batch_size = 1024
+    batch_size = 512
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
@@ -69,7 +69,7 @@ class ExpConfig(spt.Config):
 
     n_critical = 5  # TODO
     # evaluation parameters
-    train_n_pz = 1024
+    train_n_pz = 512
     train_n_qz = 1
     test_n_pz = 1000
     test_n_qz = 10
@@ -84,7 +84,7 @@ class ExpConfig(spt.Config):
 
     len_train = 60000
 
-    epsilon = -5
+    epsilon = -10
 
     @property
     def x_shape(self):
@@ -585,49 +585,54 @@ def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, i
     return net
 
 
-def get_all_loss(q_net, p_net, pn_net, warm=1.0, input_origin_x=None):
+def get_all_loss(q_net, p_net, pn_nets, warm=1.0, input_origin_x=None):
     with tf.name_scope('adv_prior_loss'):
-        x = input_origin_x
-        x_ = pn_net['x'].distribution.mean
-        log_px_z = p_net['x'].log_prob()
-        energy_real = D_psi(x)
-        energy_fake = D_psi(x_)
+        gradient_penaltys = []
+        for pn_net in pn_nets:
+            x = input_origin_x
+            x_ = pn_net['x'].distribution.mean
+            energy_real = D_psi(x)
+            energy_fake = D_psi(x_)
+            gradient_penalty = 0.0
+            if config.gradient_penalty_algorithm == 'interpolate':
+                # Sample from interpolates
+                alpha = tf.random_uniform(
+                    tf.concat([[config.batch_size], [1] * len(config.x_shape)], axis=0),
+                    minval=0, maxval=1.0
+                )
+                x = tf.reshape(x, (-1,) + config.x_shape)
+                x_ = tf.reshape(x_, (-1,) + config.x_shape)
+                differences = x - x_
+                interpolates = x_ + alpha * differences
+                # print(interpolates)
+                D_interpolates = D_psi(interpolates)
+                # print(D_interpolates)
+                gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
+                gradient_penalty = tf.reduce_sum(gradient_penalty, tf.range(-len(config.x_shape), 0))
+                gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
+                gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
-        if config.gradient_penalty_algorithm == 'interpolate':
-            # Sample from interpolates
-            alpha = tf.random_uniform(
-                tf.concat([[config.batch_size], [1] * len(config.x_shape)], axis=0),
-                minval=0, maxval=1.0
-            )
-            x = tf.reshape(x, (-1,) + config.x_shape)
-            x_ = tf.reshape(x_, (-1,) + config.x_shape)
-            differences = x - x_
-            interpolates = x_ + alpha * differences
-            # print(interpolates)
-            D_interpolates = D_psi(interpolates)
-            # print(D_interpolates)
-            gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
-            gradient_penalty = tf.reduce_sum(gradient_penalty, tf.range(-len(config.x_shape), 0))
-            gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
-            gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
+            if config.gradient_penalty_algorithm == 'both':
+                # Sample from fake and real
+                gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
+                gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(-len(config.x_shape), 0))
+                gradient_penalty_real = tf.pow(gradient_penalty_real, config.gradient_penalty_index / 2.0)
 
-        if config.gradient_penalty_algorithm == 'both':
-            # Sample from fake and real
-            gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
-            gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(-len(config.x_shape), 0))
-            gradient_penalty_real = tf.pow(gradient_penalty_real, config.gradient_penalty_index / 2.0)
+                gradient_penalty_fake = tf.square(
+                    tf.gradients(energy_fake, [x_.tensor if hasattr(x_, 'tensor') else x_])[0])
+                gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(-len(config.x_shape), 0))
+                gradient_penalty_fake = tf.pow(gradient_penalty_fake, config.gradient_penalty_index / 2.0)
 
-            gradient_penalty_fake = tf.square(
-                tf.gradients(energy_fake, [x_.tensor if hasattr(x_, 'tensor') else x_])[0])
-            gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(-len(config.x_shape), 0))
-            gradient_penalty_fake = tf.pow(gradient_penalty_fake, config.gradient_penalty_index / 2.0)
+                gradient_penalty = (tf.reduce_mean(gradient_penalty_fake) + tf.reduce_mean(gradient_penalty_real)) \
+                                   * config.gradient_penalty_weight / 2.0
 
-            gradient_penalty = (tf.reduce_mean(gradient_penalty_fake) + tf.reduce_mean(gradient_penalty_real)) \
-                               * config.gradient_penalty_weight / 2.0
+            gradient_penaltys.append(gradient_penalty)
+        gradient_penalty = sum(gradient_penaltys)
 
         # VAE_loss = tf.reduce_mean(
         #     -log_px_z - p_net['z'].log_prob() + q_net['z'].log_prob()
         # )
+        log_px_z = p_net['x'].log_prob()
         global train_recon
         train_recon = tf.reduce_mean(log_px_z)
         global train_recon_energy
@@ -761,7 +766,7 @@ def main():
         init_pn_net = p_omega_net(n_z=config.train_n_pz, beta=beta)
         init_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
         init_p_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz, beta=beta)
-        init_loss = sum(get_all_loss(init_q_net, init_p_net, init_pn_net, input_origin_x=input_origin_x))
+        init_loss = sum(get_all_loss(init_q_net, init_p_net, [init_pn_net], input_origin_x=input_origin_x))
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
@@ -773,9 +778,10 @@ def main():
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']},
                             n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
 
-        VAE_nD_loss, VAE_loss, _, VAE_G_loss, VAE_D_real = get_all_loss(train_q_net, train_p_net, train_p_net, warm,
+        VAE_nD_loss, VAE_loss, _, VAE_G_loss, VAE_D_real = get_all_loss(train_q_net, train_p_net,
+                                                                        [train_pn_omega, train_pn_theta], warm,
                                                                         input_origin_x)
-        _, __, D_loss, G_loss, D_real = get_all_loss(train_q_net, train_p_net, train_pn_omega, warm,
+        _, __, D_loss, G_loss, D_real = get_all_loss(train_q_net, train_p_net, [train_pn_omega], warm,
                                                      input_origin_x)
 
         VAE_loss += tf.losses.get_regularization_loss()
@@ -1008,7 +1014,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = None
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/47/29/6fc8930042bc6cf457d5/checkpoint/checkpoint/checkpoint.dat-117000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1066,8 +1072,10 @@ def main():
                         # vae training
                         for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
                             [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
-                             batch_VAE_D_real, batch_train_kl, batch_train_grad_penalty] = session.run(
+                             batch_VAE_D_real, batch_VAE_G_real, batch_train_kl,
+                             batch_train_grad_penalty] = session.run(
                                 [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy, VAE_D_real,
+                                 VAE_G_loss,
                                  train_kl, train_grad_penalty],
                                 feed_dict={
                                     input_x: x,
@@ -1080,6 +1088,7 @@ def main():
                             loop.collect_metrics(train_recon=batch_train_recon)
                             loop.collect_metrics(train_recon_energy=batch_train_recon_energy)
                             loop.collect_metrics(D_real=batch_VAE_D_real)
+                            loop.collect_metrics(G_loss=batch_VAE_G_real)
                             loop.collect_metrics(train_kl=batch_train_kl)
                             loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
                             # loop.print_logs()
@@ -1106,7 +1115,7 @@ def main():
                             log_Z_list.append(session.run(log_Z_compute_op))
                         from scipy.misc import logsumexp
                         log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                        # print('log_Z_list:{}'.format(log_Z_list))
+                        print('log_Z_list:{}'.format(log_Z_list))
                         print('log_Z:{}'.format(log_Z))
 
                         log_Z_list = []
@@ -1123,7 +1132,6 @@ def main():
                         print('another_log_Z:{}'.format(another_log_Z))
                         final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
                         get_log_Z().set(final_log_Z)
-
 
                     with loop.timeit('eval_time'):
                         evaluator.run()
