@@ -589,49 +589,47 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
     if space == 'z':
         x = input_origin_x
         x_ = pn_net['z']
-        energy_real = D_psi(G_theta(x))
-        energy_fake = D_psi(G_theta(x_))
         alpha = tf.random_uniform((config.batch_size, 1), minval=0, maxval=1.0)
         x = tf.reshape(x, (-1, config.z_dim))
         x_ = tf.reshape(x_, (-1, config.z_dim))
-        x_shape = (config.z_dim,)
+        x_shape = config.x_shape
+        differences = x - x_
+        interpolates = x_ + alpha * differences
+        interpolates = G_theta(interpolates)
     else:
         x = input_origin_x
         x_ = pn_net['x'].distribution.mean
-        energy_real = D_psi(x)
-        energy_fake = D_psi(x_)
         alpha = tf.random_uniform(tf.concat([[config.batch_size], [1] * len(config.x_shape)], axis=0), minval=0,
                                   maxval=1.0)
         x = tf.reshape(x, (-1,) + config.x_shape)
         x_ = tf.reshape(x_, (-1,) + config.x_shape)
         x_shape = config.x_shape
+        differences = x - x_
+        interpolates = x_ + alpha * differences
     gradient_penalty = 0.0
 
     if config.gradient_penalty_algorithm == 'interpolate':
-        # Sample from interpolates
-        differences = x - x_
-        interpolates = x_ + alpha * differences
         # print(interpolates)
-        D_interpolates = D_psi(G_theta(interpolates)) if space == 'z' else D_psi(interpolates)
+        D_interpolates = D_psi(interpolates)
         # print(D_interpolates)
-        gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0] - 1.0)
-        gradient_penalty = tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0))
-        gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
+        gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
+        gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0))) - 1.0
+        gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
-    if config.gradient_penalty_algorithm == 'both':
-        # Sample from fake and real
-        gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
-        gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(-len(x_shape), 0))
-        gradient_penalty_real = tf.pow(gradient_penalty_real, config.gradient_penalty_index / 2.0)
-
-        gradient_penalty_fake = tf.square(
-            tf.gradients(energy_fake, [x_.tensor if hasattr(x_, 'tensor') else x_])[0])
-        gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(-len(x_shape), 0))
-        gradient_penalty_fake = tf.pow(gradient_penalty_fake, config.gradient_penalty_index / 2.0)
-
-        gradient_penalty = (tf.reduce_mean(gradient_penalty_fake) + tf.reduce_mean(gradient_penalty_real)) \
-                           * config.gradient_penalty_weight / 2.0
+    # if config.gradient_penalty_algorithm == 'both':
+    #     # Sample from fake and real
+    #     gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
+    #     gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(-len(x_shape), 0))
+    #     gradient_penalty_real = tf.pow(gradient_penalty_real, config.gradient_penalty_index / 2.0)
+    #
+    #     gradient_penalty_fake = tf.square(
+    #         tf.gradients(energy_fake, [x_.tensor if hasattr(x_, 'tensor') else x_])[0])
+    #     gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(-len(x_shape), 0))
+    #     gradient_penalty_fake = tf.pow(gradient_penalty_fake, config.gradient_penalty_index / 2.0)
+    #
+    #     gradient_penalty = (tf.reduce_mean(gradient_penalty_fake) + tf.reduce_mean(gradient_penalty_real)) \
+    #                        * config.gradient_penalty_weight / 2.0
     return gradient_penalty
 
 
@@ -896,11 +894,9 @@ def main():
         sample_n_z = 100
         gan_plots = tf.reshape(p_omega_net(n_z=sample_n_z, beta=beta)['x'].distribution.mean,
                                (-1,) + config.x_shape)
-        input_plot_x = tf.placeholder(
-            dtype=tf.int32, shape=(sample_n_z,) + config.x_shape, name='input_plot_x')
-        initial_z = q_net(input_plot_x, posterior_flow)['z']
+        initial_z = tf.placeholder(
+            dtype=tf.float32, shape=(1, sample_n_z, config.z_dim), name='initial_z')
         gan_plots = 255.0 * gan_plots
-        initial_z = tf.expand_dims(initial_z, axis=1)
         plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z)
         plot_history_e_z = plot_net['z'].history_e_z
         plot_history_z = plot_net['z'].history_z
@@ -957,10 +953,23 @@ def main():
                 # plot samples
                 gan_images = session.run(gan_plots)
                 gan_bernouli_images = bernouli_sampler.sample(gan_images / 255.0)
-                [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z, batch_history_ratio] = session.run(
-                    [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio], feed_dict={
-                        input_plot_x: gan_bernouli_images
-                    })
+
+                batch_initial_z = np.random.normal(size=(1, 100, config.z_dim))
+                for i in range(100):
+                    [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
+                     batch_history_ratio] = session.run(
+                        [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
+                        feed_dict={
+                            initial_z: batch_initial_z
+                        })
+                    batch_initial_z = batch_history_z[-1]
+                    if i % 10 == 0:
+                        save_images_collection(
+                            images=np.round(images),
+                            filename='plotting/sample/{}-{}.png'.format(loop.epoch, i),
+                            grid_size=(10, 10),
+                            results=results,
+                        )
                 # print(batch_history_e_z)
                 # print(np.mean(batch_history_z ** 2, axis=-1))
                 # print(batch_history_pure_e_z)
@@ -974,12 +983,6 @@ def main():
                 save_images_collection(
                     images=np.round(gan_bernouli_images),
                     filename='plotting/sample/gan-ber{}.png'.format(loop.epoch),
-                    grid_size=(10, 10),
-                    results=results,
-                )
-                save_images_collection(
-                    images=np.round(images),
-                    filename='plotting/sample/{}.png'.format(loop.epoch),
                     grid_size=(10, 10),
                     results=results,
                 )
@@ -1029,7 +1032,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = None
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/9e/29/6f9d69b5d1930d3377d5/checkpoint/checkpoint/checkpoint.dat-117000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
