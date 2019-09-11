@@ -53,7 +53,7 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0  # TODO
-    pull_back_energy_weight = 1.0
+    pull_back_energy_weight = 2.0
 
     max_step = None
     batch_size = 512
@@ -75,7 +75,7 @@ class ExpConfig(spt.Config):
     test_n_qz = 10
     test_batch_size = 64
     test_epoch_freq = 200
-    plot_epoch_freq = 10
+    plot_epoch_freq = 100
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
@@ -102,7 +102,7 @@ class EnergyDistribution(spt.Distribution):
     function `x = G(z)`, where `p(z) = exp(-xi * D(G(z)) - 0.5 * z^2) / Z`.
     """
 
-    def __init__(self, pz, G, D, log_Z=0., xi=1.0, mcmc_iterator=0, mcmc_alpha=0.001, mcmc_algorithm='mala',
+    def __init__(self, pz, G, D, log_Z=0., xi=1.0, mcmc_iterator=0, mcmc_alpha=1e-5, mcmc_algorithm='mala',
                  mcmc_space='z', initial_z=None):
         """
         Construct a new :class:`EnergyDistribution`.
@@ -954,8 +954,10 @@ def main():
                 gan_images = session.run(gan_plots)
                 gan_bernouli_images = bernouli_sampler.sample(gan_images / 255.0)
 
-                batch_initial_z = np.random.normal(size=(1, 100, config.z_dim))
-                for i in range(100):
+                batch_initial_z = session.run(reconstruct_z, feed_dict={input_x: gan_bernouli_images})
+                # print(batch_initial_z.shape)
+                batch_initial_z = np.expand_dims(batch_initial_z, 0)
+                for i in range(1000):
                     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                      batch_history_ratio] = session.run(
                         [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
@@ -963,7 +965,8 @@ def main():
                             initial_z: batch_initial_z
                         })
                     batch_initial_z = batch_history_z[-1]
-                    if i % 10 == 0:
+                    if i % 100 == 0:
+                        print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
                         save_images_collection(
                             images=np.round(images),
                             filename='plotting/sample/{}-{}.png'.format(loop.epoch, i),
@@ -1138,8 +1141,8 @@ def main():
 
                         log_Z_list = []
                         for [x, origin_x] in train_flow:
-                            for i in range(0, len(x), 32):
-                                j = min(len(x), i + 32)
+                            for i in range(0, len(x), 20):
+                                j = min(len(x), i + 20)
                                 log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
                                     input_x: x[i: j],
                                     input_origin_x: origin_x[i: j]
