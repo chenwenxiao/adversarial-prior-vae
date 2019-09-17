@@ -36,7 +36,7 @@ spt.Bernoulli.mean = property(_bernoulli_mean)
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 64
+    z_dim = 40
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -53,7 +53,7 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0  # TODO
-    pull_back_energy_weight = 2.0
+    pull_back_energy_weight = 0.8
 
     max_step = None
     batch_size = 512
@@ -417,14 +417,14 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
     z_mean = spt.layers.dense(h_x, config.z_dim, scope='z_mean', kernel_initializer=tf.zeros_initializer())
     z_logstd = spt.layers.dense(h_x, config.z_dim, scope='z_logstd', kernel_initializer=tf.zeros_initializer())
 
-    z_distribution = spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon))
-    z_flow_distribution = spt.FlowDistribution(
-        z_distribution,
-        posterior_flow
-    )
-    z = net.add('z', z_distribution, n_samples=n_z, group_ndims=1)
-    # z = net.add('z', spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
-    #             n_samples=n_z, group_ndims=1)
+    # z_distribution = spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon))
+    # z_flow_distribution = spt.FlowDistribution(
+    #     z_distribution,
+    #     posterior_flow
+    # )
+    # z = net.add('z', z_distribution, n_samples=n_z, group_ndims=1)
+    z = net.add('z', spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
+                n_samples=n_z, group_ndims=1)
 
     return net
 
@@ -662,7 +662,7 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None
             -p_net['z'].distribution.log_prob(p_net['z'], group_ndims=1, y=p_net['x']).log_energy_prob +
             q_net['z'].log_prob()
         )
-        train_grad_penalty = gp_omega + gp_theta + gp_dg
+        train_grad_penalty = gp_theta + gp_dg  # + gp_omega
         train_kl = tf.maximum(train_kl, 0.0)  # TODO
         VAE_nD_loss = -train_recon + warm * train_kl
         VAE_loss = VAE_nD_loss + train_grad_penalty * config.pull_back_energy_weight
@@ -957,7 +957,7 @@ def main():
                 batch_initial_z = session.run(reconstruct_z, feed_dict={input_x: gan_bernouli_images})
                 # print(batch_initial_z.shape)
                 batch_initial_z = np.expand_dims(batch_initial_z, 0)
-                for i in range(1000):
+                for i in range(0, 1001):
                     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                      batch_history_ratio] = session.run(
                         [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
@@ -1035,7 +1035,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/9e/29/6f9d69b5d1930d3377d5/checkpoint/checkpoint/checkpoint.dat-117000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/77/fb/d445f4f80a9fb9d2d7d5/checkpoint/checkpoint/checkpoint.dat-117000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1151,7 +1151,8 @@ def main():
                         another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
                         # print('log_Z_list:{}'.format(log_Z_list))
                         print('another_log_Z:{}'.format(another_log_Z))
-                        final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
+                        # final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
+                        final_log_Z = another_log_Z  # TODO
                         get_log_Z().set(final_log_Z)
 
                     with loop.timeit('eval_time'):
