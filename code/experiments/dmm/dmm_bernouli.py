@@ -81,6 +81,7 @@ class ExpConfig(spt.Config):
     test_fid_n_pz = 5000
     test_x_samples = 8
     log_Z_times = 10000
+    log_Z_x_samples = 8
 
     len_train = 60000
 
@@ -657,6 +658,7 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None
             )
         )
         p_net['z'].distribution.set_log_Z(train_log_Z)
+        pn_theta['z'].distribution.set_log_Z(train_log_Z)
         train_recon_energy = tf.reduce_mean(D_psi(p_net['x'].distribution.mean, p_net['x']))
         train_kl = tf.reduce_mean(
             -p_net['z'].distribution.log_prob(p_net['z'], group_ndims=1, y=p_net['x']).log_energy_prob +
@@ -669,7 +671,7 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None
             pn_theta['z'].log_prob() - pn_theta['z'].log_prob().log_energy_prob
         )
         VAE_nD_loss = -train_recon + warm * train_kl
-        VAE_loss = VAE_nD_loss + train_grad_penalty * config.pull_back_energy_weight + kl_adv_and_gaussian
+        VAE_loss = VAE_nD_loss + train_grad_penalty * config.pull_back_energy_weight  # + kl_adv_and_gaussian
         VAE_G_loss = tf.reduce_mean(D_psi(pn_theta['x'].distribution.mean))
         VAE_D_real = tf.reduce_mean(D_psi(input_origin_x))
 
@@ -853,8 +855,18 @@ def main():
         pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.mean))
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
+        shift_z = test_q_net['z']
+        q_z_given_x = None
+        for i in range(config.log_Z_x_samples):
+            tmp = test_q_net['z'].distribution.log_prob(
+                shift_z, group_ndims=1
+            )
+            q_z_given_x = tmp if q_z_given_x is None else q_z_given_x + tmp
+            shift_z = tf.roll(shift_z, 1, axis=1)
+        q_z_given_x = q_z_given_x / config.log_Z_x_samples
+
         another_log_Z_compute_op = spt.ops.log_mean_exp(
-            -test_chain.model['z'].log_prob().energy - test_q_net['z'].log_prob() + np.log(config.len_train)
+            -test_chain.model['z'].log_prob().energy - q_z_given_x + np.log(config.len_train)
         )
         kl_adv_and_gaussian = tf.reduce_mean(
             test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob
@@ -1039,7 +1051,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = None
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/67/fb/d4747dc47d2432da08d5/checkpoint/checkpoint/checkpoint.dat-117000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1145,11 +1157,14 @@ def main():
 
                         log_Z_list = []
                         for [x, origin_x] in train_flow:
-                            for i in range(0, len(x), 20):
-                                j = min(len(x), i + 20)
+                            batch_x = [bernouli_sampler.sample(origin_x) for i in range(config.log_Z_x_samples)]
+                            batch_origin_x = [origin_x for i in range(config.log_Z_x_samples)]
+                            batch_x = np.stack(batch_x, axis=1)
+                            batch_origin_x = np.stack(batch_origin_x, axis=1)
+                            for i in range(len(x)):
                                 log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                                    input_x: x[i: j],
-                                    input_origin_x: origin_x[i: j]
+                                    input_x: batch_x[i],
+                                    input_origin_x: batch_origin_x[i]
                                 }))
                         from scipy.misc import logsumexp
                         another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
