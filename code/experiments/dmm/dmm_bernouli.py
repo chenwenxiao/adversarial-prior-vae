@@ -852,18 +852,19 @@ def main():
         pd_energy = tf.reduce_mean(
             D_psi(test_pn_net['x'].distribution.mean) * tf.exp(
                 test_pn_net['z'].log_prob().log_energy_prob - test_pn_net['z'].log_prob()))
-        pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.mean))
+        pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.means))
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
         shift_z = test_q_net['z']
-        q_z_given_x = None
+        q_z_given_x = []
         for i in range(config.log_Z_x_samples):
             tmp = test_q_net['z'].distribution.log_prob(
                 shift_z, group_ndims=1
             )
-            q_z_given_x = tmp if q_z_given_x is None else q_z_given_x + tmp
+            q_z_given_x.append(tmp)
             shift_z = tf.roll(shift_z, 1, axis=1)
-        q_z_given_x = q_z_given_x / config.log_Z_x_samples
+        q_z_given_x = tf.stack(q_z_given_x, axis=0)
+        q_z_given_x = spt.ops.log_mean_exp(q_z_given_x, axis=0)
 
         another_log_Z_compute_op = spt.ops.log_mean_exp(
             -test_chain.model['z'].log_prob().energy - q_z_given_x + np.log(config.len_train)
