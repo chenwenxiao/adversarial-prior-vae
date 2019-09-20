@@ -866,8 +866,23 @@ def main():
         pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.mean))
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
+        shift_z = test_q_net['z']
+        q_z_given_x = []
+        for i in range(config.log_Z_x_samples):
+            tmp = test_q_net['z'].distribution.log_prob(
+                shift_z, group_ndims=1
+            )
+            tmp = tf.roll(tmp, -i, axis=1)
+            q_z_given_x.append(tmp)
+            shift_z = tf.roll(shift_z, 1, axis=1)
+            print(tmp.shape)
+        q_z_given_x = tf.stack(q_z_given_x, axis=0)
+        print(q_z_given_x.shape)
+        q_z_given_x = spt.ops.log_mean_exp(q_z_given_x, axis=0)
+        print(q_z_given_x.shape)
+
         another_log_Z_compute_op = spt.ops.log_mean_exp(
-            -test_chain.model['z'].log_prob().energy - test_q_net['z'].log_prob() + np.log(config.len_train)
+            -test_chain.model['z'].log_prob().energy - q_z_given_x + np.log(config.len_train)
         )
         kl_adv_and_gaussian = tf.reduce_mean(
             test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob
@@ -1140,11 +1155,14 @@ def main():
 
                         log_Z_list = []
                         for [x, origin_x] in train_flow:
-                            for i in range(0, len(x), 20):
-                                j = min(len(x), i + 20)
+                            batch_x = [bernouli_sampler.sample(origin_x) for i in range(config.log_Z_x_samples)]
+                            batch_origin_x = [origin_x for i in range(config.log_Z_x_samples)]
+                            batch_x = np.stack(batch_x, axis=1)
+                            batch_origin_x = np.stack(batch_origin_x, axis=1)
+                            for i in range(len(x)):
                                 log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                                    input_x: x[i: j],
-                                    input_origin_x: origin_x[i: j]
+                                    input_x: batch_x[i],
+                                    input_origin_x: batch_origin_x[i]
                                 }))
                         from scipy.misc import logsumexp
                         another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))

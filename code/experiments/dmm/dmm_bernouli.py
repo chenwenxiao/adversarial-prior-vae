@@ -65,7 +65,7 @@ class ExpConfig(spt.Config):
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
     gradient_penalty_weight = 10
     gradient_penalty_index = 2
-    kl_balance_weight = 1.0
+    kl_balance_weight = 0.8
 
     n_critical = 5  # TODO
     # evaluation parameters
@@ -852,7 +852,7 @@ def main():
         pd_energy = tf.reduce_mean(
             D_psi(test_pn_net['x'].distribution.mean) * tf.exp(
                 test_pn_net['z'].log_prob().log_energy_prob - test_pn_net['z'].log_prob()))
-        pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.means))
+        pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.mean))
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
         shift_z = test_q_net['z']
@@ -861,10 +861,14 @@ def main():
             tmp = test_q_net['z'].distribution.log_prob(
                 shift_z, group_ndims=1
             )
+            tmp = tf.roll(tmp, -i, axis=1)
             q_z_given_x.append(tmp)
             shift_z = tf.roll(shift_z, 1, axis=1)
+            print(tmp.shape)
         q_z_given_x = tf.stack(q_z_given_x, axis=0)
+        print(q_z_given_x.shape)
         q_z_given_x = spt.ops.log_mean_exp(q_z_given_x, axis=0)
+        print(q_z_given_x.shape)
 
         another_log_Z_compute_op = spt.ops.log_mean_exp(
             -test_chain.model['z'].log_prob().energy - q_z_given_x + np.log(config.len_train)
