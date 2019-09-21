@@ -53,7 +53,7 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0  # TODO
-    pull_back_energy_weight = 1.0
+    pull_back_energy_weight = 0.8
 
     max_step = None
     batch_size = 512
