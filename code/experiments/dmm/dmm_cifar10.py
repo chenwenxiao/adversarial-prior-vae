@@ -42,7 +42,7 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0
-    pull_back_energy_weight = 64
+    pull_back_energy_weight = 2048 / 50.0
 
     max_step = None
     batch_size = 1024
@@ -64,12 +64,15 @@ class ExpConfig(spt.Config):
     test_n_qz = 10
     test_batch_size = 64
     test_epoch_freq = 200
-    plot_epoch_freq = 10
+    plot_epoch_freq = 100
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
     test_x_samples = 8
     log_Z_times = 100000
+    log_Z_x_samples = 8
+
+    len_train = 60000
 
     epsilon = -20
 
@@ -144,6 +147,10 @@ class EnergyDistribution(spt.Distribution):
     @property
     def log_Z(self):
         return self._log_Z
+
+    def set_log_Z(self, new_log_Z):
+        self._log_Z = new_log_Z
+        return new_log_Z
 
     def log_prob(self, given, group_ndims=0, name=None, y=None):
         given = tf.convert_to_tensor(given)
@@ -394,7 +401,7 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
         h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_3')  # output: (14, 14, 32)
         h_x = tf.concat([h_x, x], axis=-1)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, stride=2, scope='level_4')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_4')  # output: (14, 14, 32)
         x = spt.ops.reshape_tail(x, ndims=3,
                                  shape=[config.x_shape[0] // 2, config.x_shape[1] // 2, config.x_shape[2] * 4])
         h_x = tf.concat([h_x, x], axis=-1)
@@ -404,7 +411,7 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
         h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 96, strides=2, scope='level_7')  # output: (7, 7, 64)
         x = spt.ops.reshape_tail(x, ndims=3,
-                                 shape=[config.x_shape[0] // 4, config.x_shape[1] // 2, config.x_shape[2] * 16])
+                                 shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, config.x_shape[2] * 16])
         h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 96, scope='level_8')  # output: (7, 7, 64)
         h_x = tf.concat([h_x, x], axis=-1)
@@ -457,10 +464,10 @@ def G_theta(z):
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
-        z_dim_channel = 64 * config.z_dim // config.x_shape[0] // config.x_shape[0]
+        z_dim_channel = 64 * config.z_dim // config.x_shape[0] // config.x_shape[1]
         h_z = spt.ops.reshape_tail(z, ndims=1, shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, z_dim_channel))
         h_z = spt.layers.resnet_deconv2d_block(h_z, 96, strides=2, scope='level_0')  # output: (7, 7, 64)
-        z = spt.ops.reshape_tail(z, ndims=3,
+        z = spt.ops.reshape_tail(z, ndims=1,
                                  shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, z_dim_channel // 4])
         h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 96, scope='level_1')  # output: (7, 7, 64))
@@ -475,7 +482,7 @@ def G_theta(z):
         h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_5')  # output: (7, 7, 64)
         h_z = tf.concat([h_z, z], axis=-1)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, stride=2, scope='level_6')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, strides=2, scope='level_6')  # output:
         z = spt.ops.reshape_tail(z, ndims=3,
                                  shape=[config.x_shape[0], config.x_shape[1], z_dim_channel // 64])
         h_z = tf.concat([h_z, z], axis=-1)
@@ -968,6 +975,23 @@ def main():
                     )
                     break
 
+                for [x] in reconstruct_test_flow:
+                    x_samples = uniform_sampler.sample(x)
+                    images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
+                    images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
+                    images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
+                    images[2::3, ...] = np.round(session.run(
+                        reconstruct_plots, feed_dict={input_x: x_samples}))
+                    batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
+                    # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
+                    save_images_collection(
+                        images=images,
+                        filename='plotting/test.reconstruct/{}.png'.format(loop.epoch),
+                        grid_size=(20, 15),
+                        results=results,
+                    )
+                    break
+
                 # plot samples
                 gan_images = session.run(gan_plots)
                 gan_uniform_images = uniform_sampler.sample((gan_images - 127.5) / 256.0 * 2)
@@ -1018,7 +1042,7 @@ def main():
     x_train = (_x_train - 127.5) / 256.0 * 2
     x_test = (_x_test - 127.5) / 256.0 * 2
     uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0, dtype=np.float)
-    train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
+    train_flow = spt.DataFlow.arrays([x_train, x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     train_flow = train_flow.map(lambda x, y: [uniform_sampler.sample(x), y])
     # gan_train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     # gan_train_flow = gan_train_flow.map(uniform_sampler)
@@ -1027,7 +1051,8 @@ def main():
     reconstruct_test_flow = spt.DataFlow.arrays(
         [x_test], 100, shuffle=True, skip_incomplete=False)
     test_flow = spt.DataFlow.arrays(
-        [np.repeat(x_test, config.test_x_samples, axis=0)], config.test_batch_size)
+        [np.repeat(x_test, config.test_x_samples, axis=0), np.repeat(x_test, config.test_x_samples, axis=0)],
+        config.test_batch_size)
     test_flow = test_flow.map(lambda x, y: [uniform_sampler.sample(x), y])
 
     with spt.utils.create_session().as_default() as session, \
@@ -1035,9 +1060,9 @@ def main():
         spt.utils.ensure_variables_initialized()
 
         # initialize the network
-        for [x] in train_flow:
+        for [x, origin_x] in train_flow:
             print('Network initialized, first-batch loss is {:.6g}.\n'.
-                  format(session.run(init_loss, feed_dict={input_x: x})))
+                  format(session.run(init_loss, feed_dict={input_x: x, input_origin_x: origin_x})))
             break
 
         # if config.z_dim == 512:
@@ -1087,9 +1112,12 @@ def main():
             # adversarial training
             for epoch in epoch_iterator:
                 if epoch <= config.warm_up_start:
+                    print(1)
                     step_iterator = MyIterator(train_flow)
+                    print(2)
                     while step_iterator.has_next:
                         # discriminator training
+                        print(3)
                         for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
                             [_, batch_D_loss, batch_D_real] = session.run(
                                 [D_train_op, D_loss, D_real], feed_dict={
@@ -1098,6 +1126,7 @@ def main():
                                 })
                             loop.collect_metrics(D_loss=batch_D_loss)
                             loop.collect_metrics(D_real=batch_D_real)
+                            print(4)
 
                         # generator training x
                         [_, batch_G_loss] = session.run(
