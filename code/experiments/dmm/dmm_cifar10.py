@@ -45,7 +45,7 @@ class ExpConfig(spt.Config):
     pull_back_energy_weight = 2048 / 50.0
 
     max_step = None
-    batch_size = 1024
+    batch_size = 256
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = [400, 800, 1200, 1600, 2000, 2200, 2400, 2600, 2800, 3000]
@@ -53,12 +53,12 @@ class ExpConfig(spt.Config):
 
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
     gradient_penalty_weight = 2
-    gradient_penalty_index = 6
+    gradient_penalty_index = 3
     kl_balance_weight = 1.0
 
     n_critical = 5
     # evaluation parameters
-    train_n_pz = 1024
+    train_n_pz = 256
     train_n_qz = 1
     test_n_pz = 1000
     test_n_qz = 10
@@ -636,7 +636,7 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
         D_interpolates = D_psi(interpolates)
         # print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
-        gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0))) - 1.0
+        gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0)))
         gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
@@ -995,6 +995,18 @@ def main():
                 # plot samples
                 gan_images = session.run(gan_plots)
                 gan_uniform_images = uniform_sampler.sample((gan_images - 127.5) / 256.0 * 2)
+                save_images_collection(
+                    images=np.round(gan_images),
+                    filename='plotting/sample/gan-{}.png'.format(loop.epoch),
+                    grid_size=(10, 10),
+                    results=results,
+                )
+                save_images_collection(
+                    images=np.round(gan_uniform_images),
+                    filename='plotting/sample/gan-ber{}.png'.format(loop.epoch),
+                    grid_size=(10, 10),
+                    results=results,
+                )
 
                 batch_initial_z = session.run(reconstruct_z, feed_dict={input_x: gan_uniform_images})
                 # print(batch_initial_z.shape)
@@ -1019,18 +1031,6 @@ def main():
                 # print(np.mean(batch_history_z ** 2, axis=-1))
                 # print(batch_history_pure_e_z)
                 # print(batch_history_ratio)
-                save_images_collection(
-                    images=np.round(gan_images),
-                    filename='plotting/sample/gan-{}.png'.format(loop.epoch),
-                    grid_size=(10, 10),
-                    results=results,
-                )
-                save_images_collection(
-                    images=np.round(gan_uniform_images),
-                    filename='plotting/sample/gan-ber{}.png'.format(loop.epoch),
-                    grid_size=(10, 10),
-                    results=results,
-                )
             except Exception as e:
                 print(e)
 
@@ -1112,12 +1112,9 @@ def main():
             # adversarial training
             for epoch in epoch_iterator:
                 if epoch <= config.warm_up_start:
-                    print(1)
                     step_iterator = MyIterator(train_flow)
-                    print(2)
                     while step_iterator.has_next:
                         # discriminator training
-                        print(3)
                         for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
                             [_, batch_D_loss, batch_D_real] = session.run(
                                 [D_train_op, D_loss, D_real], feed_dict={
@@ -1126,7 +1123,6 @@ def main():
                                 })
                             loop.collect_metrics(D_loss=batch_D_loss)
                             loop.collect_metrics(D_real=batch_D_real)
-                            print(4)
 
                         # generator training x
                         [_, batch_G_loss] = session.run(

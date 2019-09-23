@@ -63,8 +63,8 @@ class ExpConfig(spt.Config):
     lr_anneal_step_freq = None
 
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
-    gradient_penalty_weight = 10
-    gradient_penalty_index = 2
+    gradient_penalty_weight = 2
+    gradient_penalty_index = 3
     kl_balance_weight = 0.8
 
     n_critical = 5  # TODO
@@ -614,7 +614,7 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
         D_interpolates = D_psi(interpolates)
         # print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
-        gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0))) - 1.0
+        gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0)))
         gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
