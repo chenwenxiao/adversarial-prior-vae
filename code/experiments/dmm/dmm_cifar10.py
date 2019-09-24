@@ -25,7 +25,7 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 2048
+    z_dim = 1024
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -42,7 +42,7 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0
-    pull_back_energy_weight = 2048 / 50.0
+    pull_back_energy_weight = 1024 / 40.0
 
     max_step = None
     batch_size = 256
