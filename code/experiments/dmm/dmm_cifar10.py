@@ -502,7 +502,7 @@ def G_theta(z):
 @add_arg_scope
 @spt.global_reuse
 def G_omega(z):
-    normalizer_fn = None
+    normalizer_fn = batch_norm
 
     # compute the hidden features
     with arg_scope([spt.layers.resnet_deconv2d_block],
@@ -589,8 +589,8 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
 def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial_z=None):
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
-    normal = spt.Normal(mean=tf.zeros([1, 256]),
-                        logstd=tf.zeros([1, 256]))
+    normal = spt.Normal(mean=tf.zeros([1, 128]),
+                        logstd=tf.zeros([1, 128]))
     normal = normal.batch_ndims_to_value(1)
     xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(config.initial_xi),
                          dtype=tf.float32, trainable=True)
@@ -998,12 +998,6 @@ def main():
                 save_images_collection(
                     images=np.round(gan_images),
                     filename='plotting/sample/gan-{}.png'.format(loop.epoch),
-                    grid_size=(10, 10),
-                    results=results,
-                )
-                save_images_collection(
-                    images=np.round(gan_uniform_images),
-                    filename='plotting/sample/gan-ber{}.png'.format(loop.epoch),
                     grid_size=(10, 10),
                     results=results,
                 )
