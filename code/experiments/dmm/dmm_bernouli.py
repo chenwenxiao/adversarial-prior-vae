@@ -63,9 +63,9 @@ class ExpConfig(spt.Config):
     lr_anneal_step_freq = None
 
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
-    gradient_penalty_weight = 10
-    gradient_penalty_index = 2
-    kl_balance_weight = 1.0
+    gradient_penalty_weight = 2
+    gradient_penalty_index = 3
+    kl_balance_weight = 0.8
 
     n_critical = 5  # TODO
     # evaluation parameters
@@ -614,7 +614,7 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
         D_interpolates = D_psi(interpolates)
         # print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
-        gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0))) - 1.0
+        gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0)))
         gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
@@ -856,14 +856,19 @@ def main():
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
         shift_z = test_q_net['z']
-        q_z_given_x = None
+        q_z_given_x = []
         for i in range(config.log_Z_x_samples):
             tmp = test_q_net['z'].distribution.log_prob(
                 shift_z, group_ndims=1
             )
-            q_z_given_x = tmp if q_z_given_x is None else q_z_given_x + tmp
+            tmp = tf.roll(tmp, -i, axis=1)
+            q_z_given_x.append(tmp)
             shift_z = tf.roll(shift_z, 1, axis=1)
-        q_z_given_x = q_z_given_x / config.log_Z_x_samples
+            print(tmp.shape)
+        q_z_given_x = tf.stack(q_z_given_x, axis=0)
+        print(q_z_given_x.shape)
+        q_z_given_x = spt.ops.log_mean_exp(q_z_given_x, axis=0)
+        print(q_z_given_x.shape)
 
         another_log_Z_compute_op = spt.ops.log_mean_exp(
             -test_chain.model['z'].log_prob().energy - q_z_given_x + np.log(config.len_train)
@@ -1051,7 +1056,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/67/fb/d4747dc47d2432da08d5/checkpoint/checkpoint/checkpoint.dat-117000'
+        restore_checkpoint = None
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),

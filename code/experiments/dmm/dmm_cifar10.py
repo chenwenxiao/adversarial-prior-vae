@@ -25,7 +25,7 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 2048
+    z_dim = 1024
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -42,34 +42,37 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0
-    pull_back_energy_weight = 64
+    pull_back_energy_weight = 1024 / 40.0
 
     max_step = None
-    batch_size = 1024
+    batch_size = 256
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = [400, 800, 1200, 1600, 2000, 2200, 2400, 2600, 2800, 3000]
     lr_anneal_step_freq = None
 
-    gradient_penalty_algorithm = 'interpolate'  # both or interpolate
+    gradient_penalty_algorithm = 'both'  # both or interpolate
     gradient_penalty_weight = 2
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
     n_critical = 5
     # evaluation parameters
-    train_n_pz = 1024
+    train_n_pz = 256
     train_n_qz = 1
     test_n_pz = 1000
     test_n_qz = 10
     test_batch_size = 64
     test_epoch_freq = 200
-    plot_epoch_freq = 10
+    plot_epoch_freq = 100
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
     test_x_samples = 8
     log_Z_times = 100000
+    log_Z_x_samples = 8
+
+    len_train = 60000
 
     epsilon = -20
 
@@ -144,6 +147,10 @@ class EnergyDistribution(spt.Distribution):
     @property
     def log_Z(self):
         return self._log_Z
+
+    def set_log_Z(self, new_log_Z):
+        self._log_Z = new_log_Z
+        return new_log_Z
 
     def log_prob(self, given, group_ndims=0, name=None, y=None):
         given = tf.convert_to_tensor(given)
@@ -388,27 +395,27 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
         h_x = tf.concat([h_x, x], axis=-1)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_1')  # output: (14, 14, 32)
         h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
         h_x = tf.concat([h_x, x], axis=-1)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_3')  # output: (14, 14, 32)
         h_x = tf.concat([h_x, x], axis=-1)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, stride=2, scope='level_3')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_4')  # output: (14, 14, 32)
         x = spt.ops.reshape_tail(x, ndims=3,
                                  shape=[config.x_shape[0] // 2, config.x_shape[1] // 2, config.x_shape[2] * 4])
         h_x = tf.concat([h_x, x], axis=-1)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_3')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_5')  # output: (14, 14, 32)
         h_x = tf.concat([h_x, x], axis=-1)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_4')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_6')  # output: (14, 14, 32)
         h_x = tf.concat([h_x, x], axis=-1)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 96, strides=2, scope='level_6')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 96, strides=2, scope='level_7')  # output: (7, 7, 64)
         x = spt.ops.reshape_tail(x, ndims=3,
-                                 shape=[config.x_shape[0] // 4, config.x_shape[1] // 2, config.x_shape[2] * 16])
-        h_x = tf.concat([h_x, x], axis=-1)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 96, scope='level_6')  # output: (7, 7, 64)
+                                 shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, config.x_shape[2] * 16])
         h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 96, scope='level_8')  # output: (7, 7, 64)
+        h_x = tf.concat([h_x, x], axis=-1)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 96, scope='level_9')  # output: (7, 7, 64)
         h_x = tf.concat([h_x, x], axis=-1)
 
         z_dim_channel = 64 * config.z_dim // config.x_shape[0] // config.x_shape[0]
@@ -457,13 +464,13 @@ def G_theta(z):
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
-        z_dim_channel = 64 * config.z_dim // config.x_shape[0] // config.x_shape[0]
+        z_dim_channel = 64 * config.z_dim // config.x_shape[0] // config.x_shape[1]
         h_z = spt.ops.reshape_tail(z, ndims=1, shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, z_dim_channel))
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 96, strides=2, scope='level_2')  # output: (7, 7, 64)
-        z = spt.ops.reshape_tail(z, ndims=3,
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 96, strides=2, scope='level_0')  # output: (7, 7, 64)
+        z = spt.ops.reshape_tail(z, ndims=1,
                                  shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, z_dim_channel // 4])
         h_z = tf.concat([h_z, z], axis=-1)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 96, scope='level_2')  # output: (7, 7, 64))
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 96, scope='level_1')  # output: (7, 7, 64))
         h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 96, scope='level_2')  # output: (7, 7, 64)
         h_z = tf.concat([h_z, z], axis=-1)
@@ -471,19 +478,19 @@ def G_theta(z):
         z = spt.ops.reshape_tail(z, ndims=3,
                                  shape=[config.x_shape[0] // 2, config.x_shape[1] // 2, z_dim_channel // 16])
         h_z = tf.concat([h_z, z], axis=-1)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_5')  # output: (14, 14, 32)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_4')  # output: (14, 14, 32)
         h_z = tf.concat([h_z, z], axis=-1)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_3')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_5')  # output: (7, 7, 64)
         h_z = tf.concat([h_z, z], axis=-1)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, stride=2, scope='level_7')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, strides=2, scope='level_6')  # output:
         z = spt.ops.reshape_tail(z, ndims=3,
                                  shape=[config.x_shape[0], config.x_shape[1], z_dim_channel // 64])
         h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
         h_z = tf.concat([h_z, z], axis=-1)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_6')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_8')  # output:
         h_z = tf.concat([h_z, z], axis=-1)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_9')  # output: (28, 28, 16)
         h_z = tf.concat([h_z, z], axis=-1)
         x_mean = spt.layers.conv2d(
             h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
@@ -495,7 +502,7 @@ def G_theta(z):
 @add_arg_scope
 @spt.global_reuse
 def G_omega(z):
-    normalizer_fn = None
+    normalizer_fn = batch_norm
 
     # compute the hidden features
     with arg_scope([spt.layers.resnet_deconv2d_block],
@@ -511,12 +518,12 @@ def G_omega(z):
             ndims=1,
             shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 512)
         )
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 512, strides=2, scope='level_2')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 256, strides=2, scope='level_3')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_5')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_6')  # output:
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 512, strides=2, scope='level_1')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 256, strides=2, scope='level_2')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_3')  # output: (14, 14, 32)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_4')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_5')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_6')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
@@ -540,11 +547,11 @@ def D_psi(x, y=None):
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_3')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_4')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_6')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 512, strides=2, scope='level_8')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_1')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_2')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_3')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_4')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 512, strides=2, scope='level_5')  # output: (7, 7, 64)
 
         h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
         h_x = spt.layers.dense(h_x, 64, scope='level_-2')
@@ -582,8 +589,8 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
 def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial_z=None):
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
-    normal = spt.Normal(mean=tf.zeros([1, 256]),
-                        logstd=tf.zeros([1, 256]))
+    normal = spt.Normal(mean=tf.zeros([1, 128]),
+                        logstd=tf.zeros([1, 128]))
     normal = normal.batch_ndims_to_value(1)
     xi = tf.get_variable(name='xi', shape=(), initializer=tf.constant_initializer(config.initial_xi),
                          dtype=tf.float32, trainable=True)
@@ -612,6 +619,8 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
         differences = x - x_
         interpolates = x_ + alpha * differences
         interpolates = G_theta(interpolates)
+        x = G_theta(x)
+        x_ = G_theta(x_)
     else:
         x = input_origin_x
         x_ = pn_net['x'].distribution.mean
@@ -629,23 +638,25 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
         D_interpolates = D_psi(interpolates)
         # print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
-        gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0))) - 1.0
-        gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index)
+        gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0)))
+        gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
-    # if config.gradient_penalty_algorithm == 'both':
-    #     # Sample from fake and real
-    #     gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
-    #     gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(-len(x_shape), 0))
-    #     gradient_penalty_real = tf.pow(gradient_penalty_real, config.gradient_penalty_index / 2.0)
-    #
-    #     gradient_penalty_fake = tf.square(
-    #         tf.gradients(energy_fake, [x_.tensor if hasattr(x_, 'tensor') else x_])[0])
-    #     gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(-len(x_shape), 0))
-    #     gradient_penalty_fake = tf.pow(gradient_penalty_fake, config.gradient_penalty_index / 2.0)
-    #
-    #     gradient_penalty = (tf.reduce_mean(gradient_penalty_fake) + tf.reduce_mean(gradient_penalty_real)) \
-    #                        * config.gradient_penalty_weight / 2.0
+    if config.gradient_penalty_algorithm == 'both':
+        # Sample from fake and real
+        energy_real = D_psi(x)
+        energy_fake = D_psi(x_)
+        gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
+        gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(-len(x_shape), 0))
+        gradient_penalty_real = tf.pow(gradient_penalty_real, config.gradient_penalty_index / 2.0)
+
+        gradient_penalty_fake = tf.square(
+            tf.gradients(energy_fake, [x_.tensor if hasattr(x_, 'tensor') else x_])[0])
+        gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(-len(x_shape), 0))
+        gradient_penalty_fake = tf.pow(gradient_penalty_fake, config.gradient_penalty_index / 2.0)
+
+        gradient_penalty = (tf.reduce_mean(gradient_penalty_fake) + tf.reduce_mean(gradient_penalty_real)) \
+                           * config.gradient_penalty_weight / 2.0
     return gradient_penalty
 
 
@@ -866,8 +877,23 @@ def main():
         pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.mean))
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
+        shift_z = test_q_net['z']
+        q_z_given_x = []
+        for i in range(config.log_Z_x_samples):
+            tmp = test_q_net['z'].distribution.log_prob(
+                shift_z, group_ndims=1
+            )
+            tmp = tf.roll(tmp, -i, axis=1)
+            q_z_given_x.append(tmp)
+            shift_z = tf.roll(shift_z, 1, axis=1)
+            print(tmp.shape)
+        q_z_given_x = tf.stack(q_z_given_x, axis=0)
+        print(q_z_given_x.shape)
+        q_z_given_x = spt.ops.log_mean_exp(q_z_given_x, axis=0)
+        print(q_z_given_x.shape)
+
         another_log_Z_compute_op = spt.ops.log_mean_exp(
-            -test_chain.model['z'].log_prob().energy - test_q_net['z'].log_prob() + np.log(config.len_train)
+            -test_chain.model['z'].log_prob().energy - q_z_given_x + np.log(config.len_train)
         )
         kl_adv_and_gaussian = tf.reduce_mean(
             test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob
@@ -953,9 +979,32 @@ def main():
                     )
                     break
 
+                for [x] in reconstruct_test_flow:
+                    x_samples = uniform_sampler.sample(x)
+                    images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
+                    images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
+                    images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
+                    images[2::3, ...] = np.round(session.run(
+                        reconstruct_plots, feed_dict={input_x: x_samples}))
+                    batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
+                    # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
+                    save_images_collection(
+                        images=images,
+                        filename='plotting/test.reconstruct/{}.png'.format(loop.epoch),
+                        grid_size=(20, 15),
+                        results=results,
+                    )
+                    break
+
                 # plot samples
                 gan_images = session.run(gan_plots)
                 gan_uniform_images = uniform_sampler.sample((gan_images - 127.5) / 256.0 * 2)
+                save_images_collection(
+                    images=np.round(gan_images),
+                    filename='plotting/sample/gan-{}.png'.format(loop.epoch),
+                    grid_size=(10, 10),
+                    results=results,
+                )
 
                 batch_initial_z = session.run(reconstruct_z, feed_dict={input_x: gan_uniform_images})
                 # print(batch_initial_z.shape)
@@ -976,22 +1025,10 @@ def main():
                             grid_size=(10, 10),
                             results=results,
                         )
-                # print(batch_history_e_z)
-                # print(np.mean(batch_history_z ** 2, axis=-1))
-                # print(batch_history_pure_e_z)
-                # print(batch_history_ratio)
-                save_images_collection(
-                    images=np.round(gan_images),
-                    filename='plotting/sample/gan-{}.png'.format(loop.epoch),
-                    grid_size=(10, 10),
-                    results=results,
-                )
-                save_images_collection(
-                    images=np.round(gan_uniform_images),
-                    filename='plotting/sample/gan-ber{}.png'.format(loop.epoch),
-                    grid_size=(10, 10),
-                    results=results,
-                )
+                        # print(batch_history_e_z)
+                        # print(np.mean(batch_history_z ** 2, axis=-1))
+                        # print(batch_history_pure_e_z)
+                        # print(batch_history_ratio)
             except Exception as e:
                 print(e)
 
@@ -1003,7 +1040,7 @@ def main():
     x_train = (_x_train - 127.5) / 256.0 * 2
     x_test = (_x_test - 127.5) / 256.0 * 2
     uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0, dtype=np.float)
-    train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
+    train_flow = spt.DataFlow.arrays([x_train, x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     train_flow = train_flow.map(lambda x, y: [uniform_sampler.sample(x), y])
     # gan_train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     # gan_train_flow = gan_train_flow.map(uniform_sampler)
@@ -1012,7 +1049,8 @@ def main():
     reconstruct_test_flow = spt.DataFlow.arrays(
         [x_test], 100, shuffle=True, skip_incomplete=False)
     test_flow = spt.DataFlow.arrays(
-        [np.repeat(x_test, config.test_x_samples, axis=0)], config.test_batch_size)
+        [np.repeat(x_test, config.test_x_samples, axis=0), np.repeat(x_test, config.test_x_samples, axis=0)],
+        config.test_batch_size)
     test_flow = test_flow.map(lambda x, y: [uniform_sampler.sample(x), y])
 
     with spt.utils.create_session().as_default() as session, \
@@ -1020,9 +1058,9 @@ def main():
         spt.utils.ensure_variables_initialized()
 
         # initialize the network
-        for [x] in train_flow:
+        for [x, origin_x] in train_flow:
             print('Network initialized, first-batch loss is {:.6g}.\n'.
-                  format(session.run(init_loss, feed_dict={input_x: x})))
+                  format(session.run(init_loss, feed_dict={input_x: x, input_origin_x: origin_x})))
             break
 
         # if config.z_dim == 512:
@@ -1034,7 +1072,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/74/29/6fc8930042bc475e85d5/checkpoint/checkpoint/checkpoint.dat-390000'
+        restore_checkpoint = None
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1140,11 +1178,14 @@ def main():
 
                         log_Z_list = []
                         for [x, origin_x] in train_flow:
-                            for i in range(0, len(x), 20):
-                                j = min(len(x), i + 20)
+                            batch_x = [uniform_sampler.sample(origin_x) for i in range(config.log_Z_x_samples)]
+                            batch_origin_x = [origin_x for i in range(config.log_Z_x_samples)]
+                            batch_x = np.stack(batch_x, axis=1)
+                            batch_origin_x = np.stack(batch_origin_x, axis=1)
+                            for i in range(len(x)):
                                 log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                                    input_x: x[i: j],
-                                    input_origin_x: origin_x[i: j]
+                                    input_x: batch_x[i],
+                                    input_origin_x: batch_origin_x[i]
                                 }))
                         from scipy.misc import logsumexp
                         another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
