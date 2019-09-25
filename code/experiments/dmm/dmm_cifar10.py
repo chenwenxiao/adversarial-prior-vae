@@ -51,9 +51,9 @@ class ExpConfig(spt.Config):
     lr_anneal_epoch_freq = [400, 800, 1200, 1600, 2000, 2200, 2400, 2600, 2800, 3000]
     lr_anneal_step_freq = None
 
-    gradient_penalty_algorithm = 'interpolate'  # both or interpolate
+    gradient_penalty_algorithm = 'both'  # both or interpolate
     gradient_penalty_weight = 2
-    gradient_penalty_index = 3
+    gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
     n_critical = 5
@@ -619,6 +619,8 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
         differences = x - x_
         interpolates = x_ + alpha * differences
         interpolates = G_theta(interpolates)
+        x = G_theta(x)
+        x_ = G_theta(x_)
     else:
         x = input_origin_x
         x_ = pn_net['x'].distribution.mean
@@ -637,22 +639,24 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
         # print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
         gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0)))
-        gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index)
+        gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
-    # if config.gradient_penalty_algorithm == 'both':
-    #     # Sample from fake and real
-    #     gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
-    #     gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(-len(x_shape), 0))
-    #     gradient_penalty_real = tf.pow(gradient_penalty_real, config.gradient_penalty_index / 2.0)
-    #
-    #     gradient_penalty_fake = tf.square(
-    #         tf.gradients(energy_fake, [x_.tensor if hasattr(x_, 'tensor') else x_])[0])
-    #     gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(-len(x_shape), 0))
-    #     gradient_penalty_fake = tf.pow(gradient_penalty_fake, config.gradient_penalty_index / 2.0)
-    #
-    #     gradient_penalty = (tf.reduce_mean(gradient_penalty_fake) + tf.reduce_mean(gradient_penalty_real)) \
-    #                        * config.gradient_penalty_weight / 2.0
+    if config.gradient_penalty_algorithm == 'both':
+        # Sample from fake and real
+        energy_real = D_psi(x)
+        energy_fake = D_psi(x_)
+        gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
+        gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(-len(x_shape), 0))
+        gradient_penalty_real = tf.pow(gradient_penalty_real, config.gradient_penalty_index / 2.0)
+
+        gradient_penalty_fake = tf.square(
+            tf.gradients(energy_fake, [x_.tensor if hasattr(x_, 'tensor') else x_])[0])
+        gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(-len(x_shape), 0))
+        gradient_penalty_fake = tf.pow(gradient_penalty_fake, config.gradient_penalty_index / 2.0)
+
+        gradient_penalty = (tf.reduce_mean(gradient_penalty_fake) + tf.reduce_mean(gradient_penalty_real)) \
+                           * config.gradient_penalty_weight / 2.0
     return gradient_penalty
 
 
@@ -1021,10 +1025,10 @@ def main():
                             grid_size=(10, 10),
                             results=results,
                         )
-                # print(batch_history_e_z)
-                # print(np.mean(batch_history_z ** 2, axis=-1))
-                # print(batch_history_pure_e_z)
-                # print(batch_history_ratio)
+                        # print(batch_history_e_z)
+                        # print(np.mean(batch_history_z ** 2, axis=-1))
+                        # print(batch_history_pure_e_z)
+                        # print(batch_history_ratio)
             except Exception as e:
                 print(e)
 
