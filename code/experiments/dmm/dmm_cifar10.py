@@ -25,7 +25,7 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 1024
+    z_dim = 2048
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -641,6 +641,7 @@ def S_theta(z, sigma):
         h_z, z_channel * 64, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         kernel_initializer=tf.zeros_initializer(),
     )
+    x_mean = spt.ops.reshape_tail(x_mean, ndims=3, shape=(-1,))
     return x_mean / (sigma ** 2)
 
 
@@ -700,12 +701,12 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None
     with tf.name_scope('adv_prior_loss'):
         normal = spt.Normal(tf.zeros_like(q_net['z']), tf.ones_like(q_net['z']))
         normal_sample = normal.sample(n_samples=None)
-        sigma = tf.ones_like(normal.std)
         per_len = config.batch_size // config.noise_len
+        sigma = np.ones((config.train_n_qz, config.batch_size, 1))
         for i in range(config.noise_len):
-            sigma[0, i * per_len: (i + 1) * per_len] /= 2 ** i
+            sigma[:, i * per_len: (i + 1) * per_len] /= 2 ** i
         noise_z = q_net['z'] + normal_sample * sigma
-        lambda_z = sigma ** 2
+        lambda_z = np.mean(sigma ** 2, axis=-1)
         NCSN_loss = tf.reduce_mean(
             lambda_z * tf.reduce_sum((S_theta(noise_z, sigma) + (noise_z - q_net['z']) / (sigma ** 2)) ** 2, axis=-1)
         ) / 2
@@ -993,7 +994,9 @@ def main():
                                (-1,) + config.x_shape)
         initial_z = tf.placeholder(
             dtype=tf.float32, shape=(1, sample_n_z, config.z_dim), name='initial_z')
-        s_theta_z = S_theta(initial_z)
+        sigma = tf.placeholder(
+            dtype=tf.float32, shape=(), name='sigma')
+        s_theta_z = S_theta(initial_z, sigma)
         gan_plots = 256.0 * gan_plots / 2 + 127.5
         plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z)
         plot_origin_net = p_net(n_z=sample_n_z, mcmc_iterator=0, beta=beta, initial_z=initial_z)
@@ -1068,11 +1071,13 @@ def main():
                 if loop.epoch >= config.max_epoch:
                     batch_z = np.random.randn([1, sample_n_z, config.z_dim])
                     for i in range(0, config.noise_len):
+                        sigma_i = 1.0 / (2 ** i)
                         alpha = (2 ** (2 * (config.noise_len - i - 1))) * config.smallest_step
                         for t in range(100):
                             noise = np.random.randn([1, sample_n_z, config.z_dim])
                             batch_s_theta_z = session.run(s_theta_z, feed_dict={
-                                initial_z: batch_z
+                                initial_z: batch_z,
+                                sigma: sigma_i
                             })
                             batch_z = batch_z + alpha / 2 * batch_s_theta_z + np.sqrt(alpha) * noise
                         images = session.run(x_origin_plots, feed_dict={
@@ -1254,13 +1259,13 @@ def main():
 
                 if epoch % config.test_epoch_freq == 0 and epoch > config.warm_up_start:
                     with loop.timeit('compute_Z_time'):
-                        log_Z_list = []
-                        for i in range(config.log_Z_times):
-                            log_Z_list.append(session.run(log_Z_compute_op))
-                        from scipy.misc import logsumexp
-                        log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                        print('log_Z_list:{}'.format(log_Z_list))
-                        print('log_Z:{}'.format(log_Z))
+                        # log_Z_list = []
+                        # for i in range(config.log_Z_times):
+                        #     log_Z_list.append(session.run(log_Z_compute_op))
+                        # from scipy.misc import logsumexp
+                        # log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
+                        # print('log_Z_list:{}'.format(log_Z_list))
+                        # print('log_Z:{}'.format(log_Z))
 
                         log_Z_list = []
                         for [x, origin_x] in train_flow:
