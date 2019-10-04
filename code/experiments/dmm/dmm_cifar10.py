@@ -54,9 +54,9 @@ class ExpConfig(spt.Config):
     lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
     lr_anneal_step_freq = None
 
-    gradient_penalty_algorithm = 'interpolate'  # both or interpolate
-    gradient_penalty_weight = 2
-    gradient_penalty_index = 6
+    gradient_penalty_algorithm = 'interpolate-gp'  # both or interpolate
+    gradient_penalty_weight = 10
+    gradient_penalty_index = 2
     kl_balance_weight = 1.0
 
     n_critical = 5
@@ -242,7 +242,7 @@ class EnergyDistribution(spt.Distribution):
                                                                                                       axis=-1)
         pure_energy_z = self.D(self.G(z))
         # energy_z = pure_energy_z  # TODO
-        grad_energy_z = tf.gradients(energy_z, z)
+        grad_energy_z = tf.gradients(energy_z, [z.tensor if hasattr(z, 'tensor') else z])[0]
         grad_energy_z = tf.reshape(grad_energy_z, shape=z.shape)
         eps = tf.random.normal(
             shape=z.shape
@@ -459,7 +459,7 @@ def get_log_Z():
 
 @add_arg_scope
 @spt.global_reuse
-def G_theta(z):
+def G_theta(z, return_std=False):
     normalizer_fn = batch_norm
 
     # compute the hidden features
@@ -505,7 +505,10 @@ def G_theta(z):
             h_z, config.x_shape[-1], (1, 1), padding='same', scope='x_logstd',
             kernel_initializer=tf.zeros_initializer(),
         )
-    return x_mean, x_logstd
+    if return_std:
+        return x_mean, x_logstd
+    else:
+        return x_mean
 
 
 @add_arg_scope
@@ -584,13 +587,13 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
     pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator,
                             initial_z=initial_z)
     z = net.add('z', pz, n_samples=n_z)
-    x_mean, x_logstd = G_theta(z)
+    x_mean, x_logstd = G_theta(z, return_std=True)
     x = net.add('x', DiscretizedLogistic(
         mean=x_mean,
         log_scale=x_logstd,
         bin_size=2.0 / 256.0,
         min_val=-1.0 + 1.0 / 256.0,
-        max_val=1.0 - 1.0 / 256.0,
+        max_val=1.0 - 1.0 / 256.0
     ), group_ndims=3)
     return net
 
@@ -681,18 +684,16 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
         # print(interpolates)
         D_interpolates = D_psi(interpolates)
         # print(D_interpolates)
-        gradient = tf.gradients(D_interpolates, interpolates)
-        print(gradient)
-        gradient_penalty = tf.square(gradient)
+        gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
         gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0)))
         gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
     if config.gradient_penalty_algorithm == 'interpolate-gp':
-        # print(interpolates)
+        print(interpolates)
         D_interpolates = D_psi(interpolates)
-        # print(D_interpolates)
-        gradient_penalty = tf.square(tf.gradients(D_interpolates, interpolates))
+        print(D_interpolates)
+        gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
         gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0))) - 1.0
         gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
@@ -701,12 +702,12 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
         # Sample from fake and real
         energy_real = D_psi(x)
         energy_fake = D_psi(x_)
-        gradient_penalty_real = tf.square(tf.gradients(energy_real, x.tensor if hasattr(x, 'tensor') else x))
+        gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
         gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(-len(x_shape), 0))
         gradient_penalty_real = tf.pow(gradient_penalty_real, config.gradient_penalty_index / 2.0)
 
         gradient_penalty_fake = tf.square(
-            tf.gradients(energy_fake, x_.tensor if hasattr(x_, 'tensor') else x_))
+            tf.gradients(energy_fake, [x_.tensor if hasattr(x_, 'tensor') else x_])[0])
         gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(-len(x_shape), 0))
         gradient_penalty_fake = tf.pow(gradient_penalty_fake, config.gradient_penalty_index / 2.0)
 
@@ -915,11 +916,8 @@ def main():
             test_mse, (-1, config.test_x_samples,)
         ), axis=-1))
         test_nll = -tf.reduce_mean(
-            spt.ops.log_mean_exp(
-                tf.reshape(
-                    test_chain.vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
-                ), axis=-1)
-        ) + config.x_shape_multiple * np.log(128.0)
+            test_chain.vi.evaluation.is_loglikelihood()
+        )
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
 
         vi = spt.VariationalInference(
@@ -930,11 +928,8 @@ def main():
             axis=0
         )
         adv_test_nll = -tf.reduce_mean(
-            spt.ops.log_mean_exp(
-                tf.reshape(
-                    vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
-                ), axis=-1)
-        ) + config.x_shape_multiple * np.log(128.0)
+            vi.evaluation.is_loglikelihood()
+        )
         adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
 
         real_energy = tf.reduce_mean(D_psi(test_chain.model['x']))
