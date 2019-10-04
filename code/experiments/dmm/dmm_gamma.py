@@ -10,7 +10,6 @@ from matplotlib import pyplot
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
-from tfsnippet import DiscretizedLogistic
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
                                       bernoulli_as_pixel,
@@ -54,9 +53,9 @@ class ExpConfig(spt.Config):
     lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
     lr_anneal_step_freq = None
 
-    gradient_penalty_algorithm = 'interpolate'  # both or interpolate
-    gradient_penalty_weight = 2
-    gradient_penalty_index = 6
+    gradient_penalty_algorithm = 'interpolate-gp'  # both or interpolate
+    gradient_penalty_weight = 10
+    gradient_penalty_index = 2
     kl_balance_weight = 1.0
 
     n_critical = 5
@@ -242,7 +241,7 @@ class EnergyDistribution(spt.Distribution):
                                                                                                       axis=-1)
         pure_energy_z = self.D(self.G(z))
         # energy_z = pure_energy_z  # TODO
-        grad_energy_z = tf.gradients(energy_z, z)
+        grad_energy_z = tf.gradients(energy_z, [z.tensor if hasattr(z, 'tensor') else z])[0]
         grad_energy_z = tf.reshape(grad_energy_z, shape=z.shape)
         eps = tf.random.normal(
             shape=z.shape
@@ -498,14 +497,10 @@ def G_theta(z):
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_9')  # output: (28, 28, 16)
         h_z = tf.concat([h_z, z], axis=-1)
         x_mean = spt.layers.conv2d(
-            h_z, config.x_shape[-1], (1, 1), padding='same', scope='x_mean',
+            h_z, config.x_shape[-1], (1, 1), padding='same', scope='feature_map_mean_to_pixel',
             kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
         )
-        x_logstd = spt.layers.conv2d(
-            h_z, config.x_shape[-1], (1, 1), padding='same', scope='x_logstd',
-            kernel_initializer=tf.zeros_initializer(),
-        )
-    return x_mean, x_logstd
+    return x_mean
 
 
 @add_arg_scope
@@ -584,13 +579,11 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
     pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator,
                             initial_z=initial_z)
     z = net.add('z', pz, n_samples=n_z)
-    x_mean, x_logstd = G_theta(z)
-    x = net.add('x', DiscretizedLogistic(
+    x_mean = G_theta(z)
+    x = net.add('x', ExponentialDistribution(
         mean=x_mean,
-        log_scale=x_logstd,
-        bin_size=2.0 / 256.0,
-        min_val=-1.0 + 1.0 / 256.0,
-        max_val=1.0 - 1.0 / 256.0,
+        beta=beta,
+        D=D_psi
     ), group_ndims=3)
     return net
 
@@ -681,9 +674,7 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
         # print(interpolates)
         D_interpolates = D_psi(interpolates)
         # print(D_interpolates)
-        gradient = tf.gradients(D_interpolates, interpolates)
-        print(gradient)
-        gradient_penalty = tf.square(gradient)
+        gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
         gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0)))
         gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
@@ -692,7 +683,7 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
         # print(interpolates)
         D_interpolates = D_psi(interpolates)
         # print(D_interpolates)
-        gradient_penalty = tf.square(tf.gradients(D_interpolates, interpolates))
+        gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
         gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0))) - 1.0
         gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
@@ -701,12 +692,12 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
         # Sample from fake and real
         energy_real = D_psi(x)
         energy_fake = D_psi(x_)
-        gradient_penalty_real = tf.square(tf.gradients(energy_real, x.tensor if hasattr(x, 'tensor') else x))
+        gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
         gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(-len(x_shape), 0))
         gradient_penalty_real = tf.pow(gradient_penalty_real, config.gradient_penalty_index / 2.0)
 
         gradient_penalty_fake = tf.square(
-            tf.gradients(energy_fake, x_.tensor if hasattr(x_, 'tensor') else x_))
+            tf.gradients(energy_fake, [x_.tensor if hasattr(x_, 'tensor') else x_])[0])
         gradient_penalty_fake = tf.reduce_sum(gradient_penalty_fake, tf.range(-len(x_shape), 0))
         gradient_penalty_fake = tf.pow(gradient_penalty_fake, config.gradient_penalty_index / 2.0)
 
@@ -1043,7 +1034,7 @@ def main():
             try:
                 # plot reconstructs
                 for [x] in reconstruct_train_flow:
-                    x_samples = x
+                    x_samples = uniform_sampler.sample(x)
                     images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
                     images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
                     images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
@@ -1060,7 +1051,7 @@ def main():
                     break
 
                 for [x] in reconstruct_test_flow:
-                    x_samples = x
+                    x_samples = uniform_sampler.sample(x)
                     images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
                     images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
                     images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
@@ -1078,6 +1069,7 @@ def main():
 
                 # plot samples
                 gan_images = session.run(gan_plots)
+                gan_uniform_images = uniform_sampler.sample((gan_images - 127.5) / 256.0 * 2)
                 save_images_collection(
                     images=np.round(gan_images),
                     filename='plotting/sample/gan-{}.png'.format(loop.epoch),
@@ -1123,7 +1115,7 @@ def main():
                                 grid_size=(10, 10),
                                 results=results,
                             )
-                    return images
+
             except Exception as e:
                 print(e)
 
@@ -1134,9 +1126,9 @@ def main():
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
     x_train = (_x_train - 127.5) / 256.0 * 2
     x_test = (_x_test - 127.5) / 256.0 * 2
-    # uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0, dtype=np.float)
+    uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0, dtype=np.float)
     train_flow = spt.DataFlow.arrays([x_train, x_train], config.batch_size, shuffle=True, skip_incomplete=True)
-    train_flow = train_flow.map(lambda x, y: [x, y])
+    train_flow = train_flow.map(lambda x, y: [uniform_sampler.sample(x), y])
     # gan_train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     # gan_train_flow = gan_train_flow.map(uniform_sampler)
     reconstruct_train_flow = spt.DataFlow.arrays(
@@ -1146,7 +1138,7 @@ def main():
     test_flow = spt.DataFlow.arrays(
         [np.repeat(x_test, config.test_x_samples, axis=0), np.repeat(x_test, config.test_x_samples, axis=0)],
         config.test_batch_size)
-    test_flow = test_flow.map(lambda x, y: [x, y])
+    test_flow = test_flow.map(lambda x, y: [uniform_sampler.sample(x), y])
 
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
@@ -1286,7 +1278,7 @@ def main():
 
                         log_Z_list = []
                         for [x, origin_x] in train_flow:
-                            batch_x = [origin_x for i in range(config.log_Z_x_samples)]
+                            batch_x = [uniform_sampler.sample(origin_x) for i in range(config.log_Z_x_samples)]
                             batch_origin_x = [origin_x for i in range(config.log_Z_x_samples)]
                             batch_x = np.stack(batch_x, axis=1)
                             batch_origin_x = np.stack(batch_origin_x, axis=1)
@@ -1326,7 +1318,20 @@ def main():
                     dataset_img = _x_train
                     sample_img = []
                     for i in range((len(x_train)) // config.sample_n_z + 1):
-                        images = plot_samples(loop)
+                        gan_images = session.run(gan_plots)
+                        gan_uniform_images = uniform_sampler.sample((gan_images - 127.5) / 256.0 * 2)
+
+                        batch_initial_z = session.run(reconstruct_z, feed_dict={input_x: gan_uniform_images})
+                        # print(batch_initial_z.shape)
+                        batch_initial_z = np.expand_dims(batch_initial_z, 0)
+                        for i in range(0, 11):
+                            [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
+                             batch_history_ratio] = session.run(
+                                [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
+                                feed_dict={
+                                    initial_z: batch_initial_z
+                                })
+                            batch_initial_z = batch_history_z[-1]
                         sample_img.append(images)
 
                     sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
