@@ -30,7 +30,7 @@ class ExpConfig(spt.Config):
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
-    kernel_size = 3
+    kernel_size = 5
     shortcut_kernel_size = 1
     batch_norm = True
     nf_layers = 20
@@ -43,10 +43,10 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0
-    pull_back_energy_weight = 2048 / 40.0
+    pull_back_energy_weight = 2 * 2048 / 40.0
 
     max_step = None
-    batch_size = 256
+    batch_size = 128
     noise_len = 16
     smallest_step = 2e-5
     initial_lr = 0.0001
@@ -54,14 +54,14 @@ class ExpConfig(spt.Config):
     lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
     lr_anneal_step_freq = None
 
-    gradient_penalty_algorithm = 'interpolate-gp'  # both or interpolate
-    gradient_penalty_weight = 10
-    gradient_penalty_index = 2
+    gradient_penalty_algorithm = 'interpolate'  # both or interpolate
+    gradient_penalty_weight = 2
+    gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
     n_critical = 5
     # evaluation parameters
-    train_n_pz = 256
+    train_n_pz = 128
     train_n_qz = 1
     test_n_pz = 1000
     test_n_qz = 10
@@ -387,7 +387,7 @@ def get_z_moments(z, value_ndims, name=None):
 @spt.global_reuse
 def q_net(x, posterior_flow, observed=None, n_z=None):
     net = spt.BayesianNet(observed=observed)
-    normalizer_fn = batch_norm
+    normalizer_fn = None
 
     # compute the hidden features
     with arg_scope([spt.layers.resnet_conv2d_block],
@@ -399,29 +399,32 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
                    dropout_fn=dropout):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
-        h_x = tf.concat([h_x, x], axis=-1)
+        # h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_1')  # output: (14, 14, 32)
-        h_x = tf.concat([h_x, x], axis=-1)
+        # h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
-        h_x = tf.concat([h_x, x], axis=-1)
+        # h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_3')  # output: (14, 14, 32)
-        h_x = tf.concat([h_x, x], axis=-1)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 32)  # output: (14, 14, 32)
+        # h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_4')  # output: (14, 14, 32)
         x = spt.ops.reshape_tail(x, ndims=3,
                                  shape=[config.x_shape[0] // 2, config.x_shape[1] // 2, config.x_shape[2] * 4])
-        h_x = tf.concat([h_x, x], axis=-1)
+        # h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_5')  # output: (14, 14, 32)
-        h_x = tf.concat([h_x, x], axis=-1)
+        # h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_6')  # output: (14, 14, 32)
-        h_x = tf.concat([h_x, x], axis=-1)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 64)  # output: (14, 14, 32)
+        # h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 96, strides=2, scope='level_7')  # output: (7, 7, 64)
         x = spt.ops.reshape_tail(x, ndims=3,
                                  shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, config.x_shape[2] * 16])
-        h_x = tf.concat([h_x, x], axis=-1)
+        # h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 96, scope='level_8')  # output: (7, 7, 64)
-        h_x = tf.concat([h_x, x], axis=-1)
+        # h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 96, scope='level_9')  # output: (7, 7, 64)
-        h_x = tf.concat([h_x, x], axis=-1)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 96)  # output: (14, 14, 32)
+        # h_x = tf.concat([h_x, x], axis=-1)
 
         z_dim_channel = 64 * config.z_dim // config.x_shape[0] // config.x_shape[0]
         z_mean = spt.layers.resnet_conv2d_block(h_x, z_dim_channel, strides=2, scope='z_mean',
@@ -460,7 +463,7 @@ def get_log_Z():
 @add_arg_scope
 @spt.global_reuse
 def G_theta(z, return_std=False):
-    normalizer_fn = batch_norm
+    normalizer_fn = None
 
     # compute the hidden features
     with arg_scope([spt.layers.resnet_deconv2d_block],
@@ -470,33 +473,37 @@ def G_theta(z, return_std=False):
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         z_dim_channel = 64 * config.z_dim // config.x_shape[0] // config.x_shape[1]
-        h_z = spt.ops.reshape_tail(z, ndims=1, shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, z_dim_channel))
+        h_z = spt.layers.dense(z, config.z_dim, normalizer_fn=None)
+        h_z = spt.ops.reshape_tail(h_z, ndims=1, shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, z_dim_channel))
         h_z = spt.layers.resnet_deconv2d_block(h_z, 96, strides=2, scope='level_0')  # output: (7, 7, 64)
         z = spt.ops.reshape_tail(z, ndims=1,
                                  shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, z_dim_channel // 4])
-        h_z = tf.concat([h_z, z], axis=-1)
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 96, scope='level_1')  # output: (7, 7, 64))
-        h_z = tf.concat([h_z, z], axis=-1)
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 96, scope='level_2')  # output: (7, 7, 64)
-        h_z = tf.concat([h_z, z], axis=-1)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 96)  # output: (7, 7, 64)
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, strides=2, scope='level_3')  # output: (7, 7, 64)
         z = spt.ops.reshape_tail(z, ndims=3,
                                  shape=[config.x_shape[0] // 2, config.x_shape[1] // 2, z_dim_channel // 16])
-        h_z = tf.concat([h_z, z], axis=-1)
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_4')  # output: (14, 14, 32)
-        h_z = tf.concat([h_z, z], axis=-1)
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_5')  # output: (7, 7, 64)
-        h_z = tf.concat([h_z, z], axis=-1)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 64)  # output: (7, 7, 64)
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, strides=2, scope='level_6')  # output:
         z = spt.ops.reshape_tail(z, ndims=3,
                                  shape=[config.x_shape[0], config.x_shape[1], z_dim_channel // 64])
-        h_z = tf.concat([h_z, z], axis=-1)
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
-        h_z = tf.concat([h_z, z], axis=-1)
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_8')  # output:
-        h_z = tf.concat([h_z, z], axis=-1)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 32)  # output: (7, 7, 64)
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_9')  # output: (28, 28, 16)
-        h_z = tf.concat([h_z, z], axis=-1)
+        # h_z = tf.concat([h_z, z], axis=-1)
         x_mean = spt.layers.conv2d(
             h_z, config.x_shape[-1], (1, 1), padding='same', scope='x_mean',
             kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
@@ -514,7 +521,7 @@ def G_theta(z, return_std=False):
 @add_arg_scope
 @spt.global_reuse
 def G_omega(z):
-    normalizer_fn = batch_norm
+    normalizer_fn = None
 
     # compute the hidden features
     with arg_scope([spt.layers.resnet_deconv2d_block],
@@ -590,7 +597,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
     x_mean, x_logstd = G_theta(z, return_std=True)
     x = net.add('x', DiscretizedLogistic(
         mean=x_mean,
-        log_scale=x_logstd,
+        log_scale=spt.ops.maybe_clip_value(x_logstd, min_val=config.epsilon),
         bin_size=2.0 / 256.0,
         min_val=-1.0 + 1.0 / 256.0,
         max_val=1.0 - 1.0 / 256.0
@@ -625,7 +632,7 @@ def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, i
 @add_arg_scope
 @spt.global_reuse
 def S_theta(z, sigma):
-    normalizer_fn = batch_norm
+    normalizer_fn = None
 
     # compute the hidden features
     with arg_scope([spt.layers.resnet_conv2d_block],
@@ -686,6 +693,7 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
         # print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
         gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0)))
+        gradient_penalty = gradient_penalty ** 2
         gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
@@ -695,6 +703,7 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
         print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
         gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0))) - 1.0
+        gradient_penalty = gradient_penalty ** 2
         gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
