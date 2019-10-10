@@ -67,7 +67,7 @@ class ExpConfig(spt.Config):
     test_n_qz = 10
     test_batch_size = 64
     test_epoch_freq = 200
-    plot_epoch_freq = 100
+    plot_epoch_freq = 10
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
@@ -399,32 +399,32 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
                    dropout_fn=dropout):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
-        # h_x = tf.concat([h_x, x], axis=-1)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_1')  # output: (14, 14, 32)
-        # h_x = tf.concat([h_x, x], axis=-1)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
-        # h_x = tf.concat([h_x, x], axis=-1)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_3')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32)  # output: (14, 14, 32)
-        # h_x = tf.concat([h_x, x], axis=-1)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_4')  # output: (14, 14, 32)
         x = spt.ops.reshape_tail(x, ndims=3,
                                  shape=[config.x_shape[0] // 2, config.x_shape[1] // 2, config.x_shape[2] * 4])
-        # h_x = tf.concat([h_x, x], axis=-1)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_5')  # output: (14, 14, 32)
-        # h_x = tf.concat([h_x, x], axis=-1)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_6')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64)  # output: (14, 14, 32)
-        # h_x = tf.concat([h_x, x], axis=-1)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 96, strides=2, scope='level_7')  # output: (7, 7, 64)
         x = spt.ops.reshape_tail(x, ndims=3,
                                  shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, config.x_shape[2] * 16])
-        # h_x = tf.concat([h_x, x], axis=-1)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 96, scope='level_8')  # output: (7, 7, 64)
-        # h_x = tf.concat([h_x, x], axis=-1)
+        h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 96, scope='level_9')  # output: (7, 7, 64)
         h_x = spt.layers.resnet_conv2d_block(h_x, 96)  # output: (14, 14, 32)
-        # h_x = tf.concat([h_x, x], axis=-1)
+        h_x = tf.concat([h_x, x], axis=-1)
 
         z_dim_channel = 64 * config.z_dim // config.x_shape[0] // config.x_shape[0]
         z_mean = spt.layers.resnet_conv2d_block(h_x, z_dim_channel, strides=2, scope='z_mean',
@@ -478,32 +478,32 @@ def G_theta(z, return_std=False):
         h_z = spt.layers.resnet_deconv2d_block(h_z, 96, strides=2, scope='level_0')  # output: (7, 7, 64)
         z = spt.ops.reshape_tail(z, ndims=1,
                                  shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, z_dim_channel // 4])
-        # h_z = tf.concat([h_z, z], axis=-1)
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 96, scope='level_1')  # output: (7, 7, 64))
-        # h_z = tf.concat([h_z, z], axis=-1)
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 96, scope='level_2')  # output: (7, 7, 64)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 96)  # output: (7, 7, 64)
-        # h_z = tf.concat([h_z, z], axis=-1)
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, strides=2, scope='level_3')  # output: (7, 7, 64)
         z = spt.ops.reshape_tail(z, ndims=3,
                                  shape=[config.x_shape[0] // 2, config.x_shape[1] // 2, z_dim_channel // 16])
-        # h_z = tf.concat([h_z, z], axis=-1)
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_4')  # output: (14, 14, 32)
-        # h_z = tf.concat([h_z, z], axis=-1)
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_5')  # output: (7, 7, 64)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64)  # output: (7, 7, 64)
-        # h_z = tf.concat([h_z, z], axis=-1)
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, strides=2, scope='level_6')  # output:
         z = spt.ops.reshape_tail(z, ndims=3,
                                  shape=[config.x_shape[0], config.x_shape[1], z_dim_channel // 64])
-        # h_z = tf.concat([h_z, z], axis=-1)
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
-        # h_z = tf.concat([h_z, z], axis=-1)
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_8')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32)  # output: (7, 7, 64)
-        # h_z = tf.concat([h_z, z], axis=-1)
+        h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_9')  # output: (28, 28, 16)
-        # h_z = tf.concat([h_z, z], axis=-1)
+        h_z = tf.concat([h_z, z], axis=-1)
         x_mean = spt.layers.conv2d(
             h_z, config.x_shape[-1], (1, 1), padding='same', scope='x_mean',
             kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
