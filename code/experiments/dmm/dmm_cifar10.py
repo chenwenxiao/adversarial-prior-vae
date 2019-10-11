@@ -55,7 +55,7 @@ class ExpConfig(spt.Config):
     lr_anneal_step_freq = None
 
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
-    gradient_penalty_weight = 2
+    gradient_penalty_weight = 20
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
@@ -725,7 +725,7 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None
         train_grad_penalty = gp_theta + gp_dg  # + gp_omega
         train_kl = tf.maximum(train_kl, 0.0)  # TODO
         VAE_nD_loss = -train_recon + warm * train_kl
-        VAE_loss = VAE_nD_loss + train_grad_penalty * config.pull_back_energy_weight
+        VAE_loss = VAE_nD_loss + train_grad_penalty
         VAE_G_loss = tf.reduce_mean(D_psi(pn_theta['x'].distribution.mean))
         VAE_D_real = tf.reduce_mean(D_psi(input_origin_x))
 
