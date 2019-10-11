@@ -395,45 +395,25 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
                    shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
-                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),):
+                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg), ):
         h_x = tf.to_float(x)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_0')  # output: (28, 28, 16)
-        h_x = tf.concat([h_x, x], axis=-1)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_1')  # output: (14, 14, 32)
-        h_x = tf.concat([h_x, x], axis=-1)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_2')  # output: (14, 14, 32)
-        h_x = tf.concat([h_x, x], axis=-1)
-        # h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_3')  # output: (14, 14, 32)
-        # h_x = tf.concat([h_x, x], axis=-1)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_4')  # output: (14, 14, 32)
-        x = spt.ops.reshape_tail(x, ndims=3,
-                                 shape=[config.x_shape[0] // 2, config.x_shape[1] // 2, config.x_shape[2] * 4])
-        h_x = tf.concat([h_x, x], axis=-1)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 128, scope='level_5')  # output: (14, 14, 32)
-        h_x = tf.concat([h_x, x], axis=-1)
-        # h_x = spt.layers.resnet_conv2d_block(h_x, 128, scope='level_6')  # output: (14, 14, 32)
-        # h_x = tf.concat([h_x, x], axis=-1)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 192, strides=2, scope='level_7')  # output: (7, 7, 64)
-        x = spt.ops.reshape_tail(x, ndims=3,
-                                 shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, config.x_shape[2] * 16])
-        h_x = tf.concat([h_x, x], axis=-1)
-        # h_x = spt.layers.resnet_conv2d_block(h_x, 192, scope='level_8')  # output: (7, 7, 64)
-        # h_x = tf.concat([h_x, x], axis=-1)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 96, kernel_size=5, scope='level_0')  # output: (28, 28, 16)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 96, scope='level_1')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 192, strides=2, scope='level_2')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 192, scope='level_4')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 192, strides=2, scope='level_5')  # output: (14, 14, 32)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 192, scope='level_7')  # output: (7, 7, 64)
         h_x = spt.layers.resnet_conv2d_block(h_x, 192, scope='level_9')  # output: (7, 7, 64)
-        h_x = tf.concat([h_x, x], axis=-1)
 
-        z_dim_channel = 64 * config.z_dim // config.x_shape[0] // config.x_shape[0]
-        z_mean = spt.layers.resnet_conv2d_block(h_x, z_dim_channel, strides=2, scope='z_mean',
+        z_dim_channel = 16 * config.z_dim // config.x_shape[0] // config.x_shape[0]
+        z_mean = spt.layers.resnet_conv2d_block(h_x, z_dim_channel, scope='z_mean',
                                                 kernel_initializer=tf.zeros_initializer())
-        z_logstd = spt.layers.resnet_conv2d_block(h_x, z_dim_channel, strides=2, scope='z_logstd',
+        z_logstd = spt.layers.resnet_conv2d_block(h_x, z_dim_channel, scope='z_logstd',
                                                   kernel_initializer=tf.zeros_initializer())
         z_mean = spt.ops.reshape_tail(z_mean, ndims=3, shape=[-1])
         z_logstd = spt.ops.reshape_tail(z_logstd, ndims=3, shape=[-1])
 
     # sample z ~ q(z|x)
-    # h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
-    # x = spt.ops.reshape_tail(x, ndims=3, shape=[-1])
-    # h_x = tf.concat([h_x, x], axis=-1)
     z_distribution = spt.FlowDistribution(
         spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
         posterior_flow
@@ -468,35 +448,17 @@ def G_theta(z, return_std=False):
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
-        z_dim_channel = 64 * config.z_dim // config.x_shape[0] // config.x_shape[1]
-        h_z = spt.layers.dense(z, config.z_dim, normalizer_fn=None)
-        h_z = spt.ops.reshape_tail(h_z, ndims=1, shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, z_dim_channel))
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 192, strides=2, scope='level_0')  # output: (7, 7, 64)
-        z = spt.ops.reshape_tail(z, ndims=1,
-                                 shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, z_dim_channel // 4])
-        h_z = tf.concat([h_z, z], axis=-1)
-        # h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_1')  # output: (7, 7, 64))
-        # h_z = tf.concat([h_z, z], axis=-1)
+        z_dim_channel = 16 * config.z_dim // config.x_shape[0] // config.x_shape[1]
+        # h_z = spt.layers.dense(z, config.z_dim, normalizer_fn=None)
+        h_z = spt.ops.reshape_tail(z, ndims=1, shape=(config.x_shape[0] // 4, config.x_shape[1] // 4, z_dim_channel))
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_0')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_1')  # output: (7, 7, 64)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_2')  # output: (7, 7, 64)
-        h_z = tf.concat([h_z, z], axis=-1)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_3')  # output: (7, 7, 64)
-        z = spt.ops.reshape_tail(z, ndims=3,
-                                 shape=[config.x_shape[0] // 2, config.x_shape[1] // 2, z_dim_channel // 16])
-        h_z = tf.concat([h_z, z], axis=-1)
-        # h_z = spt.layers.resnet_deconv2d_block(h_z, 128, scope='level_4')  # output: (14, 14, 32)
-        # h_z = tf.concat([h_z, z], axis=-1)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, scope='level_5')  # output: (7, 7, 64)
-        h_z = tf.concat([h_z, z], axis=-1)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, strides=2, scope='level_6')  # output:
-        z = spt.ops.reshape_tail(z, ndims=3,
-                                 shape=[config.x_shape[0], config.x_shape[1], z_dim_channel // 64])
-        h_z = tf.concat([h_z, z], axis=-1)
-        # h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_7')  # output:
-        # h_z = tf.concat([h_z, z], axis=-1)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_8')  # output:
-        h_z = tf.concat([h_z, z], axis=-1)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_9')  # output: (28, 28, 16)
-        h_z = tf.concat([h_z, z], axis=-1)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 192, strides=2, scope='level_3')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_5')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_6')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 96, strides=2, scope='level_8')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 96, kernel_size=5, scope='level_9')  # output: (28, 28, 16)¬
         x_mean = spt.layers.conv2d(
             h_z, config.x_shape[-1], (1, 1), padding='same', scope='x_mean',
             kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
@@ -1270,10 +1232,10 @@ def main():
 
                         log_Z_list = []
                         for [batch_x, batch_origin_x] in train_flow:
-                                log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                                    input_x: batch_x,
-                                    input_origin_x: batch_origin_x
-                                }))
+                            log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
+                                input_x: batch_x,
+                                input_origin_x: batch_origin_x
+                            }))
                         from scipy.misc import logsumexp
                         another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
                         # print('log_Z_list:{}'.format(log_Z_list))
