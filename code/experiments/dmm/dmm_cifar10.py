@@ -30,7 +30,7 @@ class ExpConfig(spt.Config):
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
-    kernel_size = 5
+    kernel_size = 3
     shortcut_kernel_size = 1
     batch_norm = True
     nf_layers = 20
@@ -78,7 +78,7 @@ class ExpConfig(spt.Config):
     len_train = 60000
     sample_n_z = 100
 
-    epsilon = -15
+    epsilon = -20
 
     @property
     def x_shape(self):
@@ -403,22 +403,22 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
         h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_2')  # output: (14, 14, 32)
         h_x = tf.concat([h_x, x], axis=-1)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_3')  # output: (14, 14, 32)
-        h_x = tf.concat([h_x, x], axis=-1)
+        # h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_3')  # output: (14, 14, 32)
+        # h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_4')  # output: (14, 14, 32)
         x = spt.ops.reshape_tail(x, ndims=3,
                                  shape=[config.x_shape[0] // 2, config.x_shape[1] // 2, config.x_shape[2] * 4])
         h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 128, scope='level_5')  # output: (14, 14, 32)
         h_x = tf.concat([h_x, x], axis=-1)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 128, scope='level_6')  # output: (14, 14, 32)
-        h_x = tf.concat([h_x, x], axis=-1)
+        # h_x = spt.layers.resnet_conv2d_block(h_x, 128, scope='level_6')  # output: (14, 14, 32)
+        # h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 192, strides=2, scope='level_7')  # output: (7, 7, 64)
         x = spt.ops.reshape_tail(x, ndims=3,
                                  shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, config.x_shape[2] * 16])
         h_x = tf.concat([h_x, x], axis=-1)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 192, scope='level_8')  # output: (7, 7, 64)
-        h_x = tf.concat([h_x, x], axis=-1)
+        # h_x = spt.layers.resnet_conv2d_block(h_x, 192, scope='level_8')  # output: (7, 7, 64)
+        # h_x = tf.concat([h_x, x], axis=-1)
         h_x = spt.layers.resnet_conv2d_block(h_x, 192, scope='level_9')  # output: (7, 7, 64)
         h_x = tf.concat([h_x, x], axis=-1)
 
@@ -434,13 +434,13 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
     # h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
     # x = spt.ops.reshape_tail(x, ndims=3, shape=[-1])
     # h_x = tf.concat([h_x, x], axis=-1)
-    # z_distribution = spt.FlowDistribution(
-    #     spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
-    #     posterior_flow
-    # )
-    # z = net.add('z', z_distribution, n_samples=n_z)
-    z = net.add('z', spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
-                n_samples=n_z, group_ndims=1)
+    z_distribution = spt.FlowDistribution(
+        spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
+        posterior_flow
+    )
+    z = net.add('z', z_distribution, n_samples=n_z)
+    # z = net.add('z', spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
+    #             n_samples=n_z, group_ndims=1)
 
     return net
 
@@ -475,24 +475,24 @@ def G_theta(z, return_std=False):
         z = spt.ops.reshape_tail(z, ndims=1,
                                  shape=[config.x_shape[0] // 4, config.x_shape[1] // 4, z_dim_channel // 4])
         h_z = tf.concat([h_z, z], axis=-1)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_1')  # output: (7, 7, 64))
-        h_z = tf.concat([h_z, z], axis=-1)
+        # h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_1')  # output: (7, 7, 64))
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_2')  # output: (7, 7, 64)
         h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_3')  # output: (7, 7, 64)
         z = spt.ops.reshape_tail(z, ndims=3,
                                  shape=[config.x_shape[0] // 2, config.x_shape[1] // 2, z_dim_channel // 16])
         h_z = tf.concat([h_z, z], axis=-1)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, scope='level_4')  # output: (14, 14, 32)
-        h_z = tf.concat([h_z, z], axis=-1)
+        # h_z = spt.layers.resnet_deconv2d_block(h_z, 128, scope='level_4')  # output: (14, 14, 32)
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 128, scope='level_5')  # output: (7, 7, 64)
         h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, strides=2, scope='level_6')  # output:
         z = spt.ops.reshape_tail(z, ndims=3,
                                  shape=[config.x_shape[0], config.x_shape[1], z_dim_channel // 64])
         h_z = tf.concat([h_z, z], axis=-1)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_7')  # output:
-        h_z = tf.concat([h_z, z], axis=-1)
+        # h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_7')  # output:
+        # h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_8')  # output:
         h_z = tf.concat([h_z, z], axis=-1)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_9')  # output: (28, 28, 16)
@@ -593,7 +593,8 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
         log_scale=spt.ops.maybe_clip_value(x_logstd, min_val=config.epsilon),
         bin_size=2.0 / 256.0,
         min_val=-1.0 + 1.0 / 256.0,
-        max_val=1.0 - 1.0 / 256.0
+        max_val=1.0 - 1.0 / 256.0,
+        epsilon=1e-10
     ), group_ndims=3)
     return net
 
@@ -942,23 +943,9 @@ def main():
         pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.mean))
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
-        shift_z = test_q_net['z']
-        q_z_given_x = []
-        for i in range(config.log_Z_x_samples):
-            tmp = test_q_net['z'].distribution.log_prob(
-                shift_z, group_ndims=1
-            )
-            tmp = tf.roll(tmp, -i, axis=1)
-            q_z_given_x.append(tmp)
-            shift_z = tf.roll(shift_z, 1, axis=1)
-            print(tmp.shape)
-        q_z_given_x = tf.stack(q_z_given_x, axis=0)
-        print(q_z_given_x.shape)
-        q_z_given_x = spt.ops.log_mean_exp(q_z_given_x, axis=0)
-        print(q_z_given_x.shape)
 
         another_log_Z_compute_op = spt.ops.log_mean_exp(
-            -test_chain.model['z'].log_prob().energy - q_z_given_x + np.log(config.len_train)
+            -test_chain.model['z'].log_prob().energy - test_q_net['z'].log_prob() + np.log(config.len_train)
         )
         kl_adv_and_gaussian = tf.reduce_mean(
             test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob
@@ -1271,7 +1258,7 @@ def main():
                 if epoch % config.plot_epoch_freq == 0:
                     plot_samples(loop)
 
-                if epoch % config.test_epoch_freq == 0 and epoch > config.warm_up_start:
+                if epoch % config.test_epoch_freq == 0:
                     with loop.timeit('compute_Z_time'):
                         # log_Z_list = []
                         # for i in range(config.log_Z_times):
@@ -1282,15 +1269,10 @@ def main():
                         # print('log_Z:{}'.format(log_Z))
 
                         log_Z_list = []
-                        for [x, origin_x] in train_flow:
-                            batch_x = [origin_x for i in range(config.log_Z_x_samples)]
-                            batch_origin_x = [origin_x for i in range(config.log_Z_x_samples)]
-                            batch_x = np.stack(batch_x, axis=1)
-                            batch_origin_x = np.stack(batch_origin_x, axis=1)
-                            for i in range(len(x)):
+                        for [batch_x, batch_origin_x] in train_flow:
                                 log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                                    input_x: batch_x[i],
-                                    input_origin_x: batch_origin_x[i]
+                                    input_x: batch_x,
+                                    input_origin_x: batch_origin_x
                                 }))
                         from scipy.misc import logsumexp
                         another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
