@@ -77,7 +77,7 @@ class ExpConfig(spt.Config):
     len_train = 60000
     sample_n_z = 100
 
-    epsilon = -10
+    epsilon = -20
 
     @property
     def x_shape(self):
@@ -715,7 +715,7 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None
         train_grad_penalty = gp_theta + gp_dg  # + gp_omega
         train_kl = tf.maximum(train_kl, 0.0)  # TODO
         VAE_nD_loss = -train_recon + warm * train_kl
-        VAE_loss = VAE_nD_loss + train_grad_penalty * config.pull_back_energy_weight
+        VAE_loss = VAE_nD_loss + train_grad_penalty
         VAE_G_loss = tf.reduce_mean(D_psi(pn_theta['x'].distribution.mean))
         VAE_D_real = tf.reduce_mean(D_psi(input_origin_x))
 
