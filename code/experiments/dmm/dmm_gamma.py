@@ -1231,7 +1231,7 @@ def main():
                 if epoch % config.plot_epoch_freq == 0:
                     plot_samples(loop)
 
-                if epoch % config.test_epoch_freq == 0 and epoch > config.warm_up_start:
+                if epoch % config.test_epoch_freq == 0:
                     with loop.timeit('compute_Z_time'):
                         # log_Z_list = []
                         # for i in range(config.log_Z_times):
