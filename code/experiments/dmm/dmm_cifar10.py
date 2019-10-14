@@ -1031,7 +1031,7 @@ def main():
                     results=results,
                 )
 
-                if loop.epoch >= config.max_epoch:
+                if loop.epoch > config.warm_up_start:
                     batch_z = np.random.randn([1, sample_n_z, config.z_dim])
                     for i in range(0, config.noise_len):
                         sigma_i = 1.0 / (2 ** i)
