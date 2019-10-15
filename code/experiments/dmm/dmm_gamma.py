@@ -580,10 +580,10 @@ def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, i
 @add_arg_scope
 @spt.global_reuse
 def S_theta(z, sigma):
-    normalizer_fn = batch_norm
+    normalizer_fn = None
 
     # compute the hidden features
-    with arg_scope([spt.layers.resnet_conv2d_block],
+    with arg_scope([spt.layers.resnet_conv2d_block, spt.layers.resnet_deconv2d_block],
                    kernel_size=config.kernel_size,
                    shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
@@ -596,17 +596,19 @@ def S_theta(z, sigma):
             ndims=1,
             shape=(32, 32, z_channel)
         )
-        h_z = spt.layers.resnet_conv2d_block(h_z, z_channel * 2, scope='level_1')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_conv2d_block(h_z, z_channel * 4, scope='level_2')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_conv2d_block(h_z, z_channel * 8, scope='level_3')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_conv2d_block(h_z, z_channel * 16, strides=2, scope='level_4')  # output:
-        h_z = spt.layers.resnet_conv2d_block(h_z, z_channel * 32, strides=2, scope='level_5')  # output:
-        h_z = spt.layers.resnet_conv2d_block(h_z, z_channel * 64, strides=2, scope='level_6')  # output: (28, 28, 16)
-    x_mean = spt.layers.conv2d(
-        h_z, z_channel * 64, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
-        kernel_initializer=tf.zeros_initializer(),
-    )
-    x_mean = spt.ops.reshape_tail(x_mean, ndims=3, shape=(-1,))
+        h_z = spt.layers.resnet_conv2d_block(h_z, 32, scope='level_1')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_conv2d_block(h_z, 64, strides=2, scope='level_2')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_conv2d_block(h_z, 64, scope='level_3')  # output: (14, 14, 32)
+        h_z = spt.layers.resnet_conv2d_block(h_z, 128, strides=2, scope='level_4')  # output:
+        h_z = spt.layers.resnet_conv2d_block(h_z, 128, scope='level_5')  # output:
+
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, scope='level_6')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, strides=2, scope='level_7')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_8')  # output: (14, 14, 32)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, strides=2, scope='level_9')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, z_channel, scope='level_10')  # output:
+
+    x_mean = spt.ops.reshape_tail(h_z, ndims=3, shape=(-1,))
     return x_mean / (sigma ** 2)
 
 
