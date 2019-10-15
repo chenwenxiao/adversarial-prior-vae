@@ -597,12 +597,12 @@ def S_theta(z, sigma):
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
-        z_channel = config.z_dim // 32 // 32
+        z_channel = config.z_dim // 16 // 16
         h_z = z
         h_z = spt.ops.reshape_tail(
             h_z,
             ndims=1,
-            shape=(32, 32, z_channel)
+            shape=(16, 16, z_channel)
         )
         h_z = spt.layers.resnet_conv2d_block(h_z, 32, scope='level_1')  # output: (7, 7, 64)
         h_z = spt.layers.resnet_conv2d_block(h_z, 64, strides=2, scope='level_2')  # output: (7, 7, 64)
