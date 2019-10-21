@@ -619,7 +619,7 @@ def S_theta(z, sigma):
         h_z = spt.layers.resnet_deconv2d_block(h_z, 128, scope='level_12')  # output: (14, 14, 32)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 128, scope='level_13')  # output: (14, 14, 32)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, strides=2, scope='level_14')  # output:
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, strides=2, scope='level_15')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_15')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, z_channel, scope='level_16')  # output:
 
     x_mean = spt.ops.reshape_tail(h_z, ndims=3, shape=(-1,))
