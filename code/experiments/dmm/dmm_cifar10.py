@@ -1043,7 +1043,7 @@ def main():
                     batch_z = np.random.randn([1, sample_n_z, config.z_dim])
                     for i in range(0, config.noise_len):
                         sigma_i = 1.0 / (2 ** i)
-                        alpha = (2 ** (2 * (config.noise_len - i - 1))) * config.smallest_step
+                        alpha = (2 ** (config.noise_len - i - 1)) * config.smallest_step
                         for t in range(100):
                             noise = np.random.randn([1, sample_n_z, config.z_dim])
                             batch_s_theta_z = session.run(s_theta_z, feed_dict={
