@@ -26,7 +26,7 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 2048
+    z_dim = 1024
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -38,8 +38,8 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 1000
-    warm_up_start = 500
+    max_epoch = 2000
+    warm_up_start = 1000
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0
@@ -48,10 +48,10 @@ class ExpConfig(spt.Config):
     max_step = None
     batch_size = 128
     noise_len = 16
-    smallest_step = 2e-5
+    smallest_step = 1e-6
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
+    lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
     lr_anneal_step_freq = None
 
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
