@@ -38,8 +38,8 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 2000
-    warm_up_start = 1000
+    max_epoch = 1000
+    warm_up_start = 500
     warm_up_epoch = 500
     beta = 1e-8
     initial_xi = 0.0
@@ -47,11 +47,11 @@ class ExpConfig(spt.Config):
 
     max_step = None
     batch_size = 128
-    noise_len = 16
-    smallest_step = 1e-6
+    noise_len = 8
+    smallest_step = 5e-6
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
+    lr_anneal_epoch_freq = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
     lr_anneal_step_freq = None
 
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
@@ -67,7 +67,7 @@ class ExpConfig(spt.Config):
     test_n_qz = 10
     test_batch_size = 64
     test_epoch_freq = 200
-    plot_epoch_freq = 10
+    plot_epoch_freq = 100
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
@@ -604,26 +604,25 @@ def S_theta(z, sigma):
             ndims=1,
             shape=(16, 16, z_channel)
         )
-        h_z = spt.layers.resnet_conv2d_block(h_z, 64, scope='level_1')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_conv2d_block(h_z, 64, scope='level_2')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_conv2d_block(h_z, 128, strides=2, scope='level_3')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_conv2d_block(h_z, 128, scope='level_4')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_conv2d_block(h_z, 128, scope='level_5')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_conv2d_block(h_z, 192, strides=2, scope='level_6')  # output:
-        h_z = spt.layers.resnet_conv2d_block(h_z, 192, scope='level_7')  # output:
+        h_z = spt.layers.resnet_conv2d_block(h_z, 96, scope='level_1')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_conv2d_block(h_z, 96, scope='level_2')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_conv2d_block(h_z, 96, scope='level_3')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_conv2d_block(h_z, 192, strides=2, scope='level_4')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_conv2d_block(h_z, 192, scope='level_5')  # output: (14, 14, 32)
+        h_z = spt.layers.resnet_conv2d_block(h_z, 192, scope='level_6')  # output: (14, 14, 32)
+        h_z = spt.layers.resnet_conv2d_block(h_z, 192, strides=2, scope='level_7')  # output:
         h_z = spt.layers.resnet_conv2d_block(h_z, 192, scope='level_8')  # output:
 
         h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_9')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_10')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_11')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, scope='level_12')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, scope='level_13')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, strides=2, scope='level_14')  # output:
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_15')  # output:
-        h_z = spt.layers.resnet_deconv2d_block(h_z, z_channel, scope='level_16')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 192, strides=2, scope='level_10')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_11')  # output: (14, 14, 32)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_12')  # output: (14, 14, 32)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 96, strides=2, scope='level_13')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 96, scope='level_14')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, z_channel, scope='level_15')  # output:
 
     x_mean = spt.ops.reshape_tail(h_z, ndims=3, shape=(-1,))
-    return x_mean / (sigma ** 2)
+    return (x_mean - z) / (sigma ** 2)
 
 
 def get_gradient_penalty(input_origin_x, pn_net, space='x'):
@@ -1031,25 +1030,27 @@ def main():
                     break
 
                 # plot samples
-                gan_images = session.run(gan_plots)
-                save_images_collection(
-                    images=np.round(gan_images),
-                    filename='plotting/sample/gan-{}.png'.format(loop.epoch),
-                    grid_size=(10, 10),
-                    results=results,
-                )
+                # gan_images = session.run(gan_plots)
+                # save_images_collection(
+                #     images=np.round(gan_images),
+                #     filename='plotting/sample/gan-{}.png'.format(loop.epoch),
+                #     grid_size=(10, 10),
+                #     results=results,
+                # )
 
                 if loop.epoch > config.warm_up_start:
-                    batch_z = np.random.randn([1, sample_n_z, config.z_dim])
+                    batch_z = np.random.randn(1, sample_n_z, config.z_dim)
                     for i in range(0, config.noise_len):
                         sigma_i = 1.0 / (2 ** i)
-                        alpha = (2 ** (config.noise_len - i - 1)) * config.smallest_step
+                        alpha = (2 ** (2 * (config.noise_len - i - 1))) * config.smallest_step
                         for t in range(100):
-                            noise = np.random.randn([1, sample_n_z, config.z_dim])
+                            noise = np.random.randn(1, sample_n_z, config.z_dim)
                             batch_s_theta_z = session.run(s_theta_z, feed_dict={
                                 initial_z: batch_z,
                                 sigma: sigma_i
                             })
+                            print(np.mean(np.sum((alpha / 2 * batch_s_theta_z) ** 2, axis=-1)),
+                                  np.mean(np.sum(batch_z ** 2, axis=-1)))
                             batch_z = batch_z + alpha / 2 * batch_s_theta_z + np.sqrt(alpha) * noise
                         images = session.run(x_origin_plots, feed_dict={
                             initial_z: batch_z
