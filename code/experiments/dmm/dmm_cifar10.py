@@ -39,8 +39,8 @@ class ExpConfig(spt.Config):
     result_dir = None
     write_summary = True
     max_epoch = 400
-    warm_up_start = 200
-    warm_up_epoch = 200
+    warm_up_start = 400
+    warm_up_epoch = 400
     beta = 1e-8
     initial_xi = 0.0
     pull_back_energy_weight = 2048.0 / 40.0
@@ -51,7 +51,7 @@ class ExpConfig(spt.Config):
     smallest_step = 5e-5
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [40, 80, 120, 160, 200, 240, 280, 320, 360, 400]
+    lr_anneal_epoch_freq = [100, 200, 300, 400]
     lr_anneal_step_freq = None
 
     independent_gan = True
@@ -68,7 +68,7 @@ class ExpConfig(spt.Config):
     test_n_qz = 10
     test_batch_size = 64
     test_epoch_freq = 200
-    plot_epoch_freq = 10
+    plot_epoch_freq = 20
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
@@ -606,12 +606,13 @@ def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, i
         z_channel = config.z_dim // config.x_shape[0] // config.x_shape[1]
         x_mean = G_omega(z, z_channel)
         x_mean = spt.ops.reshape_tail(x_mean, ndims=3, shape=(-1,))
+        f_z = net.add('f_z', spt.Normal(mean=x_mean, std=1.0), group_ndims=1)
         x_mean = G_theta(x_mean)
     x = net.add('x', spt.Normal(mean=x_mean, std=1.0), group_ndims=3)
     return net
 
 
-def get_gradient_penalty(input_origin_x, pn_net, space='x'):
+def get_gradient_penalty(input_origin_x, pn_net, space='x', D=D_psi):
     if space == 'z':
         x = input_origin_x
         x_ = pn_net['z']
@@ -638,7 +639,7 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
 
     if config.gradient_penalty_algorithm == 'interpolate':
         # print(interpolates)
-        D_interpolates = D_psi(interpolates)
+        D_interpolates = D(interpolates)
         # print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
         gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0)))
@@ -648,7 +649,7 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
 
     if config.gradient_penalty_algorithm == 'interpolate-gp':
         print(interpolates)
-        D_interpolates = D_psi(interpolates)
+        D_interpolates = D(interpolates)
         print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
         gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0))) - 1.0
@@ -658,8 +659,8 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
 
     if config.gradient_penalty_algorithm == 'both':
         # Sample from fake and real
-        energy_real = D_psi(x)
-        energy_fake = D_psi(x_)
+        energy_real = D(x)
+        energy_fake = D(x_)
         gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
         gradient_penalty_real = tf.reduce_sum(gradient_penalty_real, tf.range(-len(x_shape), 0))
         gradient_penalty_real = tf.pow(gradient_penalty_real, config.gradient_penalty_index / 2.0)
@@ -676,7 +677,7 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x'):
 
 def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None):
     with tf.name_scope('adv_prior_loss'):
-        gp_omega = get_gradient_penalty(input_origin_x, pn_omega)
+        gp_omega = get_gradient_penalty(input_origin_x, pn_omega, D=D_kappa)
         gp_theta = get_gradient_penalty(input_origin_x, pn_theta)
         gp_dg = get_gradient_penalty(p_net['z'], pn_theta, space='z')
 
@@ -934,6 +935,8 @@ def main():
         sample_n_z = config.sample_n_z
         gan_plots = tf.reshape(p_omega_net(n_z=sample_n_z, beta=beta)['x'].distribution.mean,
                                (-1,) + config.x_shape)
+        if not config.independent_gan:
+            gan_z = p_omega_net(n_z=sample_n_z, beta=beta)['f_z']
         initial_z = tf.placeholder(
             dtype=tf.float32, shape=(sample_n_z, 1, config.z_dim), name='initial_z')
         gan_plots = 256.0 * gan_plots / 2 + 127.5
@@ -1008,8 +1011,11 @@ def main():
             except Exception as e:
                 print(e)
 
-            batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
-            batch_z = np.expand_dims(batch_z, 1)
+            if config.independent_gan:
+                batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
+                batch_z = np.expand_dims(batch_z, 1)
+            else:
+                batch_z = session.run(gan_z)
 
             for i in range(0, 101):
                 [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
@@ -1076,7 +1082,7 @@ def main():
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
-                           var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi'],
+                           var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega', 'D_kappa'],
                            max_epoch=config.max_epoch,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
