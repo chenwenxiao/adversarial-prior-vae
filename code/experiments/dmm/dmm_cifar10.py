@@ -39,8 +39,8 @@ class ExpConfig(spt.Config):
     result_dir = None
     write_summary = True
     max_epoch = 400
-    warm_up_start = 400
-    warm_up_epoch = 400
+    warm_up_start = 10
+    warm_up_epoch = 200
     beta = 1e-8
     initial_xi = 0.0
     pull_back_energy_weight = 2048.0 / 40.0
@@ -48,15 +48,16 @@ class ExpConfig(spt.Config):
     max_step = None
     batch_size = 128
     noise_len = 8
-    smallest_step = 5e-10
+    smallest_step = 5e-4
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [100, 200, 300, 400]
+    lr_anneal_epoch_freq = [50, 100, 150, 200, 250, 300, 350, 400]
     lr_anneal_step_freq = None
 
     independent_gan = True
+    kappa_on_x = True  # `kappa_on_x` is useful only when `independent_gan` is False
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
-    gradient_penalty_weight = 20
+    gradient_penalty_weight = 2
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
@@ -342,6 +343,37 @@ class ExponentialDistribution(spt.Distribution):
         return t
 
 
+def spectral_norm(w, iteration=1):
+    w_shape = w.shape.as_list()
+    w = tf.reshape(w, [-1, w_shape[-1]])
+
+    u = tf.get_variable("u", [1, w_shape[-1]], initializer=tf.random_normal_initializer(), trainable=False)
+
+    u_hat = u
+    v_hat = None
+    for i in range(iteration):
+        """
+        power iteration
+        Usually iteration = 1 will be enough
+        """
+        v_ = tf.matmul(u_hat, tf.transpose(w))
+        v_hat = tf.nn.l2_normalize(v_)
+
+        u_ = tf.matmul(v_hat, w)
+        u_hat = tf.nn.l2_normalize(u_)
+
+    u_hat = tf.stop_gradient(u_hat)
+    v_hat = tf.stop_gradient(v_hat)
+
+    sigma = tf.matmul(tf.matmul(v_hat, w), tf.transpose(u_hat))
+
+    with tf.control_dependencies([u.assign(u_hat)]):
+        w_norm = w / sigma
+        w_norm = tf.reshape(w_norm, w_shape)
+
+    return w_norm
+
+
 @add_arg_scope
 def batch_norm(inputs, training=False, scope=None):
     return tf.layers.batch_normalization(inputs, training=training, name=scope)
@@ -420,7 +452,7 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
     #     posterior_flow
     # )
     # z = net.add('z', z_distribution, n_samples=n_z)
-    z = net.add('z', spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=-3)),
+    z = net.add('z', spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
                 n_samples=n_z, group_ndims=1)
 
     return net
@@ -494,11 +526,11 @@ def G_omega(z, output_dim):
             shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 256)
         )
         h_z = spt.layers.resnet_deconv2d_block(h_z, 256, strides=2, scope='level_1')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 256)  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 256)  # output: (14, 14, 32)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 256, strides=2, scope='level_2')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 256)  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 256)  # output: (14, 14, 32)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_3')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 128)  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 128)  # output: (14, 14, 32)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_4')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_5')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_6')  # output: (28, 28, 16)
@@ -522,16 +554,14 @@ def D_psi(x, y=None):
                    shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
+                   weight_norm=spectral_norm if config.gradient_penalty_algorithm == 'spectral' else None,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_1')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_2')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 128)  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_3')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 256)  # output: (7, 7, 64)
         h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_4')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 256)  # output: (7, 7, 64)
         h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_5')  # output: (7, 7, 64)
 
         h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
@@ -549,21 +579,21 @@ def D_kappa(x, y=None):
     normalizer_fn = None
     # x = tf.round(256.0 * x / 2 + 127.5)
     # x = (x - 127.5) / 256.0 * 2
+    if not config.kappa_on_x:
+        x = spt.ops.reshape_tail(x, 1, (config.x_shape[0], config.x_shape[1], -1))
     with arg_scope([spt.layers.resnet_conv2d_block],
                    kernel_size=config.kernel_size,
                    shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
+                   weight_norm=spectral_norm if config.gradient_penalty_algorithm == 'spectral' else None,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_1')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_2')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 128)  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_3')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 256)  # output: (7, 7, 64)
         h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_4')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 256)  # output: (7, 7, 64)
         h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_5')  # output: (7, 7, 64)
 
         h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
@@ -621,10 +651,10 @@ def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, i
     return net
 
 
-def get_gradient_penalty(input_origin_x, pn_net, space='x', D=D_psi):
+def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
     if space == 'z':
         x = input_origin_x
-        x_ = pn_net['z']
+        x_ = sample_x
         alpha = tf.random_uniform((config.batch_size, 1), minval=0, maxval=1.0)
         x = tf.reshape(x, (-1, config.z_dim))
         x_ = tf.reshape(x_, (-1, config.z_dim))
@@ -634,9 +664,9 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x', D=D_psi):
         interpolates = G_theta(interpolates)
         x = G_theta(x)
         x_ = G_theta(x_)
-    else:
+    elif space == 'x':
         x = input_origin_x
-        x_ = pn_net['x'].distribution.mean
+        x_ = sample_x
         alpha = tf.random_uniform(tf.concat([[config.batch_size], [1] * len(config.x_shape)], axis=0), minval=0,
                                   maxval=1.0)
         x = tf.reshape(x, (-1,) + config.x_shape)
@@ -644,6 +674,16 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x', D=D_psi):
         x_shape = config.x_shape
         differences = x - x_
         interpolates = x_ + alpha * differences
+    else:
+        x = input_origin_x
+        x_ = sample_x
+        alpha = tf.random_uniform((config.batch_size, 1), minval=0, maxval=1.0)
+        x = tf.reshape(x, (-1, config.z_dim))
+        x_ = tf.reshape(x_, (-1, config.z_dim))
+        x_shape = (config.z_dim,)
+        differences = x - x_
+        interpolates = x_ + alpha * differences
+
     gradient_penalty = 0.0
 
     if config.gradient_penalty_algorithm == 'interpolate':
@@ -686,9 +726,12 @@ def get_gradient_penalty(input_origin_x, pn_net, space='x', D=D_psi):
 
 def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None):
     with tf.name_scope('adv_prior_loss'):
-        gp_omega = get_gradient_penalty(input_origin_x, pn_omega, D=D_kappa)
-        gp_theta = get_gradient_penalty(input_origin_x, pn_theta)
-        gp_dg = get_gradient_penalty(p_net['z'], pn_theta, space='z')
+        if config.kappa_on_x or config.independent_gan:
+            gp_omega = get_gradient_penalty(input_origin_x, pn_omega['x'].distribution.mean, D=D_kappa)
+        else:
+            gp_omega = get_gradient_penalty(q_net['z'].distribution.mean, pn_omega['f_z'].distribution.mean, D=D_kappa, space='f_z')
+        gp_theta = get_gradient_penalty(input_origin_x, pn_theta['x'].distribution.mean)
+        gp_dg = get_gradient_penalty(q_net['z'].distribution.mean, pn_theta['z'], space='z')
 
         # VAE_loss = tf.reduce_mean(
         #     -log_px_z - p_net['z'].log_prob() + q_net['z'].log_prob()
@@ -716,15 +759,20 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None
             -p_net['z'].distribution.log_prob(p_net['z'], group_ndims=1, y=p_net['x']).log_energy_prob +
             q_net['z'].log_prob()
         )
-        train_grad_penalty = gp_theta + gp_dg  # + gp_omega
+        train_grad_penalty = config.pull_back_energy_weight * (gp_theta + gp_dg)  # + gp_omega
         train_kl = tf.maximum(train_kl, 0.0)  # TODO
         VAE_nD_loss = -train_recon + warm * train_kl
         VAE_loss = VAE_nD_loss + train_grad_penalty
         VAE_G_loss = tf.reduce_mean(D_psi(pn_theta['x'].distribution.mean))
         VAE_D_real = tf.reduce_mean(D_psi(input_origin_x))
 
-        energy_fake = D_kappa(pn_omega['x'].distribution.mean)
-        energy_real = D_kappa(input_origin_x)
+        if config.kappa_on_x or config.independent_gan:
+            energy_fake = D_kappa(pn_omega['x'].distribution.mean)
+            energy_real = D_kappa(input_origin_x)
+        else:
+            energy_fake = D_kappa(pn_omega['f_z'].distribution.mean)
+            energy_real = D_kappa(q_net['z'].distribution.mean)
+
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gp_omega
         adv_G_loss = tf.reduce_mean(energy_fake)
@@ -1021,6 +1069,7 @@ def main():
                 print(e)
 
             if config.independent_gan:
+                gan_images = (gan_images - 127.5) / 256.0 * 2
                 batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
                 batch_z = np.expand_dims(batch_z, 1)
             else:
@@ -1124,45 +1173,49 @@ def main():
             n_critical = config.n_critical
             # adversarial training
             for epoch in epoch_iterator:
-                step_iterator = MyIterator(train_flow)
-                while step_iterator.has_next:
-                    for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
-                        # discriminator training
-                        [_, batch_D_loss, batch_D_real] = session.run(
-                            [D_train_op, D_loss, D_real], feed_dict={
-                                input_x: x,
-                                input_origin_x: origin_x,
-                            })
-                        loop.collect_metrics(D_loss=batch_D_loss)
-                        loop.collect_metrics(D_real=batch_D_real)
+                if epoch <= config.warm_up_start:
+                    step_iterator = MyIterator(train_flow)
+                    while step_iterator.has_next:
+                        for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
+                            # vae training
+                            [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
+                             batch_train_recon_pure_energy, batch_VAE_D_real, batch_train_kl,
+                             batch_train_grad_penalty] = session.run(
+                                [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
+                                 train_recon_pure_energy, VAE_D_real,
+                                 train_kl, train_grad_penalty],
+                                feed_dict={
+                                    input_x: x,
+                                    input_origin_x: origin_x,
+                                    warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
+                                })
+                            loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
+                            loop.collect_metrics(xi=xi_value)
+                            loop.collect_metrics(beta=beta_value)
+                            loop.collect_metrics(train_recon=batch_train_recon)
+                            loop.collect_metrics(train_recon_pure_energy=batch_train_recon_pure_energy)
+                            loop.collect_metrics(train_recon_energy=batch_train_recon_energy)
+                            loop.collect_metrics(VAE_D_real=batch_VAE_D_real)
+                            loop.collect_metrics(train_kl=batch_train_kl)
+                            loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
+                else:
+                    step_iterator = MyIterator(train_flow)
+                    while step_iterator.has_next:
+                        for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
+                            # discriminator training
+                            [_, batch_D_loss, batch_D_real] = session.run(
+                                [D_train_op, D_loss, D_real], feed_dict={
+                                    input_x: x,
+                                    input_origin_x: origin_x,
+                                })
+                            loop.collect_metrics(D_loss=batch_D_loss)
+                            loop.collect_metrics(D_real=batch_D_real)
 
-                        # vae training
-                        [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
-                         batch_train_recon_pure_energy, batch_VAE_D_real, batch_train_kl,
-                         batch_train_grad_penalty] = session.run(
-                            [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
-                             train_recon_pure_energy, VAE_D_real,
-                             train_kl, train_grad_penalty],
-                            feed_dict={
-                                input_x: x,
-                                input_origin_x: origin_x,
-                                warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
+                        # generator training x
+                        [_, batch_G_loss] = session.run(
+                            [G_train_op, G_loss], feed_dict={
                             })
-                        loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
-                        loop.collect_metrics(xi=xi_value)
-                        loop.collect_metrics(beta=beta_value)
-                        loop.collect_metrics(train_recon=batch_train_recon)
-                        loop.collect_metrics(train_recon_pure_energy=batch_train_recon_pure_energy)
-                        loop.collect_metrics(train_recon_energy=batch_train_recon_energy)
-                        loop.collect_metrics(VAE_D_real=batch_VAE_D_real)
-                        loop.collect_metrics(train_kl=batch_train_kl)
-                        loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
-
-                    # generator training x
-                    [_, batch_G_loss] = session.run(
-                        [G_train_op, G_loss], feed_dict={
-                        })
-                    loop.collect_metrics(G_loss=batch_G_loss)
+                        loop.collect_metrics(G_loss=batch_G_loss)
 
                 if epoch in config.lr_anneal_epoch_freq:
                     learning_rate.anneal()
@@ -1200,7 +1253,7 @@ def main():
                     with loop.timeit('eval_time'):
                         evaluator.run()
 
-                if epoch == config.warm_up_start:
+                if epoch == config.max_epoch:
                     dataset_img = _x_train
                     sample_img = []
                     for i in range((len(x_train)) // config.sample_n_z + 1):
