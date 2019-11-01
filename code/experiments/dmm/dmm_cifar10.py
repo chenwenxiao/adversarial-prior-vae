@@ -39,7 +39,7 @@ class ExpConfig(spt.Config):
     result_dir = None
     write_summary = True
     max_epoch = 400
-    warm_up_start = 10
+    warm_up_start = 200
     warm_up_epoch = 200
     beta = 1e-8
     initial_xi = 0.0
@@ -48,14 +48,15 @@ class ExpConfig(spt.Config):
     max_step = None
     batch_size = 128
     noise_len = 8
-    smallest_step = 5e-4
+    smallest_step = 5e-5
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [50, 100, 150, 200, 250, 300, 350, 400]
+    lr_anneal_epoch_freq = [100, 200, 300, 400, 500, 600, 700, 800]
     lr_anneal_step_freq = None
 
-    independent_gan = True
-    kappa_on_x = True  # `kappa_on_x` is useful only when `independent_gan` is False
+    independent_gan = False
+    kappa_on_x = False  # `kappa_on_x` is useful only when `independent_gan` is False
+    use_dg = True
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
     gradient_penalty_weight = 2
     gradient_penalty_index = 6
@@ -79,6 +80,7 @@ class ExpConfig(spt.Config):
 
     len_train = 60000
     sample_n_z = 100
+    fid_samples = 5000
 
     epsilon = -20
 
@@ -452,7 +454,7 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
     #     posterior_flow
     # )
     # z = net.add('z', z_distribution, n_samples=n_z)
-    z = net.add('z', spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
+    z = net.add('z', spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=-5.0)),
                 n_samples=n_z, group_ndims=1)
 
     return net
@@ -536,7 +538,7 @@ def G_omega(z, output_dim):
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_6')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, output_dim, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
-        kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
+        kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh if config.independent_gan else None
     )
     return x_mean
 
@@ -729,9 +731,13 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None
         if config.kappa_on_x or config.independent_gan:
             gp_omega = get_gradient_penalty(input_origin_x, pn_omega['x'].distribution.mean, D=D_kappa)
         else:
-            gp_omega = get_gradient_penalty(q_net['z'].distribution.mean, pn_omega['f_z'].distribution.mean, D=D_kappa, space='f_z')
+            gp_omega = get_gradient_penalty(q_net['z'].distribution.mean, pn_omega['f_z'].distribution.mean, D=D_kappa,
+                                            space='f_z')
         gp_theta = get_gradient_penalty(input_origin_x, pn_theta['x'].distribution.mean)
-        gp_dg = get_gradient_penalty(q_net['z'].distribution.mean, pn_theta['z'], space='z')
+        if config.use_dg:
+            gp_dg = get_gradient_penalty(q_net['z'].distribution.mean, pn_theta['z'], space='z')
+        else:
+            gp_dg = 0.0
 
         # VAE_loss = tf.reduce_mean(
         #     -log_px_z - p_net['z'].log_prob() + q_net['z'].log_prob()
@@ -1179,10 +1185,10 @@ def main():
                         for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
                             # vae training
                             [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
-                             batch_train_recon_pure_energy, batch_VAE_D_real, batch_train_kl,
+                             batch_train_recon_pure_energy, batch_VAE_D_real, batch_VAE_G_loss, batch_train_kl,
                              batch_train_grad_penalty] = session.run(
                                 [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
-                                 train_recon_pure_energy, VAE_D_real,
+                                 train_recon_pure_energy, VAE_D_real, VAE_G_loss,
                                  train_kl, train_grad_penalty],
                                 feed_dict={
                                     input_x: x,
@@ -1196,6 +1202,7 @@ def main():
                             loop.collect_metrics(train_recon_pure_energy=batch_train_recon_pure_energy)
                             loop.collect_metrics(train_recon_energy=batch_train_recon_energy)
                             loop.collect_metrics(VAE_D_real=batch_VAE_D_real)
+                            loop.collect_metrics(VAE_G_loss=batch_VAE_G_loss)
                             loop.collect_metrics(train_kl=batch_train_kl)
                             loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
                 else:
@@ -1272,7 +1279,7 @@ def main():
                 if epoch == config.max_epoch:
                     dataset_img = _x_train
                     sample_img = []
-                    for i in range(len(x_train) // config.sample_n_z + 1):
+                    for i in range(config.fid_samples // config.sample_n_z + 1):
                         images = plot_samples(loop)
                         sample_img.append(images)
 
