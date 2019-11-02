@@ -1081,26 +1081,27 @@ def main():
             else:
                 batch_z = session.run(gan_z)
 
-            for i in range(0, 101):
-                [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
-                 batch_history_ratio] = session.run(
-                    [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
-                    feed_dict={
-                        initial_z: batch_z
-                    })
-                batch_z = batch_history_z[-1]
-                if i % 10 == 0:
-                    print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
-                    try:
-                        save_images_collection(
-                            images=np.round(images),
-                            filename='plotting/sample/{}-MALA-{}.png'.format(loop.epoch, i),
-                            grid_size=(10, 10),
-                            results=results,
-                        )
-                    except Exception as e:
-                        print(e)
-            return images
+            if loop.epoch > config.warm_up_start:
+                for i in range(0, 101):
+                    [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
+                     batch_history_ratio] = session.run(
+                        [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
+                        feed_dict={
+                            initial_z: batch_z
+                        })
+                    batch_z = batch_history_z[-1]
+                    if i % 10 == 0:
+                        print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
+                        try:
+                            save_images_collection(
+                                images=np.round(images),
+                                filename='plotting/sample/{}-MALA-{}.png'.format(loop.epoch, i),
+                                grid_size=(10, 10),
+                                results=results,
+                            )
+                        except Exception as e:
+                            print(e)
+                return images
 
     # prepare for training and testing data
     (_x_train, _y_train), (_x_test, _y_test) = \
