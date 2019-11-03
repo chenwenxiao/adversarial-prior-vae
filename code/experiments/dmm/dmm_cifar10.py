@@ -48,7 +48,7 @@ class ExpConfig(spt.Config):
     max_step = None
     batch_size = 128
     noise_len = 8
-    smallest_step = 5e-5
+    smallest_step = 5e-4
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = range(100, max_epoch + 1, 100)
