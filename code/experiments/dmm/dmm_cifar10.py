@@ -1026,7 +1026,7 @@ def main():
         x_origin_plots = tf.clip_by_value(x_origin_plots, 0, 255)
         reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
 
-    def plot_samples(loop):
+    def plot_samples(loop, return_mala=True):
         with loop.timeit('plot_time'):
             # plot reconstructs
             for [x] in reconstruct_train_flow:
@@ -1075,14 +1075,14 @@ def main():
             except Exception as e:
                 print(e)
 
-            if config.independent_gan:
-                gan_images = (gan_images - 127.5) / 256.0 * 2
-                batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
-                batch_z = np.expand_dims(batch_z, 1)
-            else:
-                batch_z = session.run(gan_z)
-
             if loop.epoch > config.warm_up_start:
+
+                if config.independent_gan:
+                    gan_images = (gan_images - 127.5) / 256.0 * 2
+                    batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
+                    batch_z = np.expand_dims(batch_z, 1)
+                else:
+                    batch_z = session.run(gan_z)
                 for i in range(0, 101):
                     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                      batch_history_ratio] = session.run(
@@ -1102,7 +1102,34 @@ def main():
                             )
                         except Exception as e:
                             print(e)
-                return images
+
+                mala_images = images
+                batch_z = batch_reconstruct_z
+                for i in range(0, 101):
+                    [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
+                     batch_history_ratio] = session.run(
+                        [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
+                        feed_dict={
+                            initial_z: batch_z
+                        })
+                    batch_z = batch_history_z[-1]
+                    if i % 10 == 0:
+                        print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
+                        try:
+                            save_images_collection(
+                                images=np.round(images),
+                                filename='plotting/sample/{}-ORI-{}.png'.format(loop.epoch, i),
+                                grid_size=(10, 10),
+                                results=results,
+                            )
+                        except Exception as e:
+                            print(e)
+                ori_images = images
+
+                if return_mala:
+                    return mala_images
+                else:
+                    return ori_images
 
     # prepare for training and testing data
     (_x_train, _y_train), (_x_test, _y_test) = \
