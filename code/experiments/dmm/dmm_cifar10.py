@@ -1064,7 +1064,10 @@ def main():
                 break
 
             # plot samples
-            gan_images = session.run(gan_plots)
+            if config.independent_gan:
+                gan_images = session.run(gan_plots)
+            else:
+                gan_images, batch_z = session.run([gan_plots, gan_z])
             try:
                 save_images_collection(
                     images=np.round(gan_images),
@@ -1081,8 +1084,7 @@ def main():
                     gan_images = (gan_images - 127.5) / 256.0 * 2
                     batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
                     batch_z = np.expand_dims(batch_z, 1)
-                else:
-                    batch_z = session.run(gan_z)
+
                 for i in range(0, 101):
                     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                      batch_history_ratio] = session.run(
