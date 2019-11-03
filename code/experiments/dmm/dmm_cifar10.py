@@ -51,7 +51,7 @@ class ExpConfig(spt.Config):
     smallest_step = 5e-5
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [100, 200, 300, 400, 500, 600, 700, 800]
+    lr_anneal_epoch_freq = range(100, max_epoch + 1, 100)
     lr_anneal_step_freq = None
 
     independent_gan = False
@@ -82,7 +82,8 @@ class ExpConfig(spt.Config):
     sample_n_z = 100
     fid_samples = 5000
 
-    epsilon = -20
+    epsilon = -20.0
+    min_logstd_of_q = -3.0
 
     @property
     def x_shape(self):
@@ -454,7 +455,7 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
     #     posterior_flow
     # )
     # z = net.add('z', z_distribution, n_samples=n_z)
-    z = net.add('z', spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=-0.0)),
+    z = net.add('z', spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q)),
                 n_samples=n_z, group_ndims=1)
 
     return net
