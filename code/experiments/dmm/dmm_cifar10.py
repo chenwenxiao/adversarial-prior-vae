@@ -51,7 +51,7 @@ class ExpConfig(spt.Config):
     smallest_step = 5e-4
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = range(100, max_epoch + 1, 100)
+    lr_anneal_epoch_freq = [100, 200, 300, 400, 500, 600, 700, 800]
     lr_anneal_step_freq = None
 
     independent_gan = False
