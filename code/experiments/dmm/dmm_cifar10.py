@@ -997,10 +997,10 @@ def main():
     # derive the plotting function
     with tf.name_scope('plotting'):
         sample_n_z = config.sample_n_z
-        gan_plots = tf.reshape(p_omega_net(n_z=sample_n_z, beta=beta)['x'].distribution.mean,
-                               (-1,) + config.x_shape)
+        gan_net = p_omega_net(n_z=sample_n_z, beta=beta)
+        gan_plots = tf.reshape(gan_net['x'].distribution.mean, (-1,) + config.x_shape)
         if not config.independent_gan:
-            gan_z = p_omega_net(n_z=sample_n_z, beta=beta)['f_z']
+            gan_z = gan_net['f_z']
         initial_z = tf.placeholder(
             dtype=tf.float32, shape=(sample_n_z, 1, config.z_dim), name='initial_z')
         gan_plots = 256.0 * gan_plots / 2 + 127.5
@@ -1083,7 +1083,7 @@ def main():
                 if config.independent_gan:
                     gan_images = (gan_images - 127.5) / 256.0 * 2
                     batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
-                    batch_z = np.expand_dims(batch_z, 1)
+                    batch_z = np.expand_dims(batch_z, axis=1)
 
                 for i in range(0, 101):
                     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
@@ -1107,6 +1107,7 @@ def main():
 
                 mala_images = images
                 batch_z = batch_reconstruct_z
+                batch_z = np.expand_dims(batch_z, axis=1)
                 for i in range(0, 101):
                     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                      batch_history_ratio] = session.run(
