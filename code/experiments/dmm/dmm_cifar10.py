@@ -57,9 +57,9 @@ class ExpConfig(spt.Config):
     independent_gan = False
     kappa_on_x = False  # `kappa_on_x` is useful only when `independent_gan` is False
     use_dg = False
-    gradient_penalty_algorithm = 'interpolate'  # both or interpolate
-    gradient_penalty_weight = 2
-    gradient_penalty_index = 6
+    gradient_penalty_algorithm = 'interpolate-gp'  # both or interpolate
+    gradient_penalty_weight = 10
+    gradient_penalty_index = 2
     kl_balance_weight = 1.0
 
     n_critical = 5
@@ -70,7 +70,7 @@ class ExpConfig(spt.Config):
     test_n_qz = 10
     test_batch_size = 64
     test_epoch_freq = 200
-    plot_epoch_freq = 20
+    plot_epoch_freq = 50
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
@@ -1174,7 +1174,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = None
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/1c/fb/d4e63c432be90f450cd5/checkpoint/checkpoint/checkpoint.dat-312000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
