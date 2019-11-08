@@ -57,9 +57,9 @@ class ExpConfig(spt.Config):
     independent_gan = False
     kappa_on_x = False  # `kappa_on_x` is useful only when `independent_gan` is False
     use_dg = False
-    gradient_penalty_algorithm = 'interpolate-gp'  # both or interpolate
-    gradient_penalty_weight = 10
-    gradient_penalty_index = 2
+    gradient_penalty_algorithm = 'interpolate'  # both or interpolate
+    gradient_penalty_weight = 2
+    gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
     n_critical = 5
@@ -727,12 +727,12 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
     return gradient_penalty
 
 
-def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None):
+def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None, input_qz=None):
     with tf.name_scope('adv_prior_loss'):
         if config.kappa_on_x or config.independent_gan:
             gp_omega = get_gradient_penalty(input_origin_x, pn_omega['x'].distribution.mean, D=D_kappa)
         else:
-            gp_omega = get_gradient_penalty(q_net['z'].distribution.mean, pn_omega['f_z'].distribution.mean, D=D_kappa,
+            gp_omega = get_gradient_penalty(input_qz, pn_omega['f_z'].distribution.mean, D=D_kappa,
                                             space='f_z')
         gp_theta = get_gradient_penalty(input_origin_x, pn_theta['x'].distribution.mean)
         if config.use_dg:
@@ -778,7 +778,7 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None
             energy_real = D_kappa(input_origin_x)
         else:
             energy_fake = D_kappa(pn_omega['f_z'].distribution.mean)
-            energy_real = D_kappa(q_net['z'].distribution.mean)
+            energy_real = D_kappa(input_qz)
 
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gp_omega
@@ -874,6 +874,8 @@ def main():
     # input placeholders
     input_x = tf.placeholder(
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_x')
+    input_qz = tf.placeholder(
+        dtype=tf.float32, shape=(None, config.z_dim), name='input_qz')
     input_origin_x = tf.placeholder(
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_origin_x')
     warm = tf.placeholder(
@@ -892,7 +894,7 @@ def main():
         init_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
         init_p_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz, beta=beta)
         init_loss = sum(
-            get_all_loss(init_q_net, init_p_net, init_pn_omega, init_pn_theta, 1.0, input_origin_x))
+            get_all_loss(init_q_net, init_p_net, init_pn_omega, init_pn_theta, 1.0, input_origin_x, input_qz))
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
@@ -905,7 +907,7 @@ def main():
                             n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
 
         VAE_nD_loss, VAE_loss, VAE_G_loss, VAE_D_real, D_loss, G_loss, D_real = get_all_loss(
-            train_q_net, train_p_net, train_pn_omega, train_pn_theta, warm, input_origin_x)
+            train_q_net, train_p_net, train_pn_omega, train_pn_theta, warm, input_origin_x, input_qz)
         VAE_loss += tf.losses.get_regularization_loss()
         VAE_nD_loss += tf.losses.get_regularization_loss()
         D_loss += tf.losses.get_regularization_loss()
@@ -1026,7 +1028,7 @@ def main():
         x_origin_plots = tf.clip_by_value(x_origin_plots, 0, 255)
         reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
 
-    def plot_samples(loop, return_mala=True):
+    def plot_samples(loop, return_image='mala'):
         with loop.timeit('plot_time'):
             # plot reconstructs
             for [x] in reconstruct_train_flow:
@@ -1067,7 +1069,12 @@ def main():
             if config.independent_gan:
                 gan_images = session.run(gan_plots)
             else:
-                gan_images, batch_z = session.run([gan_plots, gan_z])
+                batch_z = session.run(gan_z)
+                print(batch_z.shape)
+                batch_z = batch_z * _qz_std + _qz_mean
+                gan_images = session.run(x_origin_plots, feed_dict={
+                    initial_z: batch_z
+                })
             try:
                 save_images_collection(
                     images=np.round(gan_images),
@@ -1078,6 +1085,8 @@ def main():
             except Exception as e:
                 print(e)
 
+            mala_images = None
+            ori_images = None
             if loop.epoch > config.warm_up_start:
 
                 if config.independent_gan:
@@ -1129,10 +1138,12 @@ def main():
                             print(e)
                 ori_images = images
 
-                if return_mala:
-                    return mala_images
-                else:
-                    return ori_images
+            if return_image == 'mala':
+                return mala_images
+            elif return_image == 'ori':
+                return ori_images
+            else:
+                return gan_images
 
     # prepare for training and testing data
     (_x_train, _y_train), (_x_test, _y_test) = \
@@ -1160,10 +1171,10 @@ def main():
         spt.utils.ensure_variables_initialized()
 
         # initialize the network
-        for [x, origin_x] in train_flow:
-            print('Network initialized, first-batch loss is {:.6g}.\n'.
-                  format(session.run(init_loss, feed_dict={input_x: x, input_origin_x: origin_x})))
-            break
+        # for [x, origin_x] in train_flow:
+        #     print('Network initialized, first-batch loss is {:.6g}.\n'.
+        #           format(session.run(init_loss, feed_dict={input_x: x, input_origin_x: origin_x})))
+        #     break
 
         # if config.z_dim == 512:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/48/19/6f3b6c3ef49ded8ba2d5/checkpoint/checkpoint/checkpoint.dat-390000'
@@ -1211,6 +1222,23 @@ def main():
             n_critical = config.n_critical
             # adversarial training
             for epoch in epoch_iterator:
+                if epoch == config.warm_up_start + 1:
+                    _qz = []
+                    for [x] in reconstruct_train_flow:
+                        batch_qz = session.run(train_q_net['z'].distribution.mean, feed_dict={
+                            input_x: x,
+                        })
+                        _qz.append(batch_qz)
+                    _qz = np.concatenate(_qz, axis=0)
+                    print(_qz.shape)
+                    _qz_mean, _qz_std = np.mean(_qz, axis=0), np.std(_qz, axis=0)
+                    print(_qz_mean.shape, _qz_std.shape)
+                    print(_qz_mean, _qz_std)
+                    _qz_std = _qz_std * 3.0
+                    _qz = (_qz - _qz_mean) / _qz_std
+                    qz_flow = spt.DataFlow.arrays([_qz], config.batch_size, shuffle=True,
+                                                  skip_incomplete=True)
+
                 if epoch <= config.warm_up_start:
                     step_iterator = MyIterator(train_flow)
                     while step_iterator.has_next:
@@ -1238,14 +1266,13 @@ def main():
                             loop.collect_metrics(train_kl=batch_train_kl)
                             loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
                 else:
-                    step_iterator = MyIterator(train_flow)
+                    step_iterator = MyIterator(qz_flow)
                     while step_iterator.has_next:
-                        for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
+                        for step, [qz] in loop.iter_steps(limited(step_iterator, n_critical)):
                             # discriminator training
                             [_, batch_D_loss, batch_D_real] = session.run(
                                 [D_train_op, D_loss, D_real], feed_dict={
-                                    input_x: x,
-                                    input_origin_x: origin_x,
+                                    input_qz: qz,
                                 })
                             loop.collect_metrics(D_loss=batch_D_loss)
                             loop.collect_metrics(D_real=batch_D_real)
@@ -1295,8 +1322,9 @@ def main():
                 if epoch == config.max_epoch:
                     dataset_img = _x_train
                     sample_img = []
-                    for i in range((len(x_train)) // config.sample_n_z + 1):
-                        sample_img.append(session.run(gan_plots))
+                    for i in range(config.fid_samples // config.sample_n_z + 1):
+                        images = plot_samples(loop, return_image='gan')
+                        sample_img.append(images)
                     sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
                     sample_img = sample_img[:len(dataset_img)]
                     sample_img = np.asarray(sample_img)
@@ -1312,7 +1340,7 @@ def main():
                     dataset_img = _x_train
                     sample_img = []
                     for i in range(config.fid_samples // config.sample_n_z + 1):
-                        images = plot_samples(loop)
+                        images = plot_samples(loop, return_image='mala')
                         sample_img.append(images)
 
                     sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
