@@ -1185,7 +1185,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/1c/fb/d4e63c432be90f450cd5/checkpoint/checkpoint/checkpoint.dat-312000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/4c/fb/d434dabfcaec719e0cd5/checkpoint/checkpoint/checkpoint.dat-312000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1224,17 +1224,31 @@ def main():
             for epoch in epoch_iterator:
                 if epoch == config.warm_up_start + 1:
                     _qz = []
+                    count = 0
                     for [x] in reconstruct_train_flow:
                         batch_qz = session.run(train_q_net['z'].distribution.mean, feed_dict={
                             input_x: x,
                         })
+                        batch_qz = np.expand_dims(batch_qz, axis=1)
+                        for i in range(0, 101):
+                            batch_history_z = session.run(
+                                plot_history_z,
+                                feed_dict={
+                                    initial_z: batch_qz
+                                })
+                            batch_qz = batch_history_z[-1]
                         _qz.append(batch_qz)
+                        count += x.shape[0]
+                        print("Preparing q(z): {}/{}".format(count, config.fid_samples))
+                        if config > config.fid_samples:
+                            break
                     _qz = np.concatenate(_qz, axis=0)
+                    np.save(results.system_path('qz'), _qz)
                     print(_qz.shape)
                     _qz_mean, _qz_std = np.mean(_qz, axis=0), np.std(_qz, axis=0)
                     print(_qz_mean.shape, _qz_std.shape)
                     print(_qz_mean, _qz_std)
-                    _qz_std = _qz_std * 3.0
+                    _qz_std = _qz_std
                     _qz = (_qz - _qz_mean) / _qz_std
                     qz_flow = spt.DataFlow.arrays([_qz], config.batch_size, shuffle=True,
                                                   skip_incomplete=True)
