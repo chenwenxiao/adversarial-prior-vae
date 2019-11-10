@@ -1094,7 +1094,7 @@ def main():
                     batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
                     batch_z = np.expand_dims(batch_z, axis=1)
 
-                for i in range(0, 501):
+                for i in range(0, 1001):
                     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                      batch_history_ratio] = session.run(
                         [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
@@ -1102,7 +1102,7 @@ def main():
                             initial_z: batch_z
                         })
                     batch_z = batch_history_z[-1]
-                    if i % 10 == 0:
+                    if i % 100 == 0:
                         print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
                         try:
                             save_images_collection(
@@ -1117,7 +1117,7 @@ def main():
                 mala_images = images
                 batch_z = batch_reconstruct_z
                 batch_z = np.expand_dims(batch_z, axis=1)
-                for i in range(0, 501):
+                for i in range(0, 1001):
                     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                      batch_history_ratio] = session.run(
                         [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
@@ -1125,7 +1125,7 @@ def main():
                             initial_z: batch_z
                         })
                     batch_z = batch_history_z[-1]
-                    if i % 10 == 0:
+                    if i % 100 == 0:
                         print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
                         try:
                             save_images_collection(
