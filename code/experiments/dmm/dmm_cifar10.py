@@ -48,7 +48,7 @@ class ExpConfig(spt.Config):
     max_step = None
     batch_size = 128
     noise_len = 8
-    smallest_step = 5e-4
+    smallest_step = 5e-5
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600]
@@ -70,7 +70,7 @@ class ExpConfig(spt.Config):
     test_n_qz = 10
     test_batch_size = 64
     test_epoch_freq = 200
-    plot_epoch_freq = 50
+    plot_epoch_freq = 200
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
@@ -875,7 +875,7 @@ def main():
     input_x = tf.placeholder(
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_x')
     input_qz = tf.placeholder(
-        dtype=tf.float32, shape=(None, config.z_dim), name='input_qz')
+        dtype=tf.float32, shape=(None, 1, config.z_dim), name='input_qz')
     input_origin_x = tf.placeholder(
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_origin_x')
     warm = tf.placeholder(
@@ -1002,7 +1002,7 @@ def main():
         gan_net = p_omega_net(n_z=sample_n_z, beta=beta)
         gan_plots = tf.reshape(gan_net['x'].distribution.mean, (-1,) + config.x_shape)
         if not config.independent_gan:
-            gan_z = gan_net['f_z']
+            gan_z = gan_net['f_z'].distribution.mean
         initial_z = tf.placeholder(
             dtype=tf.float32, shape=(sample_n_z, 1, config.z_dim), name='initial_z')
         gan_plots = 256.0 * gan_plots / 2 + 127.5
@@ -1094,7 +1094,7 @@ def main():
                     batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
                     batch_z = np.expand_dims(batch_z, axis=1)
 
-                for i in range(0, 101):
+                for i in range(0, 501):
                     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                      batch_history_ratio] = session.run(
                         [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
@@ -1117,7 +1117,7 @@ def main():
                 mala_images = images
                 batch_z = batch_reconstruct_z
                 batch_z = np.expand_dims(batch_z, axis=1)
-                for i in range(0, 101):
+                for i in range(0, 501):
                     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                      batch_history_ratio] = session.run(
                         [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
@@ -1230,25 +1230,25 @@ def main():
                             input_x: x,
                         })
                         batch_qz = np.expand_dims(batch_qz, axis=1)
-                        for i in range(0, 101):
-                            batch_history_z = session.run(
-                                plot_history_z,
-                                feed_dict={
-                                    initial_z: batch_qz
-                                })
-                            batch_qz = batch_history_z[-1]
+                        # for i in range(0, 101):
+                        #     batch_history_z = session.run(
+                        #         plot_history_z,
+                        #         feed_dict={
+                        #             initial_z: batch_qz
+                        #         })
+                        #     batch_qz = batch_history_z[-1]
                         _qz.append(batch_qz)
-                        count += x.shape[0]
-                        print("Preparing q(z): {}/{}".format(count, config.fid_samples))
-                        if config > config.fid_samples:
-                            break
+                        # count += x.shape[0]
+                        # print("Preparing q(z): {}/{}".format(count, config.fid_samples))
+                        # if count >= 5000:
+                        #     break
                     _qz = np.concatenate(_qz, axis=0)
-                    np.save(results.system_path('qz'), _qz)
                     print(_qz.shape)
                     _qz_mean, _qz_std = np.mean(_qz, axis=0), np.std(_qz, axis=0)
                     print(_qz_mean.shape, _qz_std.shape)
                     print(_qz_mean, _qz_std)
-                    _qz_std = _qz_std
+                    _qz_mean = 0.0
+                    _qz_std = 1.0
                     _qz = (_qz - _qz_mean) / _qz_std
                     qz_flow = spt.DataFlow.arrays([_qz], config.batch_size, shuffle=True,
                                                   skip_incomplete=True)
