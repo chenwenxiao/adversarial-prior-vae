@@ -251,7 +251,7 @@ class EnergyDistribution(spt.Distribution):
         grad_energy_z = tf.reshape(grad_energy_z, shape=z.shape)
         eps = tf.random.normal(
             shape=z.shape
-        ) * np.sqrt(self._mcmc_alpha * 2)
+        ) * tf.sqrt(self._mcmc_alpha * 2)
         z_prime = z - self._mcmc_alpha * grad_energy_z + eps
         return energy_z, grad_energy_z, z_prime, pure_energy_z
 
@@ -880,9 +880,9 @@ def main():
     input_origin_x = tf.placeholder(
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_origin_x')
     warm = tf.placeholder(
-        dtype=tf.float32, shape=(), name='warm')
+        dtype=tf.float32, shape=(1, ), name='warm')
     mcmc_alpha = tf.placeholder(
-        dtype=tf.float32, shape=(), name='mcmc_alpha')
+        dtype=tf.float32, shape=(1, ), name='mcmc_alpha')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
     beta = tf.Variable(initial_value=0.1, dtype=tf.float32, name='beta', trainable=True)
@@ -1095,7 +1095,7 @@ def main():
                     batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
                     batch_z = np.expand_dims(batch_z, axis=1)
                 step_length = config.smallest_step * (2 ** 5)
-                for i in range(1, 501):
+                for i in range(1, 1001):
                     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                      batch_history_ratio] = session.run(
                         [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
@@ -1104,8 +1104,10 @@ def main():
                             mcmc_alpha: step_length
                         })
                     batch_z = batch_history_z[-1]
-                    if i % 100 == 0:
+                    if i % 200 == 0:
                         step_length = step_length / 2.0
+
+                    if i % 100 == 0:
                         print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
                         try:
                             save_images_collection(
