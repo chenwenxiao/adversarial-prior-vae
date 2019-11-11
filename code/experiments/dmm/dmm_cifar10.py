@@ -1094,7 +1094,7 @@ def main():
                     gan_images = (gan_images - 127.5) / 256.0 * 2
                     batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
                     batch_z = np.expand_dims(batch_z, axis=1)
-                step_length = config.smallest_step * (2 ** 5)
+                step_length = config.smallest_step * (2 ** 4)
                 for i in range(1, 1001):
                     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                      batch_history_ratio] = session.run(
