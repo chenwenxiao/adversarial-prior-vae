@@ -80,7 +80,7 @@ class ExpConfig(spt.Config):
 
     len_train = 60000
     sample_n_z = 100
-    fid_samples = 5000
+    fid_samples = 1000
 
     epsilon = -20.0
     min_logstd_of_q = -3.0
@@ -608,7 +608,8 @@ def D_kappa(x, y=None):
 
 @add_arg_scope
 @spt.global_reuse
-def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial_z=None):
+def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial_z=None,
+          mcmc_alpha=config.smallest_step):
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
     normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
@@ -619,7 +620,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
     # xi = tf.square(xi)
     xi = tf.nn.sigmoid(xi)  # TODO
     pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator,
-                            initial_z=initial_z)
+                            initial_z=initial_z, mcmc_alpha=mcmc_alpha)
     z = net.add('z', pz, n_samples=n_z)
     x_mean, x_logstd = G_theta(z, return_std=True)
     x = net.add('x', DiscretizedLogistic(
@@ -880,6 +881,8 @@ def main():
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_origin_x')
     warm = tf.placeholder(
         dtype=tf.float32, shape=(), name='warm')
+    mcmc_alpha = tf.placeholder(
+        dtype=tf.float32, shape=(), name='mcmc_alpha')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
     beta = tf.Variable(initial_value=0.1, dtype=tf.float32, name='beta', trainable=True)
@@ -1006,7 +1009,7 @@ def main():
         initial_z = tf.placeholder(
             dtype=tf.float32, shape=(sample_n_z, 1, config.z_dim), name='initial_z')
         gan_plots = 256.0 * gan_plots / 2 + 127.5
-        plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z)
+        plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z, mcmc_alpha=mcmc_alpha)
         plot_origin_net = p_net(n_z=sample_n_z, mcmc_iterator=0, beta=beta, initial_z=initial_z)
         plot_history_e_z = plot_net['z'].history_e_z
         plot_history_z = plot_net['z'].history_z
@@ -1070,8 +1073,6 @@ def main():
                 gan_images = session.run(gan_plots)
             else:
                 batch_z = session.run(gan_z)
-                print(batch_z.shape)
-                batch_z = batch_z * _qz_std + _qz_mean
                 gan_images = session.run(x_origin_plots, feed_dict={
                     initial_z: batch_z
                 })
@@ -1093,16 +1094,18 @@ def main():
                     gan_images = (gan_images - 127.5) / 256.0 * 2
                     batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
                     batch_z = np.expand_dims(batch_z, axis=1)
-
-                for i in range(0, 1001):
+                step_length = config.smallest_step * (2 ** 5)
+                for i in range(1, 501):
                     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                      batch_history_ratio] = session.run(
                         [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
                         feed_dict={
-                            initial_z: batch_z
+                            initial_z: batch_z,
+                            mcmc_alpha: step_length
                         })
                     batch_z = batch_history_z[-1]
                     if i % 100 == 0:
+                        step_length = step_length / 2.0
                         print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
                         try:
                             save_images_collection(
@@ -1117,12 +1120,13 @@ def main():
                 mala_images = images
                 batch_z = batch_reconstruct_z
                 batch_z = np.expand_dims(batch_z, axis=1)
-                for i in range(0, 1001):
+                for i in range(1, 101):
                     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                      batch_history_ratio] = session.run(
                         [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
                         feed_dict={
-                            initial_z: batch_z
+                            initial_z: batch_z,
+                            mcmc_alpha: config.smallest_step
                         })
                     batch_z = batch_history_z[-1]
                     if i % 100 == 0:
@@ -1224,32 +1228,13 @@ def main():
             for epoch in epoch_iterator:
                 if epoch == config.warm_up_start + 1:
                     _qz = []
-                    count = 0
                     for [x] in reconstruct_train_flow:
                         batch_qz = session.run(train_q_net['z'].distribution.mean, feed_dict={
                             input_x: x,
                         })
                         batch_qz = np.expand_dims(batch_qz, axis=1)
-                        # for i in range(0, 101):
-                        #     batch_history_z = session.run(
-                        #         plot_history_z,
-                        #         feed_dict={
-                        #             initial_z: batch_qz
-                        #         })
-                        #     batch_qz = batch_history_z[-1]
                         _qz.append(batch_qz)
-                        # count += x.shape[0]
-                        # print("Preparing q(z): {}/{}".format(count, config.fid_samples))
-                        # if count >= 5000:
-                        #     break
                     _qz = np.concatenate(_qz, axis=0)
-                    print(_qz.shape)
-                    _qz_mean, _qz_std = np.mean(_qz, axis=0), np.std(_qz, axis=0)
-                    print(_qz_mean.shape, _qz_std.shape)
-                    print(_qz_mean, _qz_std)
-                    _qz_mean = 0.0
-                    _qz_std = 1.0
-                    _qz = (_qz - _qz_mean) / _qz_std
                     qz_flow = spt.DataFlow.arrays([_qz], config.batch_size, shuffle=True,
                                                   skip_incomplete=True)
 
