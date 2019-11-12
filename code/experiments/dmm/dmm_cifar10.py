@@ -1320,7 +1320,7 @@ def main():
                     gan_img = []
                     mala_img = []
                     ori_img = []
-                    for i in range(config.fid_samples // config.sample_n_z + 1):
+                    for i in range(config.fid_samples // config.sample_n_z):
                         gan_images, mala_images, ori_images = plot_samples(loop)
                         gan_img.append(gan_images)
                         mala_img.append(mala_images)
