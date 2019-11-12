@@ -6,7 +6,7 @@ from skimage import io
 from sklearn.model_selection import train_test_split
 
 TRAIN_PATH = '/home/cwx17/data/svhn/train_32x32.mat'
-TEST_PATH = '/home/cwx17/data/svhn/train_32x32.mat'
+TEST_PATH = '/home/cwx17/data/svhn/test_32x32.mat'
 
 
 def load_data(path):
