@@ -1316,6 +1316,7 @@ def main():
                         evaluator.run()
 
                 if epoch == config.max_epoch:
+                    loop.make_checkpoint()
                     dataset_img = _x_train
                     gan_img = []
                     mala_img = []
