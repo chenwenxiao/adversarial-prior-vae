@@ -1077,25 +1077,33 @@ def main():
                     batch_z = []
                     batch_z_energy = []
                     batch_z_pure_energy = []
-                    for i in range(10):
-                        _, __, ___, ____ = session.run(
-                            [gan_plots, gan_z, gan_z_energy, gan_z_pure_energy])
-                        gan_images.append(_)
-                        batch_z.append(__)
-                        batch_z_energy.append(___)
-                        batch_z_pure_energy.append(____)
-                    gan_images = np.concatenate(gan_images)
-                    batch_z = np.concatenate(batch_z)
-                    batch_z_energy = np.concatenate(batch_z_energy)
-                    batch_z_pure_energy = np.concatenate(batch_z_pure_energy)
+
+                    with loop.timeit('gan_sample_time'):
+                        for i in range(100):
+                            _, __, ___, ____ = session.run(
+                                [gan_plots, gan_z, gan_z_energy, gan_z_pure_energy])
+                            gan_images.append(_)
+                            batch_z.append(__)
+                            batch_z_energy.append(___)
+                            batch_z_pure_energy.append(____)
+                        gan_images = np.concatenate(gan_images)
+                        batch_z = np.concatenate(batch_z)
+                        batch_z_energy = np.concatenate(batch_z_energy)
+                        batch_z_pure_energy = np.concatenate(batch_z_pure_energy)
 
                     pure_index = np.reshape(batch_z_pure_energy, (-1,))
                     pure_index = np.argsort(pure_index, axis=0)
 
-                    gan_images = gan_images[pure_index[:sample_n_z]]
-                    batch_z = batch_z[pure_index[:sample_n_z]]
-                    batch_z_energy = batch_z_energy[pure_index[:sample_n_z]]
-                    batch_z_pure_energy = batch_z_pure_energy[pure_index[:sample_n_z]]
+                    gan_images = gan_images[pure_index]
+                    batch_z = batch_z[pure_index]
+                    batch_z_energy = batch_z_energy[pure_index]
+                    batch_z_pure_energy = batch_z_pure_energy[pure_index]
+
+                    start_point = 300
+                    gan_images = gan_images[start_point:start_point + sample_n_z]
+                    batch_z = batch_z[start_point:start_point + sample_n_z]
+                    batch_z_energy = batch_z_energy[start_point:start_point + sample_n_z]
+                    batch_z_pure_energy = batch_z_pure_energy[start_point:start_point + sample_n_z]
                 try:
                     save_images_collection(
                         images=np.round(gan_images),
@@ -1115,27 +1123,28 @@ def main():
                         batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
                         batch_z = np.expand_dims(batch_z, axis=1)
                     step_length = config.smallest_step
-                    for i in range(0, 1001):
-                        [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
-                         batch_history_ratio] = session.run(
-                            [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
-                            feed_dict={
-                                initial_z: batch_z,
-                                mcmc_alpha: np.asarray([step_length])
-                            })
-                        batch_z = batch_history_z[-1]
+                    with loop.timeit('mala_sample_time'):
+                        for i in range(0, 1001):
+                            [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
+                             batch_history_ratio] = session.run(
+                                [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
+                                feed_dict={
+                                    initial_z: batch_z,
+                                    mcmc_alpha: np.asarray([step_length])
+                                })
+                            batch_z = batch_history_z[-1]
 
-                        if i % 100 == 0:
-                            print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
-                            try:
-                                save_images_collection(
-                                    images=np.round(images),
-                                    filename='plotting/sample/{}-MALA-{}.png'.format(extra_index, i),
-                                    grid_size=(10, 10),
-                                    results=results,
-                                )
-                            except Exception as e:
-                                print(e)
+                            if i % 100 == 0:
+                                print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
+                                try:
+                                    save_images_collection(
+                                        images=np.round(images),
+                                        filename='plotting/sample/{}-MALA-{}.png'.format(extra_index, i),
+                                        grid_size=(10, 10),
+                                        results=results,
+                                    )
+                                except Exception as e:
+                                    print(e)
 
                     mala_images = images
                     batch_z = batch_reconstruct_z
