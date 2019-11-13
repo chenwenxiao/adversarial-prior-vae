@@ -1325,6 +1325,7 @@ def main():
                         gan_img.append(gan_images)
                         mala_img.append(mala_images)
                         ori_img.append(ori_images)
+                        print('{}-th sample finished...'.format(i))
 
                     gan_img = np.concatenate(gan_img, axis=0).astype('uint8')
                     gan_img = np.asarray(gan_img)
