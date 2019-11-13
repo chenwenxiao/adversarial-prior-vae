@@ -536,7 +536,7 @@ def G_omega(z, output_dim):
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_6')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, output_dim, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
-        kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh if config.independent_gan else None
+        kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh # if config.independent_gan else None
     )
     return x_mean
 
@@ -693,7 +693,6 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
         # print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
         gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0)))
-        gradient_penalty = gradient_penalty ** 2
         gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
@@ -703,7 +702,6 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
         print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
         gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0))) - 1.0
-        gradient_penalty = gradient_penalty ** 2
         gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
@@ -1079,9 +1077,15 @@ def main():
                     batch_z_pure_energy = []
 
                     with loop.timeit('gan_sample_time'):
-                        for i in range(100):
-                            _, __, ___, ____ = session.run(
-                                [gan_plots, gan_z, gan_z_energy, gan_z_pure_energy])
+                        for i in range(10):
+                            __, ___, ____ = session.run(
+                                [gan_z, gan_z_energy, gan_z_pure_energy])
+                            __ = __ * _qz_std + _qz_mean
+                            _ = session.run(
+                                x_origin_plots, feed_dict={
+                                    initial_z: __
+                                }
+                            )
                             gan_images.append(_)
                             batch_z.append(__)
                             batch_z_energy.append(___)
@@ -1094,10 +1098,10 @@ def main():
                     pure_index = np.reshape(batch_z_pure_energy, (-1,))
                     pure_index = np.argsort(pure_index, axis=0)
 
-                    gan_images = gan_images[pure_index]
-                    batch_z = batch_z[pure_index]
-                    batch_z_energy = batch_z_energy[pure_index]
-                    batch_z_pure_energy = batch_z_pure_energy[pure_index]
+                    # gan_images = gan_images[pure_index]
+                    # batch_z = batch_z[pure_index]
+                    # batch_z_energy = batch_z_energy[pure_index]
+                    # batch_z_pure_energy = batch_z_pure_energy[pure_index]
 
                     start_point = 300
                     gan_images = gan_images[start_point:start_point + sample_n_z]
@@ -1259,6 +1263,9 @@ def main():
                         batch_qz = np.expand_dims(batch_qz, axis=1)
                         _qz.append(batch_qz)
                     _qz = np.concatenate(_qz, axis=0)
+                    _qz_mean, _qz_std = np.mean(_qz, axis=0), np.std(_qz, axis=0)
+                    _qz_std = _qz_std * 3
+                    _qz = (_qz - _qz_mean) / _qz_std
                     qz_flow = spt.DataFlow.arrays([_qz], config.batch_size, shuffle=True,
                                                   skip_incomplete=True)
 
