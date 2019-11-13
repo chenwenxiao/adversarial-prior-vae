@@ -173,7 +173,7 @@ class EnergyDistribution(spt.Distribution):
             log_px = self.pz.log_prob(given=given, group_ndims=group_ndims)
             log_px.log_energy_prob = -energy - self.log_Z
             log_px.energy = energy
-            log_px.pure_energy = config.pull_back_energy_weight * self.D(self.G(given)) * self.xi
+            log_px.pure_energy = self.D(self.G(given))
 
         return log_px
 
@@ -1093,7 +1093,7 @@ def main():
 
                 pure_index = np.reshape(batch_z_pure_energy, (-1,))
                 pure_index = np.argsort(pure_index, axis=0)
-                pure_index = pure_index[200: 200 + sample_n_z]
+                pure_index = pure_index[300: 300 + sample_n_z]
 
                 gan_images = gan_images[pure_index]
                 batch_z = batch_z[pure_index]
