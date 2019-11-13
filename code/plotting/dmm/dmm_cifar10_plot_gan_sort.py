@@ -1030,7 +1030,9 @@ def main():
         x_origin_plots = tf.clip_by_value(x_origin_plots, 0, 255)
         reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
 
-    def plot_samples(loop):
+    def plot_samples(loop, extra_index=None):
+        if extra_index is None:
+            extra_index = loop.epoch
         with loop.timeit('plot_time'):
             # plot reconstructs
             for [x] in reconstruct_train_flow:
@@ -1044,7 +1046,7 @@ def main():
                 # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
                 save_images_collection(
                     images=images,
-                    filename='plotting/train.reconstruct/{}.png'.format(loop.epoch),
+                    filename='plotting/train.reconstruct/{}.png'.format(extra_index),
                     grid_size=(20, 15),
                     results=results,
                 )
@@ -1061,7 +1063,7 @@ def main():
                 # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
                 save_images_collection(
                     images=images,
-                    filename='plotting/test.reconstruct/{}.png'.format(loop.epoch),
+                    filename='plotting/test.reconstruct/{}.png'.format(extra_index),
                     grid_size=(20, 15),
                     results=results,
                 )
@@ -1082,13 +1084,13 @@ def main():
                 try:
                     save_images_collection(
                         images=np.round(gan_images[pure_index]),
-                        filename='plotting/sample/gan-{}-puresort.png'.format(loop.epoch),
+                        filename='plotting/sample/gan-{}-puresort.png'.format(extra_index),
                         grid_size=(10, 10),
                         results=results,
                     )
                     save_images_collection(
                         images=np.round(gan_images[energy_index]),
-                        filename='plotting/sample/gan-{}-energysort.png'.format(loop.epoch),
+                        filename='plotting/sample/gan-{}-energysort.png'.format(extra_index),
                         grid_size=(10, 10),
                         results=results,
                     )
@@ -1097,7 +1099,7 @@ def main():
             try:
                 save_images_collection(
                     images=np.round(gan_images),
-                    filename='plotting/sample/gan-{}.png'.format(loop.epoch),
+                    filename='plotting/sample/gan-{}.png'.format(extra_index),
                     grid_size=(10, 10),
                     results=results,
                 )
@@ -1112,7 +1114,7 @@ def main():
                     gan_images = (gan_images - 127.5) / 256.0 * 2
                     batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
                     batch_z = np.expand_dims(batch_z, axis=1)
-                step_length = config.smallest_step * (2 ** 2)
+                step_length = config.smallest_step * (2 ** 1)
                 for i in range(0, 1001):
                     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                      batch_history_ratio] = session.run(
@@ -1128,19 +1130,19 @@ def main():
                         try:
                             save_images_collection(
                                 images=np.round(images),
-                                filename='plotting/sample/{}-MALA-{}.png'.format(loop.epoch, i),
+                                filename='plotting/sample/{}-MALA-{}.png'.format(extra_index, i),
                                 grid_size=(10, 10),
                                 results=results,
                             )
                             save_images_collection(
                                 images=np.round(images[pure_index]),
-                                filename='plotting/sample/{}-MALA-{}-puresort.png'.format(loop.epoch, i),
+                                filename='plotting/sample/{}-MALA-{}-puresort.png'.format(extra_index, i),
                                 grid_size=(10, 10),
                                 results=results,
                             )
                             save_images_collection(
                                 images=np.round(images[energy_index]),
-                                filename='plotting/sample/{}-MALA-{}-energysort.png'.format(loop.epoch, i),
+                                filename='plotting/sample/{}-MALA-{}-energysort.png'.format(extra_index, i),
                                 grid_size=(10, 10),
                                 results=results,
                             )
@@ -1164,7 +1166,7 @@ def main():
                         try:
                             save_images_collection(
                                 images=np.round(images),
-                                filename='plotting/sample/{}-ORI-{}.png'.format(loop.epoch, i),
+                                filename='plotting/sample/{}-ORI-{}.png'.format(extra_index, i),
                                 grid_size=(10, 10),
                                 results=results,
                             )
@@ -1256,7 +1258,7 @@ def main():
                 mala_img = []
                 ori_img = []
                 for i in range(config.fid_samples // config.sample_n_z):
-                    gan_images, mala_images, ori_images = plot_samples(loop)
+                    gan_images, mala_images, ori_images = plot_samples(loop, 10000 + i)
                     gan_img.append(gan_images)
                     mala_img.append(mala_images)
                     ori_img.append(ori_images)

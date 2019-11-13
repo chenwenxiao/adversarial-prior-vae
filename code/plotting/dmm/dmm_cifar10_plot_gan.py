@@ -996,173 +996,173 @@ def main():
             G_train_op = G_optimizer.apply_gradients(G_grads)
             D_train_op = D_optimizer.apply_gradients(D_grads)
 
-        # derive the plotting function
-        with tf.name_scope('plotting'):
-            sample_n_z = config.sample_n_z
-            gan_net = p_omega_net(n_z=sample_n_z, beta=beta)
-            gan_plots = tf.reshape(gan_net['x'].distribution.mean, (-1,) + config.x_shape)
-            if not config.independent_gan:
-                gan_z = gan_net['f_z'].distribution.mean
-            initial_z = tf.placeholder(
-                dtype=tf.float32, shape=(sample_n_z, 1, config.z_dim), name='initial_z')
-            gan_plots = 256.0 * gan_plots / 2 + 127.5
-            plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z, mcmc_alpha=mcmc_alpha)
-            plot_origin_net = p_net(n_z=sample_n_z, mcmc_iterator=0, beta=beta, initial_z=initial_z)
-            plot_history_e_z = plot_net['z'].history_e_z
-            plot_history_z = plot_net['z'].history_z
-            plot_history_pure_e_z = plot_net['z'].history_pure_e_z
-            plot_history_ratio = plot_net['z'].history_ratio
-            x_plots = 256.0 * tf.reshape(
-                plot_net['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
-            x_origin_plots = 256.0 * tf.reshape(
-                plot_origin_net['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
-            reconstruct_q_net = q_net(input_x, posterior_flow)
-            reconstruct_z = reconstruct_q_net['z']
-            reconstruct_plots = 256.0 * tf.reshape(
-                p_net(observed={'z': reconstruct_z}, beta=beta)['x'].distribution.mean,
-                (-1,) + config.x_shape
-            ) / 2 + 127.5
-            plot_reconstruct_energy = D_psi(reconstruct_plots)
-            gan_z_pure_energy = plot_net['z'].distribution.log_prob(gan_z).pure_energy
-            gan_z_energy = plot_net['z'].distribution.log_prob(gan_z).energy
-            gan_plots = tf.clip_by_value(gan_plots, 0, 255)
-            x_plots = tf.clip_by_value(x_plots, 0, 255)
-            x_origin_plots = tf.clip_by_value(x_origin_plots, 0, 255)
-            reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
+    # derive the plotting function
+    with tf.name_scope('plotting'):
+        sample_n_z = config.sample_n_z
+        gan_net = p_omega_net(n_z=sample_n_z, beta=beta)
+        gan_plots = tf.reshape(gan_net['x'].distribution.mean, (-1,) + config.x_shape)
+        if not config.independent_gan:
+            gan_z = gan_net['f_z'].distribution.mean
+        initial_z = tf.placeholder(
+            dtype=tf.float32, shape=(sample_n_z, 1, config.z_dim), name='initial_z')
+        gan_plots = 256.0 * gan_plots / 2 + 127.5
+        plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z, mcmc_alpha=mcmc_alpha)
+        plot_origin_net = p_net(n_z=sample_n_z, mcmc_iterator=0, beta=beta, initial_z=initial_z)
+        plot_history_e_z = plot_net['z'].history_e_z
+        plot_history_z = plot_net['z'].history_z
+        plot_history_pure_e_z = plot_net['z'].history_pure_e_z
+        plot_history_ratio = plot_net['z'].history_ratio
+        x_plots = 256.0 * tf.reshape(
+            plot_net['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
+        x_origin_plots = 256.0 * tf.reshape(
+            plot_origin_net['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
+        reconstruct_q_net = q_net(input_x, posterior_flow)
+        reconstruct_z = reconstruct_q_net['z']
+        reconstruct_plots = 256.0 * tf.reshape(
+            p_net(observed={'z': reconstruct_z}, beta=beta)['x'].distribution.mean,
+            (-1,) + config.x_shape
+        ) / 2 + 127.5
+        plot_reconstruct_energy = D_psi(reconstruct_plots)
+        gan_z_pure_energy = plot_net['z'].distribution.log_prob(gan_z).pure_energy
+        gan_z_energy = plot_net['z'].distribution.log_prob(gan_z).energy
+        gan_plots = tf.clip_by_value(gan_plots, 0, 255)
+        x_plots = tf.clip_by_value(x_plots, 0, 255)
+        x_origin_plots = tf.clip_by_value(x_origin_plots, 0, 255)
+        reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
 
-        def plot_samples(loop, extra_index=None):
-            if extra_index is None:
-                extra_index = loop.epoch
-            with loop.timeit('plot_time'):
-                # plot reconstructs
-                for [x] in reconstruct_train_flow:
-                    x_samples = x
-                    images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
-                    images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
-                    images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
-                    images[2::3, ...] = np.round(session.run(
-                        reconstruct_plots, feed_dict={input_x: x_samples}))
-                    batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
-                    # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
-                    save_images_collection(
-                        images=images,
-                        filename='plotting/train.reconstruct/{}.png'.format(extra_index),
-                        grid_size=(20, 15),
-                        results=results,
-                    )
-                    break
+    def plot_samples(loop, extra_index=None):
+        if extra_index is None:
+            extra_index = loop.epoch
+        with loop.timeit('plot_time'):
+            # plot reconstructs
+            for [x] in reconstruct_train_flow:
+                x_samples = x
+                images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
+                images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
+                images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
+                images[2::3, ...] = np.round(session.run(
+                    reconstruct_plots, feed_dict={input_x: x_samples}))
+                batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
+                # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
+                save_images_collection(
+                    images=images,
+                    filename='plotting/train.reconstruct/{}.png'.format(extra_index),
+                    grid_size=(20, 15),
+                    results=results,
+                )
+                break
 
-                for [x] in reconstruct_test_flow:
-                    x_samples = x
-                    images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
-                    images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
-                    images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
-                    images[2::3, ...] = np.round(session.run(
-                        reconstruct_plots, feed_dict={input_x: x_samples}))
-                    batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
-                    # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
-                    save_images_collection(
-                        images=images,
-                        filename='plotting/test.reconstruct/{}.png'.format(extra_index),
-                        grid_size=(20, 15),
-                        results=results,
-                    )
-                    break
+            for [x] in reconstruct_test_flow:
+                x_samples = x
+                images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
+                images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
+                images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
+                images[2::3, ...] = np.round(session.run(
+                    reconstruct_plots, feed_dict={input_x: x_samples}))
+                batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
+                # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
+                save_images_collection(
+                    images=images,
+                    filename='plotting/test.reconstruct/{}.png'.format(extra_index),
+                    grid_size=(20, 15),
+                    results=results,
+                )
+                break
 
-                # plot samples
+            # plot samples
+            if config.independent_gan:
+                gan_images = session.run(gan_plots)
+            else:
+                gan_images = []
+                batch_z = []
+                batch_z_energy = []
+                batch_z_pure_energy = []
+                for i in range(10):
+                    _, __, ___, ____ = session.run(
+                        [gan_plots, gan_z, gan_z_energy, gan_z_pure_energy])
+                    gan_images.append(_)
+                    batch_z.append(__)
+                    batch_z_energy.append(___)
+                    batch_z_pure_energy.append(____)
+                gan_images = np.concatenate(gan_images)
+                batch_z = np.concatenate(batch_z)
+                batch_z_energy = np.concatenate(batch_z_energy)
+                batch_z_pure_energy = np.concatenate(batch_z_pure_energy)
+
+                pure_index = np.reshape(batch_z_pure_energy, (-1,))
+                pure_index = np.argsort(pure_index, axis=0)
+
+                gan_images = gan_images[pure_index[:sample_n_z]]
+                batch_z = batch_z[pure_index[:sample_n_z]]
+                batch_z_energy = batch_z_energy[pure_index[:sample_n_z]]
+                batch_z_pure_energy = batch_z_pure_energy[pure_index[:sample_n_z]]
+            try:
+                save_images_collection(
+                    images=np.round(gan_images),
+                    filename='plotting/sample/gan-{}.png'.format(extra_index),
+                    grid_size=(10, 10),
+                    results=results,
+                )
+            except Exception as e:
+                print(e)
+
+            mala_images = None
+            ori_images = None
+            if loop.epoch > config.warm_up_start:
+
                 if config.independent_gan:
-                    gan_images = session.run(gan_plots)
-                else:
-                    gan_images = []
-                    batch_z = []
-                    batch_z_energy = []
-                    batch_z_pure_energy = []
-                    for i in range(10):
-                        _, __, ___, ____ = session.run(
-                            [gan_plots, gan_z, gan_z_energy, gan_z_pure_energy])
-                        gan_images.append(_)
-                        batch_z.append(__)
-                        batch_z_energy.append(___)
-                        batch_z_pure_energy.append(____)
-                    gan_images = np.concatenate(gan_images)
-                    batch_z = np.concatenate(batch_z)
-                    batch_z_energy = np.concatenate(batch_z_energy)
-                    batch_z_pure_energy = np.concatenate(batch_z_pure_energy)
-
-                    pure_index = np.reshape(batch_z_pure_energy, (-1,))
-                    pure_index = np.argsort(pure_index, axis=0)
-
-                    gan_images = gan_images[pure_index[:sample_n_z]]
-                    batch_z = batch_z[pure_index[:sample_n_z]]
-                    batch_z_energy = batch_z_energy[pure_index[:sample_n_z]]
-                    batch_z_pure_energy = batch_z_pure_energy[pure_index[:sample_n_z]]
-                try:
-                    save_images_collection(
-                        images=np.round(gan_images),
-                        filename='plotting/sample/gan-{}.png'.format(extra_index),
-                        grid_size=(10, 10),
-                        results=results,
-                    )
-                except Exception as e:
-                    print(e)
-
-                mala_images = None
-                ori_images = None
-                if loop.epoch > config.warm_up_start:
-
-                    if config.independent_gan:
-                        gan_images = (gan_images - 127.5) / 256.0 * 2
-                        batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
-                        batch_z = np.expand_dims(batch_z, axis=1)
-                    step_length = config.smallest_step * (2 ** 1)
-                    for i in range(0, 1001):
-                        [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
-                         batch_history_ratio] = session.run(
-                            [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
-                            feed_dict={
-                                initial_z: batch_z,
-                                mcmc_alpha: np.asarray([step_length])
-                            })
-                        batch_z = batch_history_z[-1]
-
-                        if i % 100 == 0:
-                            print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
-                            try:
-                                save_images_collection(
-                                    images=np.round(images),
-                                    filename='plotting/sample/{}-MALA-{}.png'.format(extra_index, i),
-                                    grid_size=(10, 10),
-                                    results=results,
-                                )
-                            except Exception as e:
-                                print(e)
-
-                    mala_images = images
-                    batch_z = batch_reconstruct_z
+                    gan_images = (gan_images - 127.5) / 256.0 * 2
+                    batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
                     batch_z = np.expand_dims(batch_z, axis=1)
-                    for i in range(0, 101):
-                        [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
-                         batch_history_ratio] = session.run(
-                            [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
-                            feed_dict={
-                                initial_z: batch_z,
-                                mcmc_alpha: np.asarray([config.smallest_step])
-                            })
-                        batch_z = batch_history_z[-1]
-                        if i % 100 == 0:
-                            print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
-                            try:
-                                save_images_collection(
-                                    images=np.round(images),
-                                    filename='plotting/sample/{}-ORI-{}.png'.format(extra_index, i),
-                                    grid_size=(10, 10),
-                                    results=results,
-                                )
-                            except Exception as e:
-                                print(e)
-                    ori_images = images
+                step_length = config.smallest_step * (2 ** 1)
+                for i in range(0, 1001):
+                    [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
+                     batch_history_ratio] = session.run(
+                        [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
+                        feed_dict={
+                            initial_z: batch_z,
+                            mcmc_alpha: np.asarray([step_length])
+                        })
+                    batch_z = batch_history_z[-1]
 
-                return gan_images, mala_images, ori_images
+                    if i % 100 == 0:
+                        print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
+                        try:
+                            save_images_collection(
+                                images=np.round(images),
+                                filename='plotting/sample/{}-MALA-{}.png'.format(extra_index, i),
+                                grid_size=(10, 10),
+                                results=results,
+                            )
+                        except Exception as e:
+                            print(e)
+
+                mala_images = images
+                batch_z = batch_reconstruct_z
+                batch_z = np.expand_dims(batch_z, axis=1)
+                for i in range(0, 101):
+                    [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
+                     batch_history_ratio] = session.run(
+                        [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
+                        feed_dict={
+                            initial_z: batch_z,
+                            mcmc_alpha: np.asarray([config.smallest_step])
+                        })
+                    batch_z = batch_history_z[-1]
+                    if i % 100 == 0:
+                        print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
+                        try:
+                            save_images_collection(
+                                images=np.round(images),
+                                filename='plotting/sample/{}-ORI-{}.png'.format(extra_index, i),
+                                grid_size=(10, 10),
+                                results=results,
+                            )
+                        except Exception as e:
+                            print(e)
+                ori_images = images
+
+            return gan_images, mala_images, ori_images
 
     # prepare for training and testing data
     (_x_train, _y_train), (_x_test, _y_test) = \
@@ -1204,12 +1204,12 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = None
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/12/0c/d4747dc47d24f5379cd5/checkpoint/checkpoint/checkpoint.dat-624000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega', 'D_kappa'],
-                           max_epoch=config.max_epoch,
+                           max_epoch=config.max_epoch + 1,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
@@ -1239,132 +1239,39 @@ def main():
             epoch_iterator = loop.iter_epochs()
 
             n_critical = config.n_critical
-            # adversarial training
             for epoch in epoch_iterator:
-                if epoch == config.warm_up_start + 1:
-                    _qz = []
-                    for [x] in reconstruct_train_flow:
-                        batch_qz = session.run(train_q_net['z'].distribution.mean, feed_dict={
-                            input_x: x,
-                        })
-                        batch_qz = np.expand_dims(batch_qz, axis=1)
-                        _qz.append(batch_qz)
-                    _qz = np.concatenate(_qz, axis=0)
-                    qz_flow = spt.DataFlow.arrays([_qz], config.batch_size, shuffle=True,
-                                                  skip_incomplete=True)
 
-                if epoch <= config.warm_up_start:
-                    step_iterator = MyIterator(train_flow)
-                    while step_iterator.has_next:
-                        for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
-                            # vae training
-                            [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
-                             batch_train_recon_pure_energy, batch_VAE_D_real, batch_VAE_G_loss, batch_train_kl,
-                             batch_train_grad_penalty] = session.run(
-                                [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
-                                 train_recon_pure_energy, VAE_D_real, VAE_G_loss,
-                                 train_kl, train_grad_penalty],
-                                feed_dict={
-                                    input_x: x,
-                                    input_origin_x: origin_x,
-                                    warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
-                                })
-                            loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
-                            loop.collect_metrics(xi=xi_value)
-                            loop.collect_metrics(beta=beta_value)
-                            loop.collect_metrics(train_recon=batch_train_recon)
-                            loop.collect_metrics(train_recon_pure_energy=batch_train_recon_pure_energy)
-                            loop.collect_metrics(train_recon_energy=batch_train_recon_energy)
-                            loop.collect_metrics(VAE_D_real=batch_VAE_D_real)
-                            loop.collect_metrics(VAE_G_loss=batch_VAE_G_loss)
-                            loop.collect_metrics(train_kl=batch_train_kl)
-                            loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
-                else:
-                    step_iterator = MyIterator(qz_flow)
-                    while step_iterator.has_next:
-                        for step, [qz] in loop.iter_steps(limited(step_iterator, n_critical)):
-                            # discriminator training
-                            [_, batch_D_loss, batch_D_real] = session.run(
-                                [D_train_op, D_loss, D_real], feed_dict={
-                                    input_qz: qz,
-                                })
-                            loop.collect_metrics(D_loss=batch_D_loss)
-                            loop.collect_metrics(D_real=batch_D_real)
+                dataset_img = _x_train
+                gan_img = []
+                mala_img = []
+                ori_img = []
+                for i in range(config.fid_samples // config.sample_n_z):
+                    gan_images, mala_images, ori_images = plot_samples(loop, 10000 + i)
+                    gan_img.append(gan_images)
+                    mala_img.append(mala_images)
+                    ori_img.append(ori_images)
+                    print('{}-th sample finished...'.format(i))
 
-                        # generator training x
-                        [_, batch_G_loss] = session.run(
-                            [G_train_op, G_loss], feed_dict={
-                            })
-                        loop.collect_metrics(G_loss=batch_G_loss)
+                gan_img = np.concatenate(gan_img, axis=0).astype('uint8')
+                gan_img = np.asarray(gan_img)
+                FID = get_fid_google(gan_img, dataset_img)
+                IS_mean, IS_std = get_inception_score(gan_img)
+                loop.collect_metrics(FID_gan=FID)
+                loop.collect_metrics(IS_gan=IS_mean)
 
-                if epoch in config.lr_anneal_epoch_freq:
-                    learning_rate.anneal()
+                mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
+                mala_img = np.asarray(mala_img)
+                FID = get_fid_google(mala_img, dataset_img)
+                IS_mean, IS_std = get_inception_score(mala_img)
+                loop.collect_metrics(FID=FID)
+                loop.collect_metrics(IS=IS_mean)
 
-                if epoch == config.warm_up_start:
-                    learning_rate.set(config.initial_lr)
-
-                if epoch % config.plot_epoch_freq == 0:
-                    plot_samples(loop)
-
-                if epoch % config.test_epoch_freq == 0:
-                    with loop.timeit('compute_Z_time'):
-                        # log_Z_list = []
-                        # for i in range(config.log_Z_times):
-                        #     log_Z_list.append(session.run(log_Z_compute_op))
-                        # from scipy.misc import logsumexp
-                        # log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                        # print('log_Z_list:{}'.format(log_Z_list))
-                        # print('log_Z:{}'.format(log_Z))
-
-                        log_Z_list = []
-                        for [batch_x, batch_origin_x] in train_flow:
-                            log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                                input_x: batch_x,
-                                input_origin_x: batch_origin_x
-                            }))
-                        from scipy.misc import logsumexp
-                        another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                        # print('log_Z_list:{}'.format(log_Z_list))
-                        print('another_log_Z:{}'.format(another_log_Z))
-                        # final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
-                        final_log_Z = another_log_Z  # TODO
-                        get_log_Z().set(final_log_Z)
-
-                    with loop.timeit('eval_time'):
-                        evaluator.run()
-
-                if epoch == config.max_epoch:
-                    dataset_img = _x_train
-                    gan_img = []
-                    mala_img = []
-                    ori_img = []
-                    for i in range(config.fid_samples // config.sample_n_z):
-                        gan_images, mala_images, ori_images = plot_samples(loop, 10000 + i)
-                        gan_img.append(gan_images)
-                        mala_img.append(mala_images)
-                        ori_img.append(ori_images)
-                        print('{}-th sample finished...'.format(i))
-
-                    gan_img = np.concatenate(gan_img, axis=0).astype('uint8')
-                    gan_img = np.asarray(gan_img)
-                    FID = get_fid_google(gan_img, dataset_img)
-                    IS_mean, IS_std = get_inception_score(gan_img)
-                    loop.collect_metrics(FID_gan=FID)
-                    loop.collect_metrics(IS_gan=IS_mean)
-
-                    mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
-                    mala_img = np.asarray(mala_img)
-                    FID = get_fid_google(mala_img, dataset_img)
-                    IS_mean, IS_std = get_inception_score(mala_img)
-                    loop.collect_metrics(FID=FID)
-                    loop.collect_metrics(IS=IS_mean)
-
-                    ori_img = np.concatenate(ori_img, axis=0).astype('uint8')
-                    ori_img = np.asarray(ori_img)
-                    FID = get_fid_google(ori_img, dataset_img)
-                    IS_mean, IS_std = get_inception_score(ori_img)
-                    loop.collect_metrics(FID_ori=FID)
-                    loop.collect_metrics(IS_ori=IS_mean)
+                ori_img = np.concatenate(ori_img, axis=0).astype('uint8')
+                ori_img = np.asarray(ori_img)
+                FID = get_fid_google(ori_img, dataset_img)
+                IS_mean, IS_std = get_inception_score(ori_img)
+                loop.collect_metrics(FID_ori=FID)
+                loop.collect_metrics(IS_ori=IS_mean)
 
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
