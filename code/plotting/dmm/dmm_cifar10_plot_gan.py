@@ -1077,7 +1077,7 @@ def main():
                 batch_z = []
                 batch_z_energy = []
                 batch_z_pure_energy = []
-                for i in range(10):
+                for i in range(100):
                     _, __, ___, ____ = session.run(
                         [gan_plots, gan_z, gan_z_energy, gan_z_pure_energy])
                     gan_images.append(_)
