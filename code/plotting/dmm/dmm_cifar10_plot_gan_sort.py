@@ -168,15 +168,12 @@ class EnergyDistribution(spt.Distribution):
                            default_name=spt.utils.get_default_scope_name(
                                'log_prob', self),
                            values=[given]):
-            if y is not None:
-                energy = config.pull_back_energy_weight * self.D(self.G(given), y) * self.xi + 0.5 * tf.reduce_sum(
-                    tf.square(given), axis=-1)
-            else:
-                energy = config.pull_back_energy_weight * self.D(self.G(given)) * self.xi + 0.5 * tf.reduce_sum(
-                    tf.square(given), axis=-1)
+            energy = config.pull_back_energy_weight * self.D(self.G(given)) * self.xi + 0.5 * tf.reduce_sum(
+                tf.square(given), axis=-1)
             log_px = self.pz.log_prob(given=given, group_ndims=group_ndims)
             log_px.log_energy_prob = -energy - self.log_Z
             log_px.energy = energy
+            log_px.pure_energy = config.pull_back_energy_weight * self.D(self.G(given)) * self.xi
 
         return log_px
 
@@ -882,7 +879,7 @@ def main():
     warm = tf.placeholder(
         dtype=tf.float32, shape=(), name='warm')
     mcmc_alpha = tf.placeholder(
-        dtype=tf.float32, shape=(1, ), name='mcmc_alpha')
+        dtype=tf.float32, shape=(1,), name='mcmc_alpha')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
     beta = tf.Variable(initial_value=0.1, dtype=tf.float32, name='beta', trainable=True)
@@ -1026,6 +1023,8 @@ def main():
             (-1,) + config.x_shape
         ) / 2 + 127.5
         plot_reconstruct_energy = D_psi(reconstruct_plots)
+        gan_z_pure_energy = plot_net['z'].distribution.log_prob(gan_z).pure_energy
+        gan_z_energy = plot_net['z'].distribution.log_prob(gan_z).energy
         gan_plots = tf.clip_by_value(gan_plots, 0, 255)
         x_plots = tf.clip_by_value(x_plots, 0, 255)
         x_origin_plots = tf.clip_by_value(x_origin_plots, 0, 255)
@@ -1072,10 +1071,29 @@ def main():
             if config.independent_gan:
                 gan_images = session.run(gan_plots)
             else:
-                batch_z = session.run(gan_z)
-                gan_images = session.run(x_origin_plots, feed_dict={
-                    initial_z: batch_z
-                })
+                gan_images, batch_z, batch_z_energy, batch_z_pure_energy = session.run(
+                    [gan_plots, gan_z, gan_z_energy, gan_z_pure_energy])
+
+                pure_index = np.reshape(batch_z_pure_energy, (-1,))
+                pure_index = np.argsort(pure_index, axis=0)
+
+                energy_index = np.reshape(batch_z_energy, (-1,))
+                energy_index = np.argsort(energy_index, axis=0)
+                try:
+                    save_images_collection(
+                        images=np.round(gan_images[pure_index]),
+                        filename='plotting/sample/gan-{}-puresort.png'.format(loop.epoch),
+                        grid_size=(10, 10),
+                        results=results,
+                    )
+                    save_images_collection(
+                        images=np.round(gan_images[energy_index]),
+                        filename='plotting/sample/gan-{}-energysort.png'.format(loop.epoch),
+                        grid_size=(10, 10),
+                        results=results,
+                    )
+                except Exception as e:
+                    print(e)
             try:
                 save_images_collection(
                     images=np.round(gan_images),
@@ -1095,7 +1113,7 @@ def main():
                     batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
                     batch_z = np.expand_dims(batch_z, axis=1)
                 step_length = config.smallest_step * (2 ** 2)
-                for i in range(1, 601):
+                for i in range(0, 1001):
                     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                      batch_history_ratio] = session.run(
                         [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
@@ -1104,8 +1122,6 @@ def main():
                             mcmc_alpha: np.asarray([step_length])
                         })
                     batch_z = batch_history_z[-1]
-                    if i % 200 == 0:
-                        step_length = step_length / 2.0
 
                     if i % 100 == 0:
                         print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
@@ -1116,13 +1132,25 @@ def main():
                                 grid_size=(10, 10),
                                 results=results,
                             )
+                            save_images_collection(
+                                images=np.round(images[pure_index]),
+                                filename='plotting/sample/{}-MALA-{}-puresort.png'.format(loop.epoch, i),
+                                grid_size=(10, 10),
+                                results=results,
+                            )
+                            save_images_collection(
+                                images=np.round(images[energy_index]),
+                                filename='plotting/sample/{}-MALA-{}-energysort.png'.format(loop.epoch, i),
+                                grid_size=(10, 10),
+                                results=results,
+                            )
                         except Exception as e:
                             print(e)
 
                 mala_images = images
                 batch_z = batch_reconstruct_z
                 batch_z = np.expand_dims(batch_z, axis=1)
-                for i in range(1, 101):
+                for i in range(0, 101):
                     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                      batch_history_ratio] = session.run(
                         [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
@@ -1186,7 +1214,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/4c/fb/d434dabfcaec719e0cd5/checkpoint/checkpoint/checkpoint.dat-312000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/12/0c/d4747dc47d24f5379cd5/checkpoint/checkpoint/checkpoint.dat-624000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1221,44 +1249,7 @@ def main():
             epoch_iterator = loop.iter_epochs()
 
             n_critical = config.n_critical
-            # adversarial training
             for epoch in epoch_iterator:
-                if epoch == config.warm_up_start + 1:
-                    _qz = []
-                    for [x] in reconstruct_train_flow:
-                        batch_qz = session.run(train_q_net['z'].distribution.mean, feed_dict={
-                            input_x: x,
-                        })
-                        batch_qz = np.expand_dims(batch_qz, axis=1)
-                        _qz.append(batch_qz)
-                    _qz = np.concatenate(_qz, axis=0)
-                    qz_flow = spt.DataFlow.arrays([_qz], config.batch_size, shuffle=True,
-                                                  skip_incomplete=True)
-                with loop.timeit('compute_Z_time'):
-                    # log_Z_list = []
-                    # for i in range(config.log_Z_times):
-                    #     log_Z_list.append(session.run(log_Z_compute_op))
-                    # from scipy.misc import logsumexp
-                    # log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                    # print('log_Z_list:{}'.format(log_Z_list))
-                    # print('log_Z:{}'.format(log_Z))
-
-                    log_Z_list = []
-                    for [batch_x, batch_origin_x] in train_flow:
-                        log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                            input_x: batch_x,
-                            input_origin_x: batch_origin_x
-                        }))
-                    from scipy.misc import logsumexp
-                    another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                    # print('log_Z_list:{}'.format(log_Z_list))
-                    print('another_log_Z:{}'.format(another_log_Z))
-                    # final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
-                    final_log_Z = another_log_Z  # TODO
-                    get_log_Z().set(final_log_Z)
-
-                with loop.timeit('eval_time'):
-                    evaluator.run()
 
                 dataset_img = _x_train
                 gan_img = []
