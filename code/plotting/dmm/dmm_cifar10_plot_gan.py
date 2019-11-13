@@ -1093,11 +1093,13 @@ def main():
 
                 pure_index = np.reshape(batch_z_pure_energy, (-1,))
                 pure_index = np.argsort(pure_index, axis=0)
+                pure_index = pure_index[200: 200 + sample_n_z]
 
-                gan_images = gan_images[pure_index[:sample_n_z]]
-                batch_z = batch_z[pure_index[:sample_n_z]]
-                batch_z_energy = batch_z_energy[pure_index[:sample_n_z]]
-                batch_z_pure_energy = batch_z_pure_energy[pure_index[:sample_n_z]]
+                gan_images = gan_images[pure_index]
+                batch_z = batch_z[pure_index]
+                batch_z_energy = batch_z_energy[pure_index]
+                batch_z_pure_energy = batch_z_pure_energy[pure_index]
+                print('energy of gan is {}, {}'.format(np.mean(batch_z_pure_energy), np.mean(batch_z_energy)))
             try:
                 save_images_collection(
                     images=np.round(gan_images),
