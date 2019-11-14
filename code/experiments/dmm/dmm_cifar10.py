@@ -536,7 +536,7 @@ def G_omega(z, output_dim):
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_6')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, output_dim, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
-        kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh  # if config.independent_gan else None
+        kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh if config.independent_gan else None
     )
     return x_mean
 
@@ -693,8 +693,7 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
         # print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
         gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0)))
-        gradient_penalty = tf.abs(gradient_penalty)
-        gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
+        gradient_penalty = gradient_penalty ** (config.gradient_penalty_index / 2.0)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
     if config.gradient_penalty_algorithm == 'interpolate-gp':
@@ -703,8 +702,7 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
         print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
         gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0))) - 1.0
-        gradient_penalty = tf.abs(gradient_penalty)
-        gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
+        gradient_penalty = gradient_penalty ** (config.gradient_penalty_index / 2.0)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
     if config.gradient_penalty_algorithm == 'both':
@@ -1267,6 +1265,9 @@ def main():
                         _qz.append(batch_qz)
                     _qz = np.concatenate(_qz, axis=0)
                     _qz_mean, _qz_std = np.mean(_qz, axis=0), np.std(_qz, axis=0)
+                    for i in range(1, 10):
+                        tmp = np.asarray((_qz - _qz_mean) < _qz_std * i, dtype=np.float)
+                        print("{}% data is in {} * std".format(100.0 * np.sum(tmp) / len(tmp), i))
                     _qz_std = _qz_std * 3
                     _qz = (_qz - _qz_mean) / _qz_std
                     qz_flow = spt.DataFlow.arrays([_qz], config.batch_size, shuffle=True,
