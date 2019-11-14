@@ -536,7 +536,7 @@ def G_omega(z, output_dim):
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_6')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, output_dim, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
-        kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh # if config.independent_gan else None
+        kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh  # if config.independent_gan else None
     )
     return x_mean
 
@@ -1069,115 +1069,116 @@ def main():
                     )
                     break
 
-                # plot samples
-                if config.independent_gan:
-                    gan_images = session.run(gan_plots)
-                else:
-                    gan_images = []
-                    batch_z = []
-                    batch_z_energy = []
-                    batch_z_pure_energy = []
-
-                    with loop.timeit('gan_sample_time'):
-                        for i in range(10):
-                            __, ___, ____ = session.run(
-                                [gan_z, gan_z_energy, gan_z_pure_energy])
-                            __ = __ * _qz_std + _qz_mean
-                            _ = session.run(
-                                x_origin_plots, feed_dict={
-                                    initial_z: __
-                                }
-                            )
-                            gan_images.append(_)
-                            batch_z.append(__)
-                            batch_z_energy.append(___)
-                            batch_z_pure_energy.append(____)
-                        gan_images = np.concatenate(gan_images)
-                        batch_z = np.concatenate(batch_z)
-                        batch_z_energy = np.concatenate(batch_z_energy)
-                        batch_z_pure_energy = np.concatenate(batch_z_pure_energy)
-
-                    pure_index = np.reshape(batch_z_pure_energy, (-1,))
-                    pure_index = np.argsort(pure_index, axis=0)
-
-                    # gan_images = gan_images[pure_index]
-                    # batch_z = batch_z[pure_index]
-                    # batch_z_energy = batch_z_energy[pure_index]
-                    # batch_z_pure_energy = batch_z_pure_energy[pure_index]
-
-                    start_point = 300
-                    gan_images = gan_images[start_point:start_point + sample_n_z]
-                    batch_z = batch_z[start_point:start_point + sample_n_z]
-                    batch_z_energy = batch_z_energy[start_point:start_point + sample_n_z]
-                    batch_z_pure_energy = batch_z_pure_energy[start_point:start_point + sample_n_z]
-                try:
-                    save_images_collection(
-                        images=np.round(gan_images),
-                        filename='plotting/sample/gan-{}.png'.format(extra_index),
-                        grid_size=(10, 10),
-                        results=results,
-                    )
-                except Exception as e:
-                    print(e)
-
-                mala_images = None
-                ori_images = None
                 if loop.epoch > config.warm_up_start:
-
+                    # plot samples
                     if config.independent_gan:
-                        gan_images = (gan_images - 127.5) / 256.0 * 2
-                        batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
+                        gan_images = session.run(gan_plots)
+                    else:
+                        gan_images = []
+                        batch_z = []
+                        batch_z_energy = []
+                        batch_z_pure_energy = []
+
+                        with loop.timeit('gan_sample_time'):
+                            for i in range(10):
+                                __, ___, ____ = session.run(
+                                    [gan_z, gan_z_energy, gan_z_pure_energy])
+                                __ = __ * _qz_std + _qz_mean
+                                _ = session.run(
+                                    x_origin_plots, feed_dict={
+                                        initial_z: __
+                                    }
+                                )
+                                gan_images.append(_)
+                                batch_z.append(__)
+                                batch_z_energy.append(___)
+                                batch_z_pure_energy.append(____)
+                            gan_images = np.concatenate(gan_images)
+                            batch_z = np.concatenate(batch_z)
+                            batch_z_energy = np.concatenate(batch_z_energy)
+                            batch_z_pure_energy = np.concatenate(batch_z_pure_energy)
+
+                        pure_index = np.reshape(batch_z_pure_energy, (-1,))
+                        pure_index = np.argsort(pure_index, axis=0)
+
+                        # gan_images = gan_images[pure_index]
+                        # batch_z = batch_z[pure_index]
+                        # batch_z_energy = batch_z_energy[pure_index]
+                        # batch_z_pure_energy = batch_z_pure_energy[pure_index]
+
+                        start_point = 300
+                        gan_images = gan_images[start_point:start_point + sample_n_z]
+                        batch_z = batch_z[start_point:start_point + sample_n_z]
+                        batch_z_energy = batch_z_energy[start_point:start_point + sample_n_z]
+                        batch_z_pure_energy = batch_z_pure_energy[start_point:start_point + sample_n_z]
+                    try:
+                        save_images_collection(
+                            images=np.round(gan_images),
+                            filename='plotting/sample/gan-{}.png'.format(extra_index),
+                            grid_size=(10, 10),
+                            results=results,
+                        )
+                    except Exception as e:
+                        print(e)
+
+                    mala_images = None
+                    ori_images = None
+                    if loop.epoch > config.warm_up_start:
+
+                        if config.independent_gan:
+                            gan_images = (gan_images - 127.5) / 256.0 * 2
+                            batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
+                            batch_z = np.expand_dims(batch_z, axis=1)
+                        step_length = config.smallest_step
+                        with loop.timeit('mala_sample_time'):
+                            for i in range(0, 1001):
+                                [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
+                                 batch_history_ratio] = session.run(
+                                    [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
+                                    feed_dict={
+                                        initial_z: batch_z,
+                                        mcmc_alpha: np.asarray([step_length])
+                                    })
+                                batch_z = batch_history_z[-1]
+
+                                if i % 100 == 0:
+                                    print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
+                                    try:
+                                        save_images_collection(
+                                            images=np.round(images),
+                                            filename='plotting/sample/{}-MALA-{}.png'.format(extra_index, i),
+                                            grid_size=(10, 10),
+                                            results=results,
+                                        )
+                                    except Exception as e:
+                                        print(e)
+
+                        mala_images = images
+                        batch_z = batch_reconstruct_z
                         batch_z = np.expand_dims(batch_z, axis=1)
-                    step_length = config.smallest_step
-                    with loop.timeit('mala_sample_time'):
-                        for i in range(0, 1001):
+                        for i in range(0, 101):
                             [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                              batch_history_ratio] = session.run(
                                 [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
                                 feed_dict={
                                     initial_z: batch_z,
-                                    mcmc_alpha: np.asarray([step_length])
+                                    mcmc_alpha: np.asarray([config.smallest_step])
                                 })
                             batch_z = batch_history_z[-1]
-
                             if i % 100 == 0:
                                 print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
                                 try:
                                     save_images_collection(
                                         images=np.round(images),
-                                        filename='plotting/sample/{}-MALA-{}.png'.format(extra_index, i),
+                                        filename='plotting/sample/{}-ORI-{}.png'.format(extra_index, i),
                                         grid_size=(10, 10),
                                         results=results,
                                     )
                                 except Exception as e:
                                     print(e)
+                        ori_images = images
 
-                    mala_images = images
-                    batch_z = batch_reconstruct_z
-                    batch_z = np.expand_dims(batch_z, axis=1)
-                    for i in range(0, 101):
-                        [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
-                         batch_history_ratio] = session.run(
-                            [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
-                            feed_dict={
-                                initial_z: batch_z,
-                                mcmc_alpha: np.asarray([config.smallest_step])
-                            })
-                        batch_z = batch_history_z[-1]
-                        if i % 100 == 0:
-                            print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
-                            try:
-                                save_images_collection(
-                                    images=np.round(images),
-                                    filename='plotting/sample/{}-ORI-{}.png'.format(extra_index, i),
-                                    grid_size=(10, 10),
-                                    results=results,
-                                )
-                            except Exception as e:
-                                print(e)
-                    ori_images = images
-
-                return gan_images, mala_images, ori_images
+                    return gan_images, mala_images, ori_images
 
     # prepare for training and testing data
     (_x_train, _y_train), (_x_test, _y_test) = \
@@ -1219,7 +1220,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = None
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/4c/fb/d434dabfcaec719e0cd5/checkpoint/checkpoint/checkpoint.dat-312000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
