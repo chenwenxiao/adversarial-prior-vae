@@ -54,8 +54,6 @@ class ExpConfig(spt.Config):
     lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600]
     lr_anneal_step_freq = None
 
-    independent_gan = False
-    kappa_on_x = False  # `kappa_on_x` is useful only when `independent_gan` is False
     use_dg = False
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
     gradient_penalty_weight = 2
@@ -536,7 +534,7 @@ def G_omega(z, output_dim):
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_6')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, output_dim, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
-        kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh if config.independent_gan else None
+        kernel_initializer=tf.zeros_initializer(), activation_fn=None
     )
     return x_mean
 
@@ -640,14 +638,11 @@ def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, i
                         logstd=tf.zeros([1, 128]))
     normal = normal.batch_ndims_to_value(1)
     z = net.add('z', normal, n_samples=n_z)
-    if config.independent_gan:
-        x_mean = G_omega(z, config.x_shape[-1])
-    else:
-        z_channel = config.z_dim // config.x_shape[0] // config.x_shape[1]
-        x_mean = G_omega(z, z_channel)
-        x_mean = spt.ops.reshape_tail(x_mean, ndims=3, shape=(-1,))
-        f_z = net.add('f_z', spt.Normal(mean=x_mean, std=1.0), group_ndims=1)
-        x_mean = G_theta(x_mean)
+    z_channel = config.z_dim // config.x_shape[0] // config.x_shape[1]
+    x_mean = G_omega(z, z_channel)
+    x_mean = spt.ops.reshape_tail(x_mean, ndims=3, shape=(-1,))
+    f_z = net.add('f_z', spt.Normal(mean=x_mean, std=1.0), group_ndims=1)
+    x_mean = G_theta(x_mean)
     x = net.add('x', spt.Normal(mean=x_mean, std=1.0), group_ndims=3)
     return net
 
@@ -725,11 +720,8 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
 
 def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None, input_qz=None):
     with tf.name_scope('adv_prior_loss'):
-        if config.kappa_on_x or config.independent_gan:
-            gp_omega = get_gradient_penalty(input_origin_x, pn_omega['x'].distribution.mean, D=D_kappa)
-        else:
-            gp_omega = get_gradient_penalty(input_qz, pn_omega['f_z'].distribution.mean, D=D_kappa,
-                                            space='f_z')
+        gp_omega = get_gradient_penalty(input_qz, pn_omega['f_z'].distribution.mean, D=D_kappa,
+                                        space='f_z')
         gp_theta = get_gradient_penalty(input_origin_x, pn_theta['x'].distribution.mean)
         if config.use_dg:
             gp_dg = get_gradient_penalty(q_net['z'].distribution.mean, pn_theta['z'], space='z')
@@ -769,12 +761,8 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None
         VAE_G_loss = tf.reduce_mean(D_psi(pn_theta['x'].distribution.mean))
         VAE_D_real = tf.reduce_mean(D_psi(input_origin_x))
 
-        if config.kappa_on_x or config.independent_gan:
-            energy_fake = D_kappa(pn_omega['x'].distribution.mean)
-            energy_real = D_kappa(input_origin_x)
-        else:
-            energy_fake = D_kappa(pn_omega['f_z'].distribution.mean)
-            energy_real = D_kappa(input_qz)
+        energy_fake = D_kappa(pn_omega['f_z'].distribution.mean)
+        energy_real = D_kappa(input_qz)
 
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gp_omega
@@ -999,8 +987,7 @@ def main():
             sample_n_z = config.sample_n_z
             gan_net = p_omega_net(n_z=sample_n_z, beta=beta)
             gan_plots = tf.reshape(gan_net['x'].distribution.mean, (-1,) + config.x_shape)
-            if not config.independent_gan:
-                gan_z = gan_net['f_z'].distribution.mean
+            gan_z = gan_net['f_z'].distribution.mean
             initial_z = tf.placeholder(
                 dtype=tf.float32, shape=(sample_n_z, 1, config.z_dim), name='initial_z')
             gan_plots = 256.0 * gan_plots / 2 + 127.5
@@ -1069,12 +1056,9 @@ def main():
 
                 if loop.epoch > config.warm_up_start:
                     # plot samples
-                    if config.independent_gan:
-                        gan_images = session.run(gan_plots)
-                    else:
-                        with loop.timeit('gan_sample_time'):
-                            gan_images, batch_z, batch_z_energy, batch_z_pure_energy = session.run(
-                                [gan_plots, gan_z, gan_z_energy, gan_z_pure_energy])
+                    with loop.timeit('gan_sample_time'):
+                        gan_images, batch_z, batch_z_energy, batch_z_pure_energy = session.run(
+                            [gan_plots, gan_z, gan_z_energy, gan_z_pure_energy])
 
                     try:
                         save_images_collection(
@@ -1090,10 +1074,6 @@ def main():
                     ori_images = None
                     if loop.epoch >= config.max_epoch:
 
-                        if config.independent_gan:
-                            gan_images = (gan_images - 127.5) / 256.0 * 2
-                            batch_z = session.run(reconstruct_z, feed_dict={input_x: gan_images})
-                            batch_z = np.expand_dims(batch_z, axis=1)
                         step_length = config.smallest_step
                         with loop.timeit('mala_sample_time'):
                             for i in range(0, 1001):
