@@ -18,6 +18,7 @@ from tfsnippet.examples.utils import (MLResults,
                                       bernoulli_flow,
                                       print_with_title)
 from code.experiments.utils import get_inception_score, get_fid_google
+from code.experiments.datasets.svhn import load_svhn
 import numpy as np
 from scipy.misc import logsumexp
 
@@ -918,9 +919,8 @@ def main():
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta, log_Z=get_log_Z())
-        test_recon = tf.reduce_mean(
-            test_chain.model['x'].log_prob()
-        )
+        ele_test_recon = test_chain.model['x'].log_prob()
+        test_recon = tf.reduce_mean(ele_test_recon)
         test_mse = tf.reduce_sum(
             (tf.round(test_chain.model['x'].distribution.mean * 128 + 127.5) - tf.round(
                 test_chain.model['x'] * 128 + 127.5)) ** 2, axis=[-1, -2, -3])  # (sample_dim, batch_dim, x_sample_dim)
@@ -928,6 +928,7 @@ def main():
         test_mse = tf.reduce_mean(tf.reduce_mean(tf.reshape(
             test_mse, (-1, config.test_x_samples,)
         ), axis=-1))
+
         test_nll = -tf.reduce_mean(
             test_chain.vi.evaluation.is_loglikelihood()
         )
@@ -940,10 +941,11 @@ def main():
             latent_log_probs=[test_q_net['z'].log_prob()],
             axis=0
         )
-        adv_test_nll = -tf.reduce_mean(
-            vi.evaluation.is_loglikelihood()
-        )
-        adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
+
+        ele_adv_test_nll = vi.evaluation.is_loglikelihood()
+        adv_test_nll = -tf.reduce_mean(ele_adv_test_nll)
+        ele_adv_test_lb = vi.lower_bound.elbo()
+        adv_test_lb = tf.reduce_mean(ele_dv_test_lb)
 
         real_energy = tf.reduce_mean(D_psi(test_chain.model['x']))
         reconstruct_energy = tf.reduce_mean(D_psi(test_chain.model['x'].distribution.mean))
@@ -1147,17 +1149,11 @@ def main():
                     return gan_images, mala_images, ori_images
 
     # prepare for training and testing data
-    (_x_train, _y_train), (_x_test, _y_test) = \
-        spt.datasets.load_cifar10(x_shape=config.x_shape)
-    # train_flow = bernoulli_flow(
-    #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
+    (_x_train, _y_train), (_x_test, _y_test) = spt.datasets.load_cifar10(x_shape=config.x_shape)
     x_train = (_x_train - 127.5) / 256.0 * 2
     x_test = (_x_test - 127.5) / 256.0 * 2
     # uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0, dtype=np.float)
-    train_flow = spt.DataFlow.arrays([x_train, x_train], config.batch_size, shuffle=True,
-                                     skip_incomplete=True)
-    # gan_train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
-    # gan_train_flow = gan_train_flow.map(uniform_sampler)
+    train_flow = spt.DataFlow.arrays([x_train, x_train], config.test_batch_size)
     reconstruct_train_flow = spt.DataFlow.arrays(
         [x_train], 100, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(
@@ -1165,202 +1161,129 @@ def main():
     test_flow = spt.DataFlow.arrays(
         [x_test, x_test],
         config.test_batch_size)
-    test_flow = test_flow.map(lambda x, y: [x, y])
+
+    (svhn_train, _), (svhn_test, __) = load_svhn(config.x_shape)
+    svhn_train = (svhn_train - 127.5) / 256.0 * 2
+    svhn_test = (svhn_test - 127.5) / 256.0 * 2
+    svhn_train_flow = spt.DataFlow.arrays([svhn_train, svhn_train], config.test_batch_size)
+    svhn_test_flow = spt.DataFlow.arrays([svhn_test, svhn_test], config.test_batch_size)
 
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
         spt.utils.ensure_variables_initialized()
 
-        # initialize the network
-        # for [x, origin_x] in train_flow:
-        #     print('Network initialized, first-batch loss is {:.6g}.\n'.
-        #           format(session.run(init_loss, feed_dict={input_x: x, input_origin_x: origin_x})))
-        #     break
+    # initialize the network
+    # for [x, origin_x] in train_flow:
+    #     print('Network initialized, first-batch loss is {:.6g}.\n'.
+    #           format(session.run(init_loss, feed_dict={input_x: x, input_origin_x: origin_x})))
+    #     break
 
-        # if config.z_dim == 512:
-        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/48/19/6f3b6c3ef49ded8ba2d5/checkpoint/checkpoint/checkpoint.dat-390000'
-        # elif config.z_dim == 1024:
-        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/cd/19/6f9d69b5d1931e67e2d5/checkpoint/checkpoint/checkpoint.dat-390000'
-        # elif config.z_dim == 2048:
-        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/4d/19/6f9d69b5d19398c8c2d5/checkpoint/checkpoint/checkpoint.dat-390000'
-        # elif config.z_dim == 3072:
-        #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
-        # else:
-        restore_checkpoint = None  # '/mnt/mfs/mlstorage-experiments/cwx17/2c/fb/d4e63c432be9319e0cd5/checkpoint/checkpoint/checkpoint.dat-312000'
+    # if config.z_dim == 512:
+    #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/48/19/6f3b6c3ef49ded8ba2d5/checkpoint/checkpoint/checkpoint.dat-390000'
+    # elif config.z_dim == 1024:
+    #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/cd/19/6f9d69b5d1931e67e2d5/checkpoint/checkpoint/checkpoint.dat-390000'
+    # elif config.z_dim == 2048:
+    #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/4d/19/6f9d69b5d19398c8c2d5/checkpoint/checkpoint/checkpoint.dat-390000'
+    # elif config.z_dim == 3072:
+    #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
+    # else:
+    restore_checkpoint = None  # '/mnt/mfs/mlstorage-experiments/cwx17/2c/fb/d4e63c432be9319e0cd5/checkpoint/checkpoint/checkpoint.dat-312000'
 
-        # train the network
-        with spt.TrainLoop(tf.trainable_variables(),
-                           var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega', 'D_kappa'],
-                           max_epoch=config.max_epoch,
-                           max_step=config.max_step,
-                           summary_dir=(results.system_path('train_summary')
-                                        if config.write_summary else None),
-                           summary_graph=tf.get_default_graph(),
-                           early_stopping=False,
-                           checkpoint_dir=results.system_path('checkpoint'),
-                           checkpoint_epoch_freq=100,
-                           restore_checkpoint=restore_checkpoint
-                           ) as loop:
+    # train the network
+    with spt.TrainLoop(tf.trainable_variables(),
+                       var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega', 'D_kappa'],
+                       max_epoch=config.max_epoch + 1,
+                       max_step=config.max_step,
+                       summary_dir=(results.system_path('train_summary')
+                                    if config.write_summary else None),
+                       summary_graph=tf.get_default_graph(),
+                       early_stopping=False,
+                       checkpoint_dir=results.system_path('checkpoint'),
+                       checkpoint_epoch_freq=100,
+                       restore_checkpoint=restore_checkpoint
+                       ) as loop:
 
-            evaluator = spt.Evaluator(
-                loop,
-                metrics={'test_nll': test_nll, 'test_lb': test_lb,
-                         'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb,
-                         'reconstruct_energy': reconstruct_energy,
-                         'real_energy': real_energy,
-                         'pd_energy': pd_energy, 'pn_energy': pn_energy,
-                         'test_recon': test_recon, 'kl_adv_and_gaussian': kl_adv_and_gaussian, 'test_mse': test_mse},
-                inputs=[input_x],
-                data_flow=test_flow,
-                time_metric_name='test_time'
-            )
+    def evaluator_generate(flow, preffix=''):
+        return spt.Evaluator(
+            loop,
+            metrics={preffix + 'nll': test_nll, preffix + 'lb': test_lb,
+                     preffix + 'adv_nll': adv_test_nll, preffix + 'adv_lb': adv_test_lb,
+                     preffix + 'reconstruct_energy': reconstruct_energy,
+                     preffix + 'real_energy': real_energy,
+                     preffix + 'pd_energy': pd_energy, 'pn_energy': pn_energy,
+                     preffix + 'recon': test_recon, preffix + 'kl_adv_and_gaussian': kl_adv_and_gaussian,
+                     preffix + 'mse': test_mse},
+            inputs=[input_x],
+            data_flow=flow,
+            time_metric_name=preffix + 'time'
+        )
 
-            loop.print_training_summary()
-            spt.utils.ensure_variables_initialized()
+    cifar_train_evaluator = evaluator_generate(train_flow, 'cifar_train')
+    cifar_test_evaluator = evaluator_generate(test_flow, 'cifar_test')
+    svhn_train_evaluator = evaluator_generate(svhn_train_flow, 'svhn_train')
+    svhn_test_evaluator = evaluator_generate(svhn_test_flow, 'svhn_test')
 
-            epoch_iterator = loop.iter_epochs()
+    loop.print_training_summary()
+    spt.utils.ensure_variables_initialized()
 
-            n_critical = config.n_critical
-            # adversarial training
-            for epoch in epoch_iterator:
-                if epoch == config.warm_up_start + 1:
-                    _qz = []
-                    for [x] in reconstruct_train_flow:
-                        batch_qz = session.run(train_q_net['z'].distribution.mean, feed_dict={
-                            input_x: x,
-                        })
-                        batch_qz = np.expand_dims(batch_qz, axis=1)
-                        _qz.append(batch_qz)
-                    _qz = np.concatenate(_qz, axis=0)
-                    # _qz_mean, _qz_std = np.mean(_qz, axis=0), np.std(_qz, axis=0)
-                    # for i in range(1, 10):
-                    #     tmp = np.asarray((_qz - _qz_mean) < _qz_std * i, dtype=np.float)
-                    #     print("{}% data is in {} * std".format(100.0 * np.sum(tmp) / len(tmp) / config.z_dim, i))
-                    # _qz_std = _qz_std * 3.0
-                    # _qz = (_qz - _qz_mean) / _qz_std
-                    qz_flow = spt.DataFlow.arrays([_qz], config.batch_size, shuffle=True,
-                                                  skip_incomplete=True)
+    epoch_iterator = loop.iter_epochs()
 
-                if epoch <= config.warm_up_start:
-                    step_iterator = MyIterator(train_flow)
-                    while step_iterator.has_next:
-                        for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
-                            # vae training
-                            [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
-                             batch_train_recon_pure_energy, batch_VAE_D_real, batch_VAE_G_loss, batch_train_kl,
-                             batch_train_grad_penalty] = session.run(
-                                [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
-                                 train_recon_pure_energy, VAE_D_real, VAE_G_loss,
-                                 train_kl, train_grad_penalty],
-                                feed_dict={
-                                    input_x: x,
-                                    input_origin_x: origin_x,
-                                    warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
-                                })
-                            loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
-                            loop.collect_metrics(xi=xi_value)
-                            loop.collect_metrics(beta=beta_value)
-                            loop.collect_metrics(train_recon=batch_train_recon)
-                            loop.collect_metrics(train_recon_pure_energy=batch_train_recon_pure_energy)
-                            loop.collect_metrics(train_recon_energy=batch_train_recon_energy)
-                            loop.collect_metrics(VAE_D_real=batch_VAE_D_real)
-                            loop.collect_metrics(VAE_G_loss=batch_VAE_G_loss)
-                            loop.collect_metrics(train_kl=batch_train_kl)
-                            loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
-                else:
-                    step_iterator = MyIterator(qz_flow)
-                    while step_iterator.has_next:
-                        for step, [qz] in loop.iter_steps(limited(step_iterator, n_critical)):
-                            # discriminator training
-                            [_, batch_D_loss, batch_D_real] = session.run(
-                                [D_train_op, D_loss, D_real], feed_dict={
-                                    input_qz: qz,
-                                })
-                            loop.collect_metrics(D_loss=batch_D_loss)
-                            loop.collect_metrics(D_real=batch_D_real)
+    # adversarial training
+    for epoch in epoch_iterator:
 
-                        # generator training x
-                        [_, batch_G_loss] = session.run(
-                            [G_train_op, G_loss], feed_dict={
-                            })
-                        loop.collect_metrics(G_loss=batch_G_loss)
+        if epoch % config.test_epoch_freq == 0:
+            with loop.timeit('compute_Z_time'):
+                # log_Z_list = []
+                # for i in range(config.log_Z_times):
+                #     log_Z_list.append(session.run(log_Z_compute_op))
+                # from scipy.misc import logsumexp
+                # log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
+                # print('log_Z_list:{}'.format(log_Z_list))
+                # print('log_Z:{}'.format(log_Z))
 
-                if epoch in config.lr_anneal_epoch_freq:
-                    learning_rate.anneal()
+                log_Z_list = []
+                for [batch_x] in train_flow:
+                    log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
+                        input_x: batch_x,
+                    }))
+                from scipy.misc import logsumexp
+                another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
+                # print('log_Z_list:{}'.format(log_Z_list))
+                print('another_log_Z:{}'.format(another_log_Z))
+                # final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
+                final_log_Z = another_log_Z  # TODO
+                get_log_Z().set(final_log_Z)
 
-                if epoch == config.warm_up_start:
-                    learning_rate.set(config.initial_lr)
+            with loop.timeit('eval_time'):
+                cifar_train_evaluator.run()
+                cifar_test_evaluator.run()
+                svhn_train_evaluator.run()
+                svhn_test_evaluator.run()
 
-                if epoch % config.plot_epoch_freq == 0:
-                    plot_samples(loop)
-
-                if epoch % config.test_epoch_freq == 0:
-                    with loop.timeit('compute_Z_time'):
-                        # log_Z_list = []
-                        # for i in range(config.log_Z_times):
-                        #     log_Z_list.append(session.run(log_Z_compute_op))
-                        # from scipy.misc import logsumexp
-                        # log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                        # print('log_Z_list:{}'.format(log_Z_list))
-                        # print('log_Z:{}'.format(log_Z))
-
-                        log_Z_list = []
-                        for [batch_x, batch_origin_x] in train_flow:
-                            log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                                input_x: batch_x,
-                                input_origin_x: batch_origin_x
+            with loop.timeit('out_of_distribution_test'):
+                def get_ele(ops, flow):
+                    packs = []
+                    for [batch_x] in flow:
+                        packs.append(session.run(
+                            ops, feed_dict={
+                                input_x: batch_x
                             }))
-                        from scipy.misc import logsumexp
-                        another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                        # print('log_Z_list:{}'.format(log_Z_list))
-                        print('another_log_Z:{}'.format(another_log_Z))
-                        # final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
-                        final_log_Z = another_log_Z  # TODO
-                        get_log_Z().set(final_log_Z)
+                    packs = np.transpose(np.asarray(packs), (0, 1, 2))  # [3, len_train / batch_size, batch_size]
+                    packs = np.reshape(packs, (len(ops), -1))
+                    return packs
 
-                    with loop.timeit('eval_time'):
-                        evaluator.run()
+                cifar_train_nll, cifar_train_lb, cifar_train_recon = get_ele(
+                    [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], train_flow)
+                print(cifar_train_nll.shape, cifar_train_lb.shape, cifar_train_recon.shape)
 
-                if epoch == config.max_epoch:
-                    dataset_img = _x_train
-                    gan_img = []
-                    mala_img = []
-                    ori_img = []
-                    for i in range(config.fid_samples // config.sample_n_z):
-                        gan_images, mala_images, ori_images = plot_samples(loop, 10000 + i)
-                        gan_img.append(gan_images)
-                        mala_img.append(mala_images)
-                        ori_img.append(ori_images)
-                        print('{}-th sample finished...'.format(i))
+                # Draw the histogram or exrta the data here
 
-                    gan_img = np.concatenate(gan_img, axis=0).astype('uint8')
-                    gan_img = np.asarray(gan_img)
-                    FID = get_fid_google(gan_img, dataset_img)
-                    IS_mean, IS_std = get_inception_score(gan_img)
-                    loop.collect_metrics(FID_gan=FID)
-                    loop.collect_metrics(IS_gan=IS_mean)
-
-                    mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
-                    mala_img = np.asarray(mala_img)
-                    FID = get_fid_google(mala_img, dataset_img)
-                    IS_mean, IS_std = get_inception_score(mala_img)
-                    loop.collect_metrics(FID=FID)
-                    loop.collect_metrics(IS=IS_mean)
-
-                    ori_img = np.concatenate(ori_img, axis=0).astype('uint8')
-                    ori_img = np.asarray(ori_img)
-                    FID = get_fid_google(ori_img, dataset_img)
-                    IS_mean, IS_std = get_inception_score(ori_img)
-                    loop.collect_metrics(FID_ori=FID)
-                    loop.collect_metrics(IS_ori=IS_mean)
-
-                loop.collect_metrics(lr=learning_rate.get())
-                loop.print_logs()
+            loop.collect_metrics(lr=learning_rate.get())
+            loop.print_logs()
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')
     results.close()
 
-
-if __name__ == '__main__':
-    main()
+    if __name__ == '__main__':
+        main()
