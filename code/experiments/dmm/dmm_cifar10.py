@@ -577,8 +577,7 @@ def D_kappa(x, y=None):
     normalizer_fn = None
     # x = tf.round(256.0 * x / 2 + 127.5)
     # x = (x - 127.5) / 256.0 * 2
-    if not config.kappa_on_x:
-        x = spt.ops.reshape_tail(x, 1, (config.x_shape[0], config.x_shape[1], -1))
+    x = spt.ops.reshape_tail(x, 1, (config.x_shape[0], config.x_shape[1], -1))
     with arg_scope([spt.layers.resnet_conv2d_block],
                    kernel_size=config.kernel_size,
                    shortcut_kernel_size=config.shortcut_kernel_size,
@@ -1190,7 +1189,7 @@ def main():
                          'real_energy': real_energy,
                          'pd_energy': pd_energy, 'pn_energy': pn_energy,
                          'test_recon': test_recon, 'kl_adv_and_gaussian': kl_adv_and_gaussian, 'test_mse': test_mse},
-                inputs=[input_x],
+                inputs=[input_x, input_origin_x],
                 data_flow=test_flow,
                 time_metric_name='test_time'
             )

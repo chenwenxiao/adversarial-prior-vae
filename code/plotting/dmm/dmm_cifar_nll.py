@@ -1200,7 +1200,7 @@ def main():
                          preffix + 'recon': test_recon,
                          preffix + 'kl_adv_and_gaussian': kl_adv_and_gaussian,
                          preffix + 'mse': test_mse},
-                inputs=[input_x],
+                inputs=[input_x, input_origin_x],
                 data_flow=flow,
                 time_metric_name=preffix + 'time'
             )

@@ -1196,7 +1196,7 @@ def main():
                          'real_energy': real_energy,
                          'pd_energy': pd_energy, 'pn_energy': pn_energy,
                          'test_recon': test_recon, 'kl_adv_and_gaussian': kl_adv_and_gaussian, 'test_mse': test_mse},
-                inputs=[input_x],
+                inputs=[input_x, input_origin_x],
                 data_flow=test_flow,
                 time_metric_name='test_time'
             )
