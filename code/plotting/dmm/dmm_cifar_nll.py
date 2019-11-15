@@ -945,7 +945,7 @@ def main():
         ele_adv_test_nll = vi.evaluation.is_loglikelihood()
         adv_test_nll = -tf.reduce_mean(ele_adv_test_nll)
         ele_adv_test_lb = vi.lower_bound.elbo()
-        adv_test_lb = tf.reduce_mean(ele_dv_test_lb)
+        adv_test_lb = tf.reduce_mean(ele_adv_test_lb)
 
         real_energy = tf.reduce_mean(D_psi(test_chain.model['x']))
         reconstruct_energy = tf.reduce_mean(D_psi(test_chain.model['x'].distribution.mean))
@@ -1203,83 +1203,87 @@ def main():
                        restore_checkpoint=restore_checkpoint
                        ) as loop:
 
-    def evaluator_generate(flow, preffix=''):
-        return spt.Evaluator(
-            loop,
-            metrics={preffix + 'nll': test_nll, preffix + 'lb': test_lb,
-                     preffix + 'adv_nll': adv_test_nll, preffix + 'adv_lb': adv_test_lb,
-                     preffix + 'reconstruct_energy': reconstruct_energy,
-                     preffix + 'real_energy': real_energy,
-                     preffix + 'pd_energy': pd_energy, 'pn_energy': pn_energy,
-                     preffix + 'recon': test_recon, preffix + 'kl_adv_and_gaussian': kl_adv_and_gaussian,
-                     preffix + 'mse': test_mse},
-            inputs=[input_x],
-            data_flow=flow,
-            time_metric_name=preffix + 'time'
-        )
+        loop.print_training_summary()
+        spt.utils.ensure_variables_initialized()
 
-    cifar_train_evaluator = evaluator_generate(train_flow, 'cifar_train')
-    cifar_test_evaluator = evaluator_generate(test_flow, 'cifar_test')
-    svhn_train_evaluator = evaluator_generate(svhn_train_flow, 'svhn_train')
-    svhn_test_evaluator = evaluator_generate(svhn_test_flow, 'svhn_test')
+        def evaluator_generate(flow, preffix=''):
+            return spt.Evaluator(
+                loop,
+                metrics={preffix + 'nll': test_nll,
+                         preffix + 'lb': test_lb,
+                         preffix + 'adv_nll': adv_test_nll,
+                         preffix + 'adv_lb': adv_test_lb,
+                         preffix + 'reconstruct_energy': reconstruct_energy,
+                         preffix + 'real_energy': real_energy,
+                         preffix + 'pd_energy': pd_energy,
+                         preffix + 'pn_energy': pn_energy,
+                         preffix + 'recon': test_recon,
+                         preffix + 'kl_adv_and_gaussian': kl_adv_and_gaussian,
+                         preffix + 'mse': test_mse},
+                inputs=[input_x],
+                data_flow=flow,
+                time_metric_name=preffix + 'time'
+            )
 
-    loop.print_training_summary()
-    spt.utils.ensure_variables_initialized()
+        cifar_train_evaluator = evaluator_generate(train_flow, 'cifar_train')
+        cifar_test_evaluator = evaluator_generate(test_flow, 'cifar_test')
+        svhn_train_evaluator = evaluator_generate(svhn_train_flow, 'svhn_train')
+        svhn_test_evaluator = evaluator_generate(svhn_test_flow, 'svhn_test')
 
-    epoch_iterator = loop.iter_epochs()
+        epoch_iterator = loop.iter_epochs()
 
-    # adversarial training
-    for epoch in epoch_iterator:
+        # adversarial training
+        for epoch in epoch_iterator:
 
-        if epoch % config.test_epoch_freq == 0:
-            with loop.timeit('compute_Z_time'):
-                # log_Z_list = []
-                # for i in range(config.log_Z_times):
-                #     log_Z_list.append(session.run(log_Z_compute_op))
-                # from scipy.misc import logsumexp
-                # log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                # print('log_Z_list:{}'.format(log_Z_list))
-                # print('log_Z:{}'.format(log_Z))
+            if epoch % config.test_epoch_freq == 0:
+                with loop.timeit('compute_Z_time'):
+                    # log_Z_list = []
+                    # for i in range(config.log_Z_times):
+                    #     log_Z_list.append(session.run(log_Z_compute_op))
+                    # from scipy.misc import logsumexp
+                    # log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
+                    # print('log_Z_list:{}'.format(log_Z_list))
+                    # print('log_Z:{}'.format(log_Z))
 
-                log_Z_list = []
-                for [batch_x] in train_flow:
-                    log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                        input_x: batch_x,
-                    }))
-                from scipy.misc import logsumexp
-                another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                # print('log_Z_list:{}'.format(log_Z_list))
-                print('another_log_Z:{}'.format(another_log_Z))
-                # final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
-                final_log_Z = another_log_Z  # TODO
-                get_log_Z().set(final_log_Z)
+                    log_Z_list = []
+                    for [batch_x] in train_flow:
+                        log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
+                            input_x: batch_x,
+                        }))
+                    from scipy.misc import logsumexp
+                    another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
+                    # print('log_Z_list:{}'.format(log_Z_list))
+                    print('another_log_Z:{}'.format(another_log_Z))
+                    # final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
+                    final_log_Z = another_log_Z  # TODO
+                    get_log_Z().set(final_log_Z)
 
-            with loop.timeit('eval_time'):
-                cifar_train_evaluator.run()
-                cifar_test_evaluator.run()
-                svhn_train_evaluator.run()
-                svhn_test_evaluator.run()
+                with loop.timeit('eval_time'):
+                    cifar_train_evaluator.run()
+                    cifar_test_evaluator.run()
+                    svhn_train_evaluator.run()
+                    svhn_test_evaluator.run()
 
-            with loop.timeit('out_of_distribution_test'):
-                def get_ele(ops, flow):
-                    packs = []
-                    for [batch_x] in flow:
-                        packs.append(session.run(
-                            ops, feed_dict={
-                                input_x: batch_x
-                            }))
-                    packs = np.transpose(np.asarray(packs), (0, 1, 2))  # [3, len_train / batch_size, batch_size]
-                    packs = np.reshape(packs, (len(ops), -1))
-                    return packs
+                with loop.timeit('out_of_distribution_test'):
+                    def get_ele(ops, flow):
+                        packs = []
+                        for [batch_x] in flow:
+                            packs.append(session.run(
+                                ops, feed_dict={
+                                    input_x: batch_x
+                                }))
+                        packs = np.transpose(np.asarray(packs), (0, 1, 2))  # [3, len_train / batch_size, batch_size]
+                        packs = np.reshape(packs, (len(ops), -1))
+                        return packs
 
-                cifar_train_nll, cifar_train_lb, cifar_train_recon = get_ele(
-                    [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], train_flow)
-                print(cifar_train_nll.shape, cifar_train_lb.shape, cifar_train_recon.shape)
+                    cifar_train_nll, cifar_train_lb, cifar_train_recon = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], train_flow)
+                    print(cifar_train_nll.shape, cifar_train_lb.shape, cifar_train_recon.shape)
 
-                # Draw the histogram or exrta the data here
+                    # Draw the histogram or exrta the data here
 
-            loop.collect_metrics(lr=learning_rate.get())
-            loop.print_logs()
+                loop.collect_metrics(lr=learning_rate.get())
+                loop.print_logs()
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')
