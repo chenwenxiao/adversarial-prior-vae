@@ -865,6 +865,10 @@ def main():
     results.make_dirs('plotting/train.reconstruct', exist_ok=True)
     results.make_dirs('plotting/test.reconstruct', exist_ok=True)
     results.make_dirs('train_summary', exist_ok=True)
+    results.make_dirs('plotting/tower.reconstruct', exist_ok=True)
+    results.make_dirs('plotting/tower', exist_ok=True)
+
+    print(results.system_path('gan_smaples'))
 
     posterior_flow = spt.layers.planar_normalizing_flows(
         config.nf_layers, name='posterior_flow')
@@ -1040,9 +1044,9 @@ def main():
                 images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
                 images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
                 images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
-                images[2::3, ...] = np.round(session.run(
-                    reconstruct_plots, feed_dict={input_x: x_samples}))
-                batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
+                batch_reconstruct_plots, batch_reconstruct_z = session.run(
+                    [reconstruct_plots, reconstruct_z], feed_dict={input_x: x_samples})
+                images[2::3, ...] = np.round(batch_reconstruct_plots)
                 # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
                 save_images_collection(
                     images=images,
@@ -1057,9 +1061,9 @@ def main():
                 images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
                 images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
                 images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
-                images[2::3, ...] = np.round(session.run(
-                    reconstruct_plots, feed_dict={input_x: x_samples}))
-                batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
+                batch_reconstruct_plots, batch_reconstruct_z = session.run(
+                    [reconstruct_plots, reconstruct_z], feed_dict={input_x: x_samples})
+                images[2::3, ...] = np.round(batch_reconstruct_plots)
                 # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
                 save_images_collection(
                     images=images,
@@ -1164,6 +1168,10 @@ def main():
         [x_test, x_test],
         config.test_batch_size)
     test_flow = test_flow.map(lambda x, y: [x, y])
+    if config.tower_input is not None:
+        tower_input = np.load(config.tower_input)
+        tower_flow = spt.DataFlow.arrays(
+            [tower_input, tower_input], 100)
 
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
@@ -1255,6 +1263,50 @@ def main():
 
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
+
+                np.save(results.system_path('gan_smaples'), gan_img)
+                if config.tower_input is not None:
+                    count = 0
+                    for [x] in tower_flow:
+                        x_samples = x
+                        images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
+                        images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
+                        images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
+                        batch_reconstruct_plots, batch_reconstruct_z = session.run(
+                            [reconstruct_plots, reconstruct_z], feed_dict={input_x: x_samples})
+                        images[2::3, ...] = np.round(batch_reconstruct_plots)
+                        # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
+                        save_images_collection(
+                            images=images,
+                            filename='plotting/tower.reconstruct/{}.png'.format(count),
+                            grid_size=(20, 15),
+                            results=results,
+                        )
+                        batch_z = batch_reconstruct_z
+                        with loop.timeit('tower_sample_time'):
+                            for i in range(0, 1001):
+                                [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
+                                 batch_history_ratio] = session.run(
+                                    [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z,
+                                     plot_history_ratio],
+                                    feed_dict={
+                                        initial_z: batch_z,
+                                        mcmc_alpha: np.asarray([config.smallest_step])
+                                    })
+                                batch_z = batch_history_z[-1]
+
+                                if i % 100 == 0:
+                                    print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
+                                    try:
+                                        save_images_collection(
+                                            images=np.round(images),
+                                            filename='plotting/tower/{}-MALA-{}.png'.format(count, i),
+                                            grid_size=(10, 10),
+                                            results=results,
+                                        )
+                                    except Exception as e:
+                                        print(e)
+                        count = count + 1
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')

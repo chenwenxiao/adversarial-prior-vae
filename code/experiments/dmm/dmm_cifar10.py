@@ -1038,9 +1038,9 @@ def main():
                     images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
                     images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
                     images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
-                    images[2::3, ...] = np.round(session.run(
-                        reconstruct_plots, feed_dict={input_x: x_samples}))
-                    batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
+                    batch_reconstruct_plots, batch_reconstruct_z = session.run(
+                        [reconstruct_plots, reconstruct_z], feed_dict={input_x: x_samples})
+                    images[2::3, ...] = np.round(batch_reconstruct_plots)
                     # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
                     save_images_collection(
                         images=images,
@@ -1055,9 +1055,9 @@ def main():
                     images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
                     images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
                     images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
-                    images[2::3, ...] = np.round(session.run(
-                        reconstruct_plots, feed_dict={input_x: x_samples}))
-                    batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
+                    batch_reconstruct_plots, batch_reconstruct_z = session.run(
+                        [reconstruct_plots, reconstruct_z], feed_dict={input_x: x_samples})
+                    images[2::3, ...] = np.round(batch_reconstruct_plots)
                     # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
                     save_images_collection(
                         images=images,
@@ -1075,7 +1075,7 @@ def main():
                         with loop.timeit('gan_sample_time'):
                             gan_images, batch_z, batch_z_energy, batch_z_pure_energy = session.run(
                                 [gan_plots, gan_z, gan_z_energy, gan_z_pure_energy])
-                            
+
                     try:
                         save_images_collection(
                             images=np.round(gan_images),
