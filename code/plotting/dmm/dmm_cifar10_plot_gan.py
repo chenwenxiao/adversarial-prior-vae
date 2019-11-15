@@ -1267,6 +1267,7 @@ def main():
                 np.save(results.system_path('gan_smaples'), gan_img)
                 if config.tower_input is not None:
                     count = 0
+                    tower_img = []
                     for [x] in tower_flow:
                         x_samples = x
                         images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
@@ -1306,7 +1307,10 @@ def main():
                                         )
                                     except Exception as e:
                                         print(e)
+                        tower_img.append(images)
                         count = count + 1
+                    tower_img = np.concatenate(tower_img, axis=0)
+                    np.save(results.system_path('tower_smaples'), tower_img)
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')
