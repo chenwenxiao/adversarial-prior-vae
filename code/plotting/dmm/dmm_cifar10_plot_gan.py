@@ -82,6 +82,8 @@ class ExpConfig(spt.Config):
     sample_n_z = 100
     fid_samples = 500
 
+    tower_input = None
+
     epsilon = -20.0
     min_logstd_of_q = -3.0
 
@@ -1033,23 +1035,6 @@ def main():
             extra_index = loop.epoch
         with loop.timeit('plot_time'):
             # plot reconstructs
-            for [x] in reconstruct_train_flow:
-                x_samples = x
-                images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
-                images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
-                images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
-                images[2::3, ...] = np.round(session.run(
-                    reconstruct_plots, feed_dict={input_x: x_samples}))
-                batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
-                # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
-                save_images_collection(
-                    images=images,
-                    filename='plotting/train.reconstruct/{}.png'.format(extra_index),
-                    grid_size=(20, 15),
-                    results=results,
-                )
-                break
-
             for [x] in reconstruct_test_flow:
                 x_samples = x
                 images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
@@ -1067,47 +1052,29 @@ def main():
                 )
                 break
 
+            for [x] in reconstruct_train_flow:
+                x_samples = x
+                images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
+                images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
+                images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
+                images[2::3, ...] = np.round(session.run(
+                    reconstruct_plots, feed_dict={input_x: x_samples}))
+                batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
+                # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
+                save_images_collection(
+                    images=images,
+                    filename='plotting/train.reconstruct/{}.png'.format(extra_index),
+                    grid_size=(20, 15),
+                    results=results,
+                )
+                break
             # plot samples
             if config.independent_gan:
                 gan_images = session.run(gan_plots)
             else:
-                gan_images = []
-                batch_z = []
-                batch_z_energy = []
-                batch_z_pure_energy = []
-
                 with loop.timeit('gan_sample_time'):
-                    for i in range(100):
-                        _, __, ___, ____ = session.run(
-                            [gan_plots, gan_z, gan_z_energy, gan_z_pure_energy])
-                        gan_images.append(_)
-                        batch_z.append(__)
-                        batch_z_energy.append(___)
-                        batch_z_pure_energy.append(____)
-                    gan_images = np.concatenate(gan_images)
-                    batch_z = np.concatenate(batch_z)
-                    batch_z_energy = np.concatenate(batch_z_energy)
-                    batch_z_pure_energy = np.concatenate(batch_z_pure_energy)
-
-                pure_index = np.reshape(batch_z_pure_energy, (-1,))
-                pure_index = np.argsort(pure_index, axis=0)
-
-                gan_images = gan_images[pure_index]
-                batch_z = batch_z[pure_index]
-                batch_z_energy = batch_z_energy[pure_index]
-                batch_z_pure_energy = batch_z_pure_energy[pure_index]
-
-                for i in range(100):
-                    print('energy of gan in [{}, {}] is {}, {}'.format(
-                        i, i + 1,
-                        np.mean(batch_z_pure_energy[i * 100: i * 100 + 100]),
-                        np.mean(batch_z_energy[i * 100: i * 100 + 100])))
-
-                start_point = 300
-                gan_images = gan_images[start_point:start_point + sample_n_z]
-                batch_z = batch_z[start_point:start_point + sample_n_z]
-                batch_z_energy = batch_z_energy[start_point:start_point + sample_n_z]
-                batch_z_pure_energy = batch_z_pure_energy[start_point:start_point + sample_n_z]
+                    gan_images, batch_z, batch_z_energy, batch_z_pure_energy = session.run(
+                        [gan_plots, gan_z, gan_z_energy, gan_z_pure_energy])
             try:
                 save_images_collection(
                     images=np.round(gan_images),

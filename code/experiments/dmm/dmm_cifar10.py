@@ -70,7 +70,7 @@ class ExpConfig(spt.Config):
     test_n_qz = 10
     test_batch_size = 64
     test_epoch_freq = 200
-    plot_epoch_freq = 200
+    plot_epoch_freq = 20
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
@@ -1033,23 +1033,6 @@ def main():
                 extra_index = loop.epoch
             with loop.timeit('plot_time'):
                 # plot reconstructs
-                for [x] in reconstruct_train_flow:
-                    x_samples = x
-                    images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
-                    images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
-                    images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
-                    images[2::3, ...] = np.round(session.run(
-                        reconstruct_plots, feed_dict={input_x: x_samples}))
-                    batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
-                    # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
-                    save_images_collection(
-                        images=images,
-                        filename='plotting/train.reconstruct/{}.png'.format(extra_index),
-                        grid_size=(20, 15),
-                        results=results,
-                    )
-                    break
-
                 for [x] in reconstruct_test_flow:
                     x_samples = x
                     images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
@@ -1067,48 +1050,32 @@ def main():
                     )
                     break
 
+                for [x] in reconstruct_train_flow:
+                    x_samples = x
+                    images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
+                    images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
+                    images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
+                    images[2::3, ...] = np.round(session.run(
+                        reconstruct_plots, feed_dict={input_x: x_samples}))
+                    batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
+                    # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
+                    save_images_collection(
+                        images=images,
+                        filename='plotting/train.reconstruct/{}.png'.format(extra_index),
+                        grid_size=(20, 15),
+                        results=results,
+                    )
+                    break
+
                 if loop.epoch > config.warm_up_start:
                     # plot samples
                     if config.independent_gan:
                         gan_images = session.run(gan_plots)
                     else:
-                        gan_images = []
-                        batch_z = []
-                        batch_z_energy = []
-                        batch_z_pure_energy = []
-
                         with loop.timeit('gan_sample_time'):
-                            for i in range(10):
-                                __, ___, ____ = session.run(
-                                    [gan_z, gan_z_energy, gan_z_pure_energy])
-                                __ = __ * _qz_std + _qz_mean
-                                _ = session.run(
-                                    x_origin_plots, feed_dict={
-                                        initial_z: __
-                                    }
-                                )
-                                gan_images.append(_)
-                                batch_z.append(__)
-                                batch_z_energy.append(___)
-                                batch_z_pure_energy.append(____)
-                            gan_images = np.concatenate(gan_images)
-                            batch_z = np.concatenate(batch_z)
-                            batch_z_energy = np.concatenate(batch_z_energy)
-                            batch_z_pure_energy = np.concatenate(batch_z_pure_energy)
-
-                        pure_index = np.reshape(batch_z_pure_energy, (-1,))
-                        pure_index = np.argsort(pure_index, axis=0)
-
-                        # gan_images = gan_images[pure_index]
-                        # batch_z = batch_z[pure_index]
-                        # batch_z_energy = batch_z_energy[pure_index]
-                        # batch_z_pure_energy = batch_z_pure_energy[pure_index]
-
-                        start_point = 300
-                        gan_images = gan_images[start_point:start_point + sample_n_z]
-                        batch_z = batch_z[start_point:start_point + sample_n_z]
-                        batch_z_energy = batch_z_energy[start_point:start_point + sample_n_z]
-                        batch_z_pure_energy = batch_z_pure_energy[start_point:start_point + sample_n_z]
+                            gan_images, batch_z, batch_z_energy, batch_z_pure_energy = session.run(
+                                [gan_plots, gan_z, gan_z_energy, gan_z_pure_energy])
+                            
                     try:
                         save_images_collection(
                             images=np.round(gan_images),
@@ -1121,7 +1088,7 @@ def main():
 
                     mala_images = None
                     ori_images = None
-                    if loop.epoch > config.warm_up_start:
+                    if loop.epoch >= config.max_epoch:
 
                         if config.independent_gan:
                             gan_images = (gan_images - 127.5) / 256.0 * 2
@@ -1132,7 +1099,8 @@ def main():
                             for i in range(0, 1001):
                                 [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                                  batch_history_ratio] = session.run(
-                                    [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
+                                    [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z,
+                                     plot_history_ratio],
                                     feed_dict={
                                         initial_z: batch_z,
                                         mcmc_alpha: np.asarray([step_length])
@@ -1218,7 +1186,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/4c/fb/d434dabfcaec719e0cd5/checkpoint/checkpoint/checkpoint.dat-312000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/2c/fb/d4e63c432be9319e0cd5/checkpoint/checkpoint/checkpoint.dat-312000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1264,12 +1232,12 @@ def main():
                         batch_qz = np.expand_dims(batch_qz, axis=1)
                         _qz.append(batch_qz)
                     _qz = np.concatenate(_qz, axis=0)
-                    _qz_mean, _qz_std = np.mean(_qz, axis=0), np.std(_qz, axis=0)
-                    for i in range(1, 10):
-                        tmp = np.asarray((_qz - _qz_mean) < _qz_std * i, dtype=np.float)
-                        print("{}% data is in {} * std".format(100.0 * np.sum(tmp) / len(tmp), i))
-                    _qz_std = _qz_std * 3
-                    _qz = (_qz - _qz_mean) / _qz_std
+                    # _qz_mean, _qz_std = np.mean(_qz, axis=0), np.std(_qz, axis=0)
+                    # for i in range(1, 10):
+                    #     tmp = np.asarray((_qz - _qz_mean) < _qz_std * i, dtype=np.float)
+                    #     print("{}% data is in {} * std".format(100.0 * np.sum(tmp) / len(tmp) / config.z_dim, i))
+                    # _qz_std = _qz_std * 3.0
+                    # _qz = (_qz - _qz_mean) / _qz_std
                     qz_flow = spt.DataFlow.arrays([_qz], config.batch_size, shuffle=True,
                                                   skip_incomplete=True)
 
