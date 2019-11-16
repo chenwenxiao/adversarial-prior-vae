@@ -652,7 +652,8 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
         # print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
         gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0)))
-        gradient_penalty = gradient_penalty ** (config.gradient_penalty_index / 2.0)
+        gradient_penalty = gradient_penalty ** 2
+        gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
     if config.gradient_penalty_algorithm == 'interpolate-gp':
@@ -661,7 +662,8 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
         print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
         gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0))) - 1.0
-        gradient_penalty = gradient_penalty ** (config.gradient_penalty_index / 2.0)
+        gradient_penalty = gradient_penalty ** 2
+        gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
     if config.gradient_penalty_algorithm == 'both':
@@ -1016,7 +1018,7 @@ def main():
                 try:
                     save_images_collection(
                         images=np.round(gan_images),
-                        filename='plotting/sample/gan-{}.png'.format(loop.epoch),
+                        filename='plotting/sample/gan-{}.png'.format(extra_index),
                         grid_size=(10, 10),
                         results=results,
                     )

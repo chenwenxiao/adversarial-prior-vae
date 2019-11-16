@@ -43,7 +43,7 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 800
     beta = 1e-8
     initial_xi = 0.0
-    pull_back_energy_weight = 60.0
+    pull_back_energy_weight = 2048.0 / 40.0
 
     max_step = None
     batch_size = 128
@@ -81,7 +81,7 @@ class ExpConfig(spt.Config):
     fid_samples = 500
 
     epsilon = -20.0
-    min_logstd_of_q = -10.0
+    min_logstd_of_q = -2.5
 
     @property
     def x_shape(self):
@@ -171,7 +171,6 @@ class EnergyDistribution(spt.Distribution):
             log_px = self.pz.log_prob(given=given, group_ndims=group_ndims)
             log_px.log_energy_prob = -energy - self.log_Z
             log_px.energy = energy
-            log_px.pure_energy = self.D(self.G(given))
 
         return log_px
 
@@ -246,7 +245,7 @@ class EnergyDistribution(spt.Distribution):
         grad_energy_z = tf.reshape(grad_energy_z, shape=z.shape)
         eps = tf.random.normal(
             shape=z.shape
-        ) * tf.sqrt(self._mcmc_alpha * 2)
+        ) * np.sqrt(self._mcmc_alpha * 2)
         z_prime = z - self._mcmc_alpha * grad_energy_z + eps
         return energy_z, grad_energy_z, z_prime, pure_energy_z
 
@@ -602,8 +601,7 @@ def D_kappa(x, y=None):
 
 @add_arg_scope
 @spt.global_reuse
-def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial_z=None,
-          mcmc_alpha=config.smallest_step):
+def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial_z=None):
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
     normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
@@ -614,7 +612,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
     # xi = tf.square(xi)
     xi = tf.nn.sigmoid(xi)  # TODO
     pz = EnergyDistribution(normal, G=G_theta, D=D_psi, log_Z=log_Z, xi=xi, mcmc_iterator=mcmc_iterator,
-                            initial_z=initial_z, mcmc_alpha=mcmc_alpha)
+                            initial_z=initial_z)
     z = net.add('z', pz, n_samples=n_z)
     x_mean, x_logstd = G_theta(z, return_std=True)
     x = net.add('x', DiscretizedLogistic(
@@ -687,7 +685,8 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
         # print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
         gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0)))
-        gradient_penalty = gradient_penalty ** (config.gradient_penalty_index / 2.0)
+        gradient_penalty = gradient_penalty ** 2
+        gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
     if config.gradient_penalty_algorithm == 'interpolate-gp':
@@ -696,7 +695,8 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
         print(D_interpolates)
         gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
         gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(x_shape), 0))) - 1.0
-        gradient_penalty = gradient_penalty ** (config.gradient_penalty_index / 2.0)
+        gradient_penalty = gradient_penalty ** 2
+        gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
         gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
     if config.gradient_penalty_algorithm == 'both':
@@ -717,9 +717,9 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
     return gradient_penalty
 
 
-def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None, input_qz=None):
+def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None):
     with tf.name_scope('adv_prior_loss'):
-        gp_omega = get_gradient_penalty(input_qz, pn_omega['f_z'].distribution.mean, D=D_kappa,
+        gp_omega = get_gradient_penalty(q_net['z'].distribution.mean, pn_omega['f_z'].distribution.mean, D=D_kappa,
                                         space='f_z')
         gp_theta = get_gradient_penalty(input_origin_x, pn_theta['x'].distribution.mean)
         if config.use_dg:
@@ -761,7 +761,7 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None
         VAE_D_real = tf.reduce_mean(D_psi(input_origin_x))
 
         energy_fake = D_kappa(pn_omega['f_z'].distribution.mean)
-        energy_real = D_kappa(input_qz)
+        energy_real = D_kappa(q_net['z'].distribution.mean)
 
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gp_omega
@@ -857,14 +857,10 @@ def main():
     # input placeholders
     input_x = tf.placeholder(
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_x')
-    input_qz = tf.placeholder(
-        dtype=tf.float32, shape=(None, 1, config.z_dim), name='input_qz')
     input_origin_x = tf.placeholder(
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_origin_x')
     warm = tf.placeholder(
         dtype=tf.float32, shape=(), name='warm')
-    mcmc_alpha = tf.placeholder(
-        dtype=tf.float32, shape=(1,), name='mcmc_alpha')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
     beta = tf.Variable(initial_value=0.1, dtype=tf.float32, name='beta', trainable=True)
@@ -879,7 +875,7 @@ def main():
         init_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
         init_p_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz, beta=beta)
         init_loss = sum(
-            get_all_loss(init_q_net, init_p_net, init_pn_omega, init_pn_theta, 1.0, input_origin_x, input_qz))
+            get_all_loss(init_q_net, init_p_net, init_pn_omega, init_pn_theta, 1.0, input_origin_x))
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
@@ -892,7 +888,7 @@ def main():
                             n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
 
         VAE_nD_loss, VAE_loss, VAE_G_loss, VAE_D_real, D_loss, G_loss, D_real = get_all_loss(
-            train_q_net, train_p_net, train_pn_omega, train_pn_theta, warm, input_origin_x, input_qz)
+            train_q_net, train_p_net, train_pn_omega, train_pn_theta, warm, input_origin_x)
         VAE_loss += tf.losses.get_regularization_loss()
         VAE_nD_loss += tf.losses.get_regularization_loss()
         D_loss += tf.losses.get_regularization_loss()
@@ -990,7 +986,7 @@ def main():
             initial_z = tf.placeholder(
                 dtype=tf.float32, shape=(sample_n_z, 1, config.z_dim), name='initial_z')
             gan_plots = 256.0 * gan_plots / 2 + 127.5
-            plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z, mcmc_alpha=mcmc_alpha)
+            plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z)
             plot_origin_net = p_net(n_z=sample_n_z, mcmc_iterator=0, beta=beta, initial_z=initial_z)
             plot_history_e_z = plot_net['z'].history_e_z
             plot_history_z = plot_net['z'].history_z
@@ -1056,8 +1052,7 @@ def main():
                 if loop.epoch > config.warm_up_start:
                     # plot samples
                     with loop.timeit('gan_sample_time'):
-                        gan_images, batch_z, batch_z_energy, batch_z_pure_energy = session.run(
-                            [gan_plots, gan_z, gan_z_energy, gan_z_pure_energy])
+                        gan_images, batch_z = session.run([gan_plots, gan_z])
 
                     try:
                         save_images_collection(
@@ -1082,7 +1077,6 @@ def main():
                                      plot_history_ratio],
                                     feed_dict={
                                         initial_z: batch_z,
-                                        mcmc_alpha: np.asarray([step_length])
                                     })
                                 batch_z = batch_history_z[-1]
 
@@ -1107,7 +1101,6 @@ def main():
                                 [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
                                 feed_dict={
                                     initial_z: batch_z,
-                                    mcmc_alpha: np.asarray([config.smallest_step])
                                 })
                             batch_z = batch_history_z[-1]
                             if i % 100 == 0:
@@ -1151,10 +1144,10 @@ def main():
         spt.utils.ensure_variables_initialized()
 
         # initialize the network
-        # for [x, origin_x] in train_flow:
-        #     print('Network initialized, first-batch loss is {:.6g}.\n'.
-        #           format(session.run(init_loss, feed_dict={input_x: x, input_origin_x: origin_x})))
-        #     break
+        for [x, origin_x] in train_flow:
+            print('Network initialized, first-batch loss is {:.6g}.\n'.
+                  format(session.run(init_loss, feed_dict={input_x: x, input_origin_x: origin_x})))
+            break
 
         # if config.z_dim == 512:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/48/19/6f3b6c3ef49ded8ba2d5/checkpoint/checkpoint/checkpoint.dat-390000'
@@ -1165,7 +1158,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = None  # '/mnt/mfs/mlstorage-experiments/cwx17/2c/fb/d4e63c432be9319e0cd5/checkpoint/checkpoint/checkpoint.dat-312000'
+        restore_checkpoint = None
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1202,24 +1195,6 @@ def main():
             n_critical = config.n_critical
             # adversarial training
             for epoch in epoch_iterator:
-                if epoch == config.warm_up_start + 1:
-                    _qz = []
-                    for [x] in reconstruct_train_flow:
-                        batch_qz = session.run(train_q_net['z'].distribution.mean, feed_dict={
-                            input_x: x,
-                        })
-                        batch_qz = np.expand_dims(batch_qz, axis=1)
-                        _qz.append(batch_qz)
-                    _qz = np.concatenate(_qz, axis=0)
-                    # _qz_mean, _qz_std = np.mean(_qz, axis=0), np.std(_qz, axis=0)
-                    # for i in range(1, 10):
-                    #     tmp = np.asarray((_qz - _qz_mean) < _qz_std * i, dtype=np.float)
-                    #     print("{}% data is in {} * std".format(100.0 * np.sum(tmp) / len(tmp) / config.z_dim, i))
-                    # _qz_std = _qz_std * 3.0
-                    # _qz = (_qz - _qz_mean) / _qz_std
-                    qz_flow = spt.DataFlow.arrays([_qz], config.batch_size, shuffle=True,
-                                                  skip_incomplete=True)
-
                 if epoch <= config.warm_up_start:
                     step_iterator = MyIterator(train_flow)
                     while step_iterator.has_next:
@@ -1247,13 +1222,14 @@ def main():
                             loop.collect_metrics(train_kl=batch_train_kl)
                             loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
                 else:
-                    step_iterator = MyIterator(qz_flow)
+                    step_iterator = MyIterator(train_flow)
                     while step_iterator.has_next:
-                        for step, [qz] in loop.iter_steps(limited(step_iterator, n_critical)):
+                        for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
                             # discriminator training
                             [_, batch_D_loss, batch_D_real] = session.run(
                                 [D_train_op, D_loss, D_real], feed_dict={
-                                    input_qz: qz,
+                                    input_x: x,
+                                    input_origin_x: origin_x,
                                 })
                             loop.collect_metrics(D_loss=batch_D_loss)
                             loop.collect_metrics(D_real=batch_D_real)
@@ -1325,13 +1301,6 @@ def main():
                     IS_mean, IS_std = get_inception_score(mala_img)
                     loop.collect_metrics(FID=FID)
                     loop.collect_metrics(IS=IS_mean)
-
-                    ori_img = np.concatenate(ori_img, axis=0).astype('uint8')
-                    ori_img = np.asarray(ori_img)
-                    FID = get_fid_google(ori_img, dataset_img)
-                    IS_mean, IS_std = get_inception_score(ori_img)
-                    loop.collect_metrics(FID_ori=FID)
-                    loop.collect_metrics(IS_ori=IS_mean)
 
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
