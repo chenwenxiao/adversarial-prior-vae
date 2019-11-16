@@ -81,7 +81,7 @@ Fashion：
 
 
 
-## 
+## 使用WGAN训练出的Discriminator直接进行VAE训练的NLL
 
 
 

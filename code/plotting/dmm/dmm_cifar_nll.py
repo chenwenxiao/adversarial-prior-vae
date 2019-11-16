@@ -1247,7 +1247,7 @@ def main():
                 with loop.timeit('out_of_distribution_test'):
                     def get_ele(ops, flow):
                         packs = []
-                        for [batch_x, batch_ox] in train_flow:
+                        for [batch_x, batch_ox] in flow:
                             packs.append(session.run(
                                 ops, feed_dict={
                                     input_x: batch_x

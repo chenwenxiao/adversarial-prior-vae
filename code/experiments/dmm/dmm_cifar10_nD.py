@@ -1120,7 +1120,25 @@ def main():
                     qz_flow = spt.DataFlow.arrays([_qz], config.batch_size, shuffle=True,
                                                   skip_incomplete=True)
 
+                # TODO
                 if epoch <= config.warm_up_start:
+                    step_iterator = MyIterator(train_flow)
+                    while step_iterator.has_next:
+                        for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
+                            # discriminator training
+                            [_, batch_D_loss, batch_D_real] = session.run(
+                                [D_train_op, D_loss, D_real], feed_dict={
+                                    input_qz: qz,
+                                })
+                            loop.collect_metrics(D_loss=batch_D_loss)
+                            loop.collect_metrics(D_real=batch_D_real)
+
+                        # generator training x
+                        [_, batch_G_loss] = session.run(
+                            [G_train_op, G_loss], feed_dict={
+                            })
+                        loop.collect_metrics(G_loss=batch_G_loss)
+                else:
                     step_iterator = MyIterator(train_flow)
                     while step_iterator.has_next:
                         for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
@@ -1128,7 +1146,7 @@ def main():
                             [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
                              batch_train_recon_pure_energy, batch_VAE_D_real, batch_VAE_G_loss, batch_train_kl,
                              batch_train_grad_penalty] = session.run(
-                                [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
+                                [VAE_nD_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
                                  train_recon_pure_energy, VAE_D_real, VAE_G_loss,
                                  train_kl, train_grad_penalty],
                                 feed_dict={
@@ -1146,23 +1164,6 @@ def main():
                             loop.collect_metrics(VAE_G_loss=batch_VAE_G_loss)
                             loop.collect_metrics(train_kl=batch_train_kl)
                             loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
-                else:
-                    step_iterator = MyIterator(qz_flow)
-                    while step_iterator.has_next:
-                        for step, [qz] in loop.iter_steps(limited(step_iterator, n_critical)):
-                            # discriminator training
-                            [_, batch_D_loss, batch_D_real] = session.run(
-                                [D_train_op, D_loss, D_real], feed_dict={
-                                    input_qz: qz,
-                                })
-                            loop.collect_metrics(D_loss=batch_D_loss)
-                            loop.collect_metrics(D_real=batch_D_real)
-
-                        # generator training x
-                        [_, batch_G_loss] = session.run(
-                            [G_train_op, G_loss], feed_dict={
-                            })
-                        loop.collect_metrics(G_loss=batch_G_loss)
 
                 if epoch in config.lr_anneal_epoch_freq:
                     learning_rate.anneal()
