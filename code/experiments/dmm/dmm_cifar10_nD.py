@@ -684,7 +684,7 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
 
 def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None):
     with tf.name_scope('adv_prior_loss'):
-        gp_omega = get_gradient_penalty(input_origin_x, pn_omega['x'].distribution.mean, D=D_psi)
+        gp_omega = get_gradient_penalty(input_origin_x, pn_omega['x'].distribution.mean)
         gp_theta = get_gradient_penalty(input_origin_x, pn_theta['x'].distribution.mean)
         if config.use_dg:
             gp_dg = get_gradient_penalty(q_net['z'].distribution.mean, pn_theta['z'], space='z')
