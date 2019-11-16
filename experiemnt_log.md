@@ -53,7 +53,7 @@ Mnist:[]
 
 
 
-## KL(q(z|x)||p(z))
+## ELBO，Reconstruction，KL(q(z|x)||p(z))
 
 这个指标是ELBO和Reconstruction的差值，也是KL(Q||P)的上界：
 
