@@ -1100,25 +1100,7 @@ def main():
             n_critical = config.n_critical
             # adversarial training
             for epoch in epoch_iterator:
-                if epoch == config.warm_up_start + 1:
-                    _qz = []
-                    for [x] in reconstruct_train_flow:
-                        batch_qz = session.run(train_q_net['z'].distribution.mean, feed_dict={
-                            input_x: x,
-                        })
-                        batch_qz = np.expand_dims(batch_qz, axis=1)
-                        _qz.append(batch_qz)
-                    _qz = np.concatenate(_qz, axis=0)
-                    # _qz_mean, _qz_std = np.mean(_qz, axis=0), np.std(_qz, axis=0)
-                    # for i in range(1, 10):
-                    #     tmp = np.asarray((_qz - _qz_mean) < _qz_std * i, dtype=np.float)
-                    #     print("{}% data is in {} * std".format(100.0 * np.sum(tmp) / len(tmp) / config.z_dim, i))
-                    # _qz_std = _qz_std * 3.0
-                    # _qz = (_qz - _qz_mean) / _qz_std
-                    qz_flow = spt.DataFlow.arrays([_qz], config.batch_size, shuffle=True,
-                                                  skip_incomplete=True)
 
-                # TODO
                 if epoch <= config.warm_up_start:
                     step_iterator = MyIterator(train_flow)
                     while step_iterator.has_next:
