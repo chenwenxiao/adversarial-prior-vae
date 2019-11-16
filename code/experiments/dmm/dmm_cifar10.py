@@ -171,6 +171,7 @@ class EnergyDistribution(spt.Distribution):
             log_px = self.pz.log_prob(given=given, group_ndims=group_ndims)
             log_px.log_energy_prob = -energy - self.log_Z
             log_px.energy = energy
+            log_px.pure_energy = self.D(self.G(given))
 
         return log_px
 
