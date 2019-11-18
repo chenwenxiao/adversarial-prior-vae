@@ -839,8 +839,7 @@ def main():
     spt.register_config_arguments(spt.settings, arg_parser, prefix='tfsnippet',
                                   title='TFSnippet options')
     arg_parser.parse_args(sys.argv[1:])
-    import os
-    print(os.getcwd())
+
     # print the config
     print_with_title('Configurations', pformat(config.to_dict()), after='\n')
 
