@@ -81,7 +81,7 @@ class ExpConfig(spt.Config):
     fid_samples = 500
 
     epsilon = -20.0
-    min_logstd_of_q = -3.0
+    min_logstd_of_q = -2.5
 
     @property
     def x_shape(self):
@@ -166,12 +166,8 @@ class EnergyDistribution(spt.Distribution):
                            default_name=spt.utils.get_default_scope_name(
                                'log_prob', self),
                            values=[given]):
-            if y is not None:
-                energy = config.pull_back_energy_weight * self.D(self.G(given), y) * self.xi + 0.5 * tf.reduce_sum(
-                    tf.square(given), axis=-1)
-            else:
-                energy = config.pull_back_energy_weight * self.D(self.G(given)) * self.xi + 0.5 * tf.reduce_sum(
-                    tf.square(given), axis=-1)
+            energy = config.pull_back_energy_weight * self.D(self.G(given)) * self.xi + 0.5 * tf.reduce_sum(
+                tf.square(given), axis=-1)
             log_px = self.pz.log_prob(given=given, group_ndims=group_ndims)
             log_px.log_energy_prob = -energy - self.log_Z
             log_px.energy = energy
@@ -843,7 +839,8 @@ def main():
     spt.register_config_arguments(spt.settings, arg_parser, prefix='tfsnippet',
                                   title='TFSnippet options')
     arg_parser.parse_args(sys.argv[1:])
-
+    import os
+    print(os.getcwd())
     # print the config
     print_with_title('Configurations', pformat(config.to_dict()), after='\n')
 
