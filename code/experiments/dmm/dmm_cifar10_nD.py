@@ -777,8 +777,6 @@ def main():
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_origin_x')
     warm = tf.placeholder(
         dtype=tf.float32, shape=(), name='warm')
-    mcmc_alpha = tf.placeholder(
-        dtype=tf.float32, shape=(1,), name='mcmc_alpha')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
     beta = tf.Variable(initial_value=0.1, dtype=tf.float32, name='beta', trainable=True)
@@ -891,7 +889,7 @@ def main():
             sample_n_z = config.sample_n_z
             initial_z = tf.placeholder(
                 dtype=tf.float32, shape=(sample_n_z, 1, config.z_dim), name='initial_z')
-            plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z, mcmc_alpha=mcmc_alpha)
+            plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z)
             plot_origin_net = p_net(n_z=sample_n_z, mcmc_iterator=0, beta=beta, initial_z=initial_z)
             plot_history_e_z = plot_net['z'].history_e_z
             plot_history_z = plot_net['z'].history_z
