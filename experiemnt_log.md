@@ -8,12 +8,12 @@
 
 ## NLL
 
-|      | MNIST | FASHION | CIFAR10 | CELEBA |
-| ---- | :---: | ------- | ------- | ------ |
-| 1    |       |         |         |        |
-| 2    |       |         |         |        |
-| 3    |       |         |         |        |
-| 4    |       |         |         |        |
+|      | MNIST | FASHION | CIFAR10 | CELEBA | Imagenet 32x32 |
+| ---- | :---: | ------- | ------- | ------ | -------------- |
+| 1    |       |         |         |        |                |
+| 2    |       |         |         |        |                |
+| 3    |       |         |         |        |                |
+| 4    |       |         |         |        |                |
 
 ## FID
 
@@ -23,7 +23,7 @@ Final FID by tower model:
 
 
 
-## fid and nll when std is changed
+## fid and nll when std is changed on cifar10
 
 | Log_std |  MALA  |  ORIGIN | GAN  |
 | ------- | ---- | ---- | ------ |
