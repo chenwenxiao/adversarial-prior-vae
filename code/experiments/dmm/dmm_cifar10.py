@@ -43,7 +43,7 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 800
     beta = 1e-8
     initial_xi = 0.0
-    pull_back_energy_weight = 60.0
+    pull_back_energy_weight = 55.0
 
     max_step = None
     batch_size = 128
@@ -81,7 +81,7 @@ class ExpConfig(spt.Config):
     fid_samples = 500
 
     epsilon = -20.0
-    min_logstd_of_q = -10.0
+    min_logstd_of_q = -6.0
 
     @property
     def x_shape(self):
