@@ -1167,7 +1167,7 @@ def main():
     # elif config.z_dim == 3072:
     #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
     # else:
-    restore_checkpoint = None  # '/mnt/mfs/mlstorage-experiments/cwx17/2c/fb/d4e63c432be9319e0cd5/checkpoint/checkpoint/checkpoint.dat-312000'
+    restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/45/0c/d4747dc47d24952d4dd5/checkpoint/checkpoint/checkpoint.dat-312000'
 
     # train the network
     with spt.TrainLoop(tf.trainable_variables(),
