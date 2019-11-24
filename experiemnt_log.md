@@ -2,18 +2,16 @@
 
 基本分为两种数据集合，第一种是二值图片数据；第二种是自然图片数据。
 
-
-
-
+[Default Setting](http://mlserver.ipwx.me:7897/5dd4d25942d74cd7474dc054/)
 
 ## NLL
 
-|      | MNIST | FASHION | CIFAR10 | CELEBA | Imagenet 32x32 |
-| ---- | :---: | ------- | ------- | ------ | -------------- |
-| 1    |       |         |         |        |                |
-| 2    |       |         |         |        |                |
-| 3    |       |         |         |        |                |
-| 4    |       |         |         |        |                |
+|      | MNIST | FASHION | CIFAR10                                                      | CELEBA | Imagenet 32x32 |
+| ---- | :---: | ------- | ------------------------------------------------------------ | ------ | -------------- |
+| 1    |       |         | [6022.69](http://mlserver.ipwx.me:7897/5dd4d25942d74cd7474dc054/) |        |                |
+| 2    |       |         |                                                              |        |                |
+| 3    |       |         |                                                              |        |                |
+| 4    |       |         |                                                              |        |                |
 
 ## FID
 
@@ -21,21 +19,34 @@ Final FID by tower model:
 
 
 
+## nll when pull_back_energy_weight is changed on cifar10
+
+| pull_back_energy_weight | Nll                                                          |
+| ----------------------- | ------------------------------------------------------------ |
+| 20                      |                                                              |
+| 40                      |                                                              |
+| 56                      |                                                              |
+| 58                      | [6022.69](http://mlserver.ipwx.me:7897/5dd4d25942d74cd7474dc054/) |
+| 60                      | [6242.91](http://mlserver.ipwx.me:7897/5dd7844f9eb234c36e4dbfe2/) |
+| 62                      |                                                              |
+| 64                      |                                                              |
+| 80                      |                                                              |
+
 
 
 ## fid and nll when std is changed on cifar10
 
-| Log_std |  MALA  |  ORIGIN | GAN  |
-| ------- | ---- | ---- | ------ |
-| 2.0     |      |      |        |
-| 1.5     |      |      |        |
-| 1.0     |      |      |        |
-| 0.5     |      |      |        |
-| 0.0     |      |      |        |
-| -1.0    |      |      |        |
-| -3.0    |      |      |        |
-| -6.0    |      |      |        |
-| -10.0   |      |      |        |
+| Log_std |  MALA  |  ORIGIN | GAN  | NLL |
+| ------- | ---- | ---- | ------ | ------- |
+| 2.0     |      |      |        |  |
+| 1.0   |      |      |        |  |
+| 0.0    |      |      |        |  |
+| -1.0 |      |      |  |  |
+| -2.0   |      |      |        |  |
+| -3.0  |      |      |        | [6022.69](http://mlserver.ipwx.me:7897/5dd4d25942d74cd7474dc054/) |
+| -4.0   |      |      |        | [7286.41](http://mlserver.ipwx.me:7897/5dd4d2859eb234c36e4dbfe1/) |
+| -5.0   |      |      |        | [6550.95](http://mlserver.ipwx.me:7897/5dd3bddbf9a08f4f544dc055/) |
+| -6.0 |      |      |        |  |
 
 
 
