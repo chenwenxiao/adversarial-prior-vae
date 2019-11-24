@@ -39,7 +39,7 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 1600
+    max_epoch = 800
     warm_up_start = 800
     warm_up_epoch = 800
     beta = 1e-8
