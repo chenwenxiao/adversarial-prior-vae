@@ -910,6 +910,8 @@ def main():
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta, log_Z=get_log_Z())
         ele_test_recon = test_chain.model['x'].log_prob()
+        ele_test_recon = tf.reduce_mean(ele_test_recon, axis=0)
+        print(ele_test_recon.shape)
         test_recon = tf.reduce_mean(ele_test_recon)
 
         '''
@@ -935,8 +937,10 @@ def main():
         )
 
         ele_adv_test_nll = vi.evaluation.is_loglikelihood()
+        print(ele_adv_test_nll.shape)
         adv_test_nll = -tf.reduce_mean(ele_adv_test_nll)
         ele_adv_test_lb = vi.lower_bound.elbo()
+        print(ele_adv_test_lb.shape)
         adv_test_lb = tf.reduce_mean(ele_adv_test_lb)
 
         real_energy = tf.reduce_mean(D_psi(test_chain.model['x']))
@@ -1223,71 +1227,70 @@ def main():
         # adversarial training
         for epoch in epoch_iterator:
 
-            if epoch == config.max_epoch + 1:
-                with loop.timeit('compute_Z_time'):
-                    # log_Z_list = []
-                    # for i in range(config.log_Z_times):
-                    #     log_Z_list.append(session.run(log_Z_compute_op))
-                    # from scipy.misc import logsumexp
-                    # log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                    # print('log_Z_list:{}'.format(log_Z_list))
-                    # print('log_Z:{}'.format(log_Z))
+            with loop.timeit('compute_Z_time'):
+                # log_Z_list = []
+                # for i in range(config.log_Z_times):
+                #     log_Z_list.append(session.run(log_Z_compute_op))
+                # from scipy.misc import logsumexp
+                # log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
+                # print('log_Z_list:{}'.format(log_Z_list))
+                # print('log_Z:{}'.format(log_Z))
 
-                    log_Z_list = []
-                    for [batch_x, batch_ox] in train_flow:
-                        log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                            input_x: batch_x,
-                        }))
-                    from scipy.misc import logsumexp
-                    another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                    # print('log_Z_list:{}'.format(log_Z_list))
-                    print('another_log_Z:{}'.format(another_log_Z))
-                    # final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
-                    final_log_Z = another_log_Z  # TODO
-                    get_log_Z().set(final_log_Z)
+                log_Z_list = []
+                for [batch_x, batch_ox] in train_flow:
+                    log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
+                        input_x: batch_x,
+                    }))
+                from scipy.misc import logsumexp
+                another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
+                # print('log_Z_list:{}'.format(log_Z_list))
+                print('another_log_Z:{}'.format(another_log_Z))
+                # final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
+                final_log_Z = another_log_Z  # TODO
+                get_log_Z().set(final_log_Z)
 
-                with loop.timeit('eval_time'):
-                    cifar_train_evaluator.run()
-                    cifar_test_evaluator.run()
-                    svhn_train_evaluator.run()
-                    svhn_test_evaluator.run()
+            with loop.timeit('out_of_distribution_test'):
+                def get_ele(ops, flow):
+                    packs = []
+                    for [batch_x, batch_ox] in flow:
+                        pack = session.run(
+                            ops, feed_dict={
+                                input_x: batch_x
+                            }) #[3, batch_size]
+                        print(np.asarray(pack).shape)
+                        pack = np.transpose(np.asarray(pack), (1, 0)) # [batch_size, 3]
+                        packs.append(pack)
+                    packs = np.concatenate(packs, axis=0) #[len_of_flow, 3]
+                    packs = np.transpose(np.asarray(packs), (1, 0)) #[3, len_of_flow]
+                    return packs
 
-                with loop.timeit('out_of_distribution_test'):
-                    def get_ele(ops, flow):
-                        packs = []
-                        for [batch_x, batch_ox] in flow:
-                            pack = session.run(
-                                ops, feed_dict={
-                                    input_x: batch_x
-                                }) #[3, batch_size]
-                            print(np.asarray(pack).shape)
-                            pack = np.transpose(np.asarray(pack), (1, 0)) # [batch_size, 3]
-                            packs.append(pack)
-                        packs = np.concatenate(packs, axis=0) #[len_of_flow, 3]
-                        packs = np.transpose(np.asarray(packs), (1, 0)) #[3, len_of_flow]
-                        return packs
+                cifar_train_nll, cifar_train_lb, cifar_train_recon = get_ele(
+                    [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], train_flow)
+                print(cifar_train_nll.shape, cifar_train_lb.shape, cifar_train_recon.shape)
 
-                    cifar_train_nll, cifar_train_lb, cifar_train_recon = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], train_flow)
-                    print(cifar_train_nll.shape, cifar_train_lb.shape, cifar_train_recon.shape)
+                cifar_test_nll, cifar_test_lb, cifar_test_recon = get_ele(
+                    [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], test_flow)
+                svhn_test_nll, svhn_test_lb, svhn_test_recon = get_ele(
+                    [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], svhn_test_flow)
 
-                    cifar_test_nll, cifar_test_lb, cifar_test_recon = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], test_flow)
-                    svhn_test_nll, svhn_test_lb, svhn_test_recon = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], svhn_test_flow)
+                # Draw the histogram or exrta the data here
+                print(cifar_train_nll)
+                pyplot.plot(cifar_train_nll)
+                print(cifar_test_nll)
+                pyplot.plot(cifar_test_nll)
+                print(svhn_test_nll)
+                pyplot.plot(svhn_test_nll)
+                pyplot.savefig('plotting/dmm/out_of_distribution.png')
 
-                    # Draw the histogram or exrta the data here
-                    print(cifar_train_nll)
-                    pyplot.plot(cifar_train_nll)
-                    print(cifar_test_nll)
-                    pyplot.plot(cifar_test_nll)
-                    print(svhn_test_nll)
-                    pyplot.plot(svhn_test_nll)
-                    pyplot.savefig('plotting/dmm/out_of_distribution.png')
+            with loop.timeit('eval_time'):
+                cifar_train_evaluator.run()
+                cifar_test_evaluator.run()
+                svhn_train_evaluator.run()
+                svhn_test_evaluator.run()
 
 
-                loop.collect_metrics(lr=learning_rate.get())
-                loop.print_logs()
+            loop.collect_metrics(lr=learning_rate.get())
+            loop.print_logs()
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')
