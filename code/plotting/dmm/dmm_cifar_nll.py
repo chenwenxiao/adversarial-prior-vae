@@ -46,6 +46,8 @@ class ExpConfig(spt.Config):
     initial_xi = 0.0
     pull_back_energy_weight = 58.0
 
+    kappa_on_x = False
+
     max_step = None
     batch_size = 128
     noise_len = 8
@@ -909,6 +911,8 @@ def main():
                                       beta=beta, log_Z=get_log_Z())
         ele_test_recon = test_chain.model['x'].log_prob()
         test_recon = tf.reduce_mean(ele_test_recon)
+
+        '''
         test_mse = tf.reduce_sum(
             (tf.round(test_chain.model['x'].distribution.mean * 128 + 127.5) - tf.round(
                 test_chain.model['x'] * 128 + 127.5)) ** 2, axis=[-1, -2, -3])  # (sample_dim, batch_dim, x_sample_dim)
@@ -916,7 +920,7 @@ def main():
         test_mse = tf.reduce_mean(tf.reduce_mean(tf.reshape(
             test_mse, (-1, config.test_x_samples,)
         ), axis=-1))
-
+        '''
         test_nll = -tf.reduce_mean(
             test_chain.vi.evaluation.is_loglikelihood()
         )
@@ -952,6 +956,7 @@ def main():
         )
     xi_node = get_var('p_net/xi')
     # derive the optimizer
+    '''
     with tf.name_scope('optimizing'):
         VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
             'beta') + tf.trainable_variables('posterior_flow') + tf.trainable_variables(
@@ -960,6 +965,7 @@ def main():
             'beta') + tf.trainable_variables('posterior_flow') + tf.trainable_variables('p_net/xi')
         D_params = tf.trainable_variables('D_kappa')
         G_params = tf.trainable_variables('G_omega')
+
         print("========VAE_params=========")
         print(VAE_params)
         print("========D_params=========")
@@ -986,6 +992,7 @@ def main():
 
         # derive the plotting function
         with tf.name_scope('plotting'):
+            print('"========plotting========="')
             sample_n_z = config.sample_n_z
             gan_net = p_omega_net(n_z=sample_n_z, beta=beta)
             gan_plots = tf.reshape(gan_net['x'].distribution.mean, (-1,) + config.x_shape)
@@ -1127,6 +1134,7 @@ def main():
                         ori_images = images
 
                     return gan_images, mala_images, ori_images
+    '''
 
     # prepare for training and testing data
     (_x_train, _y_train), (_x_test, _y_test) = spt.datasets.load_cifar10(x_shape=config.x_shape)
@@ -1198,8 +1206,8 @@ def main():
                          preffix + 'pd_energy': pd_energy,
                          preffix + 'pn_energy': pn_energy,
                          preffix + 'recon': test_recon,
-                         preffix + 'kl_adv_and_gaussian': kl_adv_and_gaussian,
-                         preffix + 'mse': test_mse},
+                         preffix + 'kl_adv_and_gaussian': kl_adv_and_gaussian},
+                         #preffix + 'mse': test_mse},
                 inputs=[input_x, input_origin_x],
                 data_flow=flow,
                 time_metric_name=preffix + 'time'
@@ -1215,7 +1223,7 @@ def main():
         # adversarial training
         for epoch in epoch_iterator:
 
-            if epoch % config.test_epoch_freq == 0:
+            if epoch == config.max_epoch + 1:
                 with loop.timeit('compute_Z_time'):
                     # log_Z_list = []
                     # for i in range(config.log_Z_times):
@@ -1248,19 +1256,35 @@ def main():
                     def get_ele(ops, flow):
                         packs = []
                         for [batch_x, batch_ox] in flow:
-                            packs.append(session.run(
+                            pack = session.run(
                                 ops, feed_dict={
                                     input_x: batch_x
-                                }))
-                        packs = np.transpose(np.asarray(packs), (0, 1, 2))  # [3, len_train / batch_size, batch_size]
-                        packs = np.reshape(packs, (len(ops), -1))
+                                }) #[3, batch_size]
+                            print(np.asarray(pack).shape)
+                            pack = np.transpose(np.asarray(pack), (1, 0)) # [batch_size, 3]
+                            packs.append(pack)
+                        packs = np.concatenate(packs, axis=0) #[len_of_flow, 3]
+                        packs = np.transpose(np.asarray(packs), (1, 0)) #[3, len_of_flow]
                         return packs
 
                     cifar_train_nll, cifar_train_lb, cifar_train_recon = get_ele(
                         [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], train_flow)
                     print(cifar_train_nll.shape, cifar_train_lb.shape, cifar_train_recon.shape)
 
+                    cifar_test_nll, cifar_test_lb, cifar_test_recon = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], test_flow)
+                    svhn_test_nll, svhn_test_lb, svhn_test_recon = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], svhn_test_flow)
+
                     # Draw the histogram or exrta the data here
+                    print(cifar_train_nll)
+                    pyplot.plot(cifar_train_nll)
+                    print(cifar_test_nll)
+                    pyplot.plot(cifar_test_nll)
+                    print(svhn_test_nll)
+                    pyplot.plot(svhn_test_nll)
+                    pyplot.savefig('plotting/dmm/out_of_distribution.png')
+
 
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
@@ -1269,5 +1293,5 @@ def main():
     print_with_title('Results', results.format_metrics(), before='\n')
     results.close()
 
-    if __name__ == '__main__':
-        main()
+if __name__ == '__main__':
+    main()
