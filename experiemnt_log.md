@@ -24,7 +24,7 @@ Final FID by tower model:
 | pull_back_energy_weight | Nll                                                          |
 | ----------------------- | ------------------------------------------------------------ |
 | 20                      |                                                              |
-| 40                      |                                                              |
+| 40                      | [7620.93](http://mlserver.ipwx.me:7897/5dda3ec39eb234c36e4dbfe4/) |
 | 54                      |                                                              |
 | 56                      |                                                              |
 | 58                      | [6022.69](http://mlserver.ipwx.me:7897/5dd4d25942d74cd7474dc054/) |
