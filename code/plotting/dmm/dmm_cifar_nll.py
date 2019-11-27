@@ -936,9 +936,9 @@ def main():
             axis=0
         )
 
-        ele_adv_test_nll = vi.evaluation.is_loglikelihood()
+        ele_adv_test_nll = -vi.evaluation.is_loglikelihood()
         print(ele_adv_test_nll.shape)
-        adv_test_nll = -tf.reduce_mean(ele_adv_test_nll)
+        adv_test_nll = tf.reduce_mean(ele_adv_test_nll)
         ele_adv_test_lb = vi.lower_bound.elbo()
         print(ele_adv_test_lb.shape)
         adv_test_lb = tf.reduce_mean(ele_adv_test_lb)
