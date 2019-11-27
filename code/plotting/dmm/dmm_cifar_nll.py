@@ -1257,7 +1257,6 @@ def main():
                             ops, feed_dict={
                                 input_x: batch_x
                             }) #[3, batch_size]
-                        print(np.asarray(pack).shape)
                         pack = np.transpose(np.asarray(pack), (1, 0)) # [batch_size, 3]
                         packs.append(pack)
                     packs = np.concatenate(packs, axis=0) #[len_of_flow, 3]
@@ -1266,28 +1265,60 @@ def main():
 
                 cifar_train_nll, cifar_train_lb, cifar_train_recon = get_ele(
                     [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], train_flow)
-                print(cifar_train_nll.shape, cifar_train_lb.shape, cifar_train_recon.shape)
+                #print(cifar_train_nll.shape, cifar_train_lb.shape, cifar_train_recon.shape)
 
                 cifar_test_nll, cifar_test_lb, cifar_test_recon = get_ele(
                     [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], test_flow)
+                svhn_train_nll, svhn_train_lb, svhn_train_recon = get_ele(
+                    [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], svhn_train_flow)
                 svhn_test_nll, svhn_test_lb, svhn_test_recon = get_ele(
                     [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], svhn_test_flow)
 
                 # Draw the histogram or exrta the data here
-                print(cifar_train_nll)
-                pyplot.plot(cifar_train_nll)
-                print(cifar_test_nll)
-                pyplot.plot(cifar_test_nll)
-                print(svhn_test_nll)
-                pyplot.plot(svhn_test_nll)
-                pyplot.savefig('plotting/dmm/out_of_distribution.png')
+                pyplot.plot()
+                pyplot.grid(c='silver', ls='--')
+                pyplot.xlabel('log(bits/dim)')
+                spines = pyplot.gca().spines
+                for sp in spines:
+                    spines[sp].set_color('silver')
+
+                def draw_nll(nll, color, label):
+                    nll = list(-nll/(3072*np.log(2)))
+                    #print(nll)
+                    #print(nll.shape)
+                    n, bins, patches = pyplot.hist(nll, 40, normed=True, facecolor=color, alpha=0.4, label=label)
+
+                    index = []
+                    for i in range(len(bins) - 1):
+                        index.append((bins[i] + bins[i + 1]) / 2)
+
+                    def smooth(c, N=5):
+                        weights = np.hanning(N)
+                        return np.convolve(weights / weights.sum(), c)[N - 1:-N + 1]
+
+                    n[2:-2] = smooth(n)
+                    pyplot.plot(index, n, color=color)
+                    pyplot.legend()
+                    print('%s done.' % label)
+
+                draw_nll(cifar_train_nll, 'red', 'CIFAR-10 Train')
+                draw_nll(cifar_test_nll, 'salmon', 'CIFAR-10 Test')
+                draw_nll(svhn_train_nll, 'green', 'SVHN Train')
+                draw_nll(svhn_test_nll, 'lightgreen', 'SVHN Test')
+                pyplot.savefig('plotting/dmm/out_of_distribution_1.png')
+
+                pyplot.cla()
+                draw_nll(cifar_train_nll, 'red', 'CIFAR-10 Train')
+                draw_nll(cifar_test_nll, 'green', 'CIFAR-10 Test')
+                draw_nll(svhn_train_nll, 'salmon', 'SVHN Train')
+                draw_nll(svhn_test_nll, 'lightgreen', 'SVHN Test')
+                pyplot.savefig('plotting/dmm/out_of_distribution_2.png')
 
             with loop.timeit('eval_time'):
                 cifar_train_evaluator.run()
                 cifar_test_evaluator.run()
                 svhn_train_evaluator.run()
                 svhn_test_evaluator.run()
-
 
             loop.collect_metrics(lr=learning_rate.get())
             loop.print_logs()
