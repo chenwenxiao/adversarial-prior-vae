@@ -1283,7 +1283,7 @@ def main():
                         spines[sp].set_color('silver')
 
                     def draw_nll(nll, color, label):
-                        nll = list(-nll/(3072*np.log(2)))
+                        nll = list(nll/(3072*np.log(2)))
                         #print(nll)
                         #print(nll.shape)
                         n, bins, patches = pyplot.hist(nll, 40, normed=True, facecolor=color, alpha=0.4, label=label)
