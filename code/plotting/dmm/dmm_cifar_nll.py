@@ -943,6 +943,7 @@ def main():
         print(ele_adv_test_lb.shape)
         adv_test_lb = tf.reduce_mean(ele_adv_test_lb)
 
+        ele_real_energy = D_psi(test_chain.model['x'])
         real_energy = tf.reduce_mean(D_psi(test_chain.model['x']))
         reconstruct_energy = tf.reduce_mean(D_psi(test_chain.model['x'].distribution.mean))
         pd_energy = tf.reduce_mean(
@@ -1179,7 +1180,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/45/0c/d4747dc47d24952d4dd5/checkpoint/checkpoint/checkpoint.dat-312000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/f5/0c/d445f4f80a9f0de3add5/checkpoint/checkpoint/checkpoint.dat-312000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1263,16 +1264,16 @@ def main():
                         packs = np.transpose(np.asarray(packs), (1, 0)) #[3, len_of_flow]
                         return packs
 
-                    cifar_train_nll, cifar_train_lb, cifar_train_recon = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], train_flow)
+                    cifar_train_nll, cifar_train_lb, cifar_train_recon, cifar_train_energy = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], train_flow)
                     #print(cifar_train_nll.shape, cifar_train_lb.shape, cifar_train_recon.shape)
 
-                    cifar_test_nll, cifar_test_lb, cifar_test_recon = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], test_flow)
-                    svhn_train_nll, svhn_train_lb, svhn_train_recon = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], svhn_train_flow)
-                    svhn_test_nll, svhn_test_lb, svhn_test_recon = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon], svhn_test_flow)
+                    cifar_test_nll, cifar_test_lb, cifar_test_recon, cifar_test_energy = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], test_flow)
+                    svhn_train_nll, svhn_train_lb, svhn_train_recon, svhn_train_energy = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], svhn_train_flow)
+                    svhn_test_nll, svhn_test_lb, svhn_test_recon, svhn_test_energy = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], svhn_test_flow)
 
                     # Draw the histogram or exrta the data here
                     pyplot.plot()
@@ -1305,14 +1306,14 @@ def main():
                     draw_nll(cifar_test_nll, 'salmon', 'CIFAR-10 Test')
                     draw_nll(svhn_train_nll, 'green', 'SVHN Train')
                     draw_nll(svhn_test_nll, 'lightgreen', 'SVHN Test')
-                    pyplot.savefig('plotting/dmm/out_of_distribution_1.png')
+                    pyplot.savefig('plotting/dmm/out_of_distribution.png')
 
                     pyplot.cla()
-                    draw_nll(cifar_train_nll, 'red', 'CIFAR-10 Train')
-                    draw_nll(cifar_test_nll, 'green', 'CIFAR-10 Test')
-                    draw_nll(svhn_train_nll, 'salmon', 'SVHN Train')
-                    draw_nll(svhn_test_nll, 'lightgreen', 'SVHN Test')
-                    pyplot.savefig('plotting/dmm/out_of_distribution_2.png')
+                    draw_nll(cifar_train_energy, 'red', 'CIFAR-10 Train')
+                    draw_nll(cifar_test_energy, 'salmon', 'CIFAR-10 Test')
+                    draw_nll(svhn_train_energy, 'green', 'SVHN Train')
+                    draw_nll(svhn_test_energy, 'lightgreen', 'SVHN Test')
+                    pyplot.savefig('plotting/dmm/out_of_distribution_energy.png')
 
                 with loop.timeit('eval_time'):
                     cifar_train_evaluator.run()
