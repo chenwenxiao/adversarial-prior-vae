@@ -32,7 +32,7 @@ class ExpConfig(spt.Config):
     l2_reg = 0.0002
     kernel_size = 3
     shortcut_kernel_size = 1
-    batch_norm = True
+    batch_norm = False
     nf_layers = 20
 
     # training parameters
@@ -426,7 +426,8 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
                    shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
-                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg), ):
+                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
+                   dropout_fn=dropout):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 96, kernel_size=5, scope='level_0')  # output: (28, 28, 16)
         h_x = spt.layers.resnet_conv2d_block(h_x, 96, scope='level_1')  # output: (14, 14, 32)
@@ -478,7 +479,8 @@ def G_theta(z, return_std=False):
                    shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
-                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
+                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
+                   dropout_fn=dropout):
         z_dim_channel = 16 * config.z_dim // config.x_shape[0] // config.x_shape[1]
         # h_z = spt.layers.dense(z, config.z_dim, normalizer_fn=None)
         h_z = spt.ops.reshape_tail(z, ndims=1, shape=(config.x_shape[0] // 4, config.x_shape[1] // 4, z_dim_channel))
@@ -487,10 +489,10 @@ def G_theta(z, return_std=False):
         h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_2')  # output: (7, 7, 64)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 192, strides=2, scope='level_3')  # output: (7, 7, 64)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_5')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_6')  # output:
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 96, strides=2, scope='level_8', normalizer_fn=None)  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_6')
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 96, strides=2, scope='level_8', normalizer_fn=None, dropout_fn=None)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 96, kernel_size=5, scope='level_9',
-                                               normalizer_fn=None)  # output: (28, 28, 16)
+                                               normalizer_fn=None, dropout_fn=None)  # output: (28, 28, 16)
         x_mean = spt.layers.conv2d(
             h_z, config.x_shape[-1], (1, 1), padding='same', scope='x_mean',
             kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
@@ -881,7 +883,7 @@ def main():
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
-         arg_scope([batch_norm], training=True):
+         arg_scope([batch_norm, dropout], training=True):
         train_pn_theta = p_net(n_z=config.train_n_pz, beta=beta)
         train_pn_omega = p_omega_net(n_z=config.train_n_pz, beta=beta)
         train_log_Z = spt.ops.log_mean_exp(-train_pn_theta['z'].log_prob().energy - train_pn_theta['z'].log_prob())
@@ -898,7 +900,7 @@ def main():
 
     # derive the nll and logits output for testing
     with tf.name_scope('testing'), \
-         arg_scope([batch_norm], training=True):
+         arg_scope([dropout], training=True):
         test_q_net = q_net(input_x, posterior_flow, n_z=config.test_n_qz)
         # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
@@ -981,8 +983,7 @@ def main():
             D_train_op = D_optimizer.apply_gradients(D_grads)
 
         # derive the plotting function
-        with tf.name_scope('plotting'), \
-             arg_scope([batch_norm], training=True):
+        with tf.name_scope('plotting'):
             sample_n_z = config.sample_n_z
             gan_net = p_omega_net(n_z=sample_n_z, beta=beta)
             gan_plots = tf.reshape(gan_net['x'].distribution.mean, (-1,) + config.x_shape)
