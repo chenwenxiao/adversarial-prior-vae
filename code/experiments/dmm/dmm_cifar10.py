@@ -985,7 +985,8 @@ def main():
             D_train_op = D_optimizer.apply_gradients(D_grads)
 
         # derive the plotting function
-        with tf.name_scope('plotting'):
+        with tf.name_scope('plotting'), \
+             arg_scope([dropout], training=True):
             sample_n_z = config.sample_n_z
             gan_net = p_omega_net(n_z=sample_n_z, beta=beta)
             gan_plots = tf.reshape(gan_net['x'].distribution.mean, (-1,) + config.x_shape)
@@ -1003,13 +1004,12 @@ def main():
                 plot_net['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
             x_origin_plots = 256.0 * tf.reshape(
                 plot_origin_net['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
-            with arg_scope([dropout], training=True):
-                reconstruct_q_net = q_net(input_x, posterior_flow)
-                reconstruct_z = reconstruct_q_net['z']
-                reconstruct_plots = 256.0 * tf.reshape(
-                    p_net(observed={'z': reconstruct_z}, beta=beta)['x'].distribution.mean,
-                    (-1,) + config.x_shape
-                ) / 2 + 127.5
+            reconstruct_q_net = q_net(input_x, posterior_flow)
+            reconstruct_z = reconstruct_q_net['z']
+            reconstruct_plots = 256.0 * tf.reshape(
+                p_net(observed={'z': reconstruct_z}, beta=beta)['x'].distribution.mean,
+                (-1,) + config.x_shape
+            ) / 2 + 127.5
             plot_reconstruct_energy = D_psi(reconstruct_plots)
             gan_z_pure_energy = plot_net['z'].distribution.log_prob(gan_z).pure_energy
             gan_z_energy = plot_net['z'].distribution.log_prob(gan_z).energy
