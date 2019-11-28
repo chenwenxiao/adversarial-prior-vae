@@ -990,6 +990,13 @@ def main():
                         pyplot.legend()
                         print('%s done.' % label)
 
+                    pyplot.plot()
+                    pyplot.grid(c='silver', ls='--')
+                    pyplot.xlabel('log(bits/dim)')
+                    spines = pyplot.gca().spines
+                    for sp in spines:
+                        spines[sp].set_color('silver')
+
                     draw_nll(cifar_train_energy, 'red', 'CIFAR-10 Train')
                     draw_nll(cifar_test_energy, 'salmon', 'CIFAR-10 Test')
                     draw_nll(svhn_train_energy, 'green', 'SVHN Train')
