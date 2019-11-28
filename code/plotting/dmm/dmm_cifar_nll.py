@@ -421,7 +421,7 @@ def get_z_moments(z, value_ndims, name=None):
 @spt.global_reuse
 def q_net(x, posterior_flow, observed=None, n_z=None):
     net = spt.BayesianNet(observed=observed)
-    normalizer_fn = None
+    normalizer_fn = batch_norm if config.batch_norm else None
 
     # compute the hidden features
     with arg_scope([spt.layers.resnet_conv2d_block],
@@ -473,7 +473,7 @@ def get_log_Z():
 @add_arg_scope
 @spt.global_reuse
 def G_theta(z, return_std=False):
-    normalizer_fn = None
+    normalizer_fn = batch_norm if config.batch_norm else None
 
     # compute the hidden features
     with arg_scope([spt.layers.resnet_deconv2d_block],
@@ -491,8 +491,9 @@ def G_theta(z, return_std=False):
         h_z = spt.layers.resnet_deconv2d_block(h_z, 192, strides=2, scope='level_3')  # output: (7, 7, 64)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_5')  # output: (7, 7, 64)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 192, scope='level_6')  # output:
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 96, strides=2, scope='level_8')  # output:
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 96, kernel_size=5, scope='level_9')  # output: (28, 28, 16)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 96, strides=2, scope='level_8', normalizer_fn=None)  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 96, kernel_size=5, scope='level_9',
+                                               normalizer_fn=None)  # output: (28, 28, 16)
         x_mean = spt.layers.conv2d(
             h_z, config.x_shape[-1], (1, 1), padding='same', scope='x_mean',
             kernel_initializer=tf.zeros_initializer(), activation_fn=tf.nn.tanh
@@ -903,7 +904,8 @@ def main():
         G_loss += tf.losses.get_regularization_loss()
 
     # derive the nll and logits output for testing
-    with tf.name_scope('testing'):
+    with tf.name_scope('testing'), \
+         arg_scope([batch_norm], training=True):
         test_q_net = q_net(input_x, posterior_flow, n_z=config.test_n_qz)
         # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
@@ -943,7 +945,7 @@ def main():
         print(ele_adv_test_lb.shape)
         adv_test_lb = tf.reduce_mean(ele_adv_test_lb)
 
-        ele_real_energy = D_psi(test_chain.model['x'])
+        ele_real_energy = D_psi(test_chain.model['x'].distribution.mean)
         real_energy = tf.reduce_mean(D_psi(test_chain.model['x']))
         reconstruct_energy = tf.reduce_mean(D_psi(test_chain.model['x'].distribution.mean))
         pd_energy = tf.reduce_mean(
@@ -996,7 +998,8 @@ def main():
             D_train_op = D_optimizer.apply_gradients(D_grads)
 
         # derive the plotting function
-        with tf.name_scope('plotting'):
+        with tf.name_scope('plotting'), \
+         arg_scope([batch_norm], training=True):
             print('"========plotting========="')
             sample_n_z = config.sample_n_z
             gan_net = p_omega_net(n_z=sample_n_z, beta=beta)
