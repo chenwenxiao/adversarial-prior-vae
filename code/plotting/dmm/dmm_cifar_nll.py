@@ -1279,17 +1279,12 @@ def main():
                         [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], svhn_test_flow)
 
                     # Draw the histogram or exrta the data here
-                    pyplot.plot()
-                    pyplot.grid(c='silver', ls='--')
-                    pyplot.xlabel('log(bits/dim)')
-                    spines = pyplot.gca().spines
-                    for sp in spines:
-                        spines[sp].set_color('silver')
 
                     def draw_nll(nll, color, label):
                         nll = list(nll)
                         # print(nll)
                         # print(nll.shape)
+
                         n, bins, patches = pyplot.hist(nll, 40, normed=True, facecolor=color, alpha=0.4, label=label)
 
                         index = []
@@ -1305,6 +1300,13 @@ def main():
                         pyplot.legend()
                         print('%s done.' % label)
 
+                    pyplot.plot()
+                    pyplot.grid(c='silver', ls='--')
+                    pyplot.xlabel('log(bits/dim)')
+                    spines = pyplot.gca().spines
+                    for sp in spines:
+                        spines[sp].set_color('silver')
+
                     draw_nll(cifar_train_nll / (3072 * np.log(2)), 'red', 'CIFAR-10 Train')
                     draw_nll(cifar_test_nll / (3072 * np.log(2)), 'salmon', 'CIFAR-10 Test')
                     draw_nll(svhn_train_nll / (3072 * np.log(2)), 'green', 'SVHN Train')
@@ -1312,6 +1314,13 @@ def main():
                     pyplot.savefig('plotting/dmm/out_of_distribution.png')
 
                     pyplot.cla()
+                    pyplot.plot()
+                    pyplot.grid(c='silver', ls='--')
+                    pyplot.xlabel('log(bits/dim)')
+                    spines = pyplot.gca().spines
+                    for sp in spines:
+                        spines[sp].set_color('silver')
+
                     draw_nll(cifar_train_energy, 'red', 'CIFAR-10 Train')
                     draw_nll(cifar_test_energy, 'salmon', 'CIFAR-10 Test')
                     draw_nll(svhn_train_energy, 'green', 'SVHN Train')
