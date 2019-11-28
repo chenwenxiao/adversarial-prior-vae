@@ -10,6 +10,7 @@ from matplotlib import pyplot
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
+from code.experiments.datasets.svhn import load_svhn
 from tfsnippet import DiscretizedLogistic
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
@@ -853,6 +854,7 @@ def main():
     results.make_dirs('plotting/z_plot', exist_ok=True)
     results.make_dirs('plotting/train.reconstruct', exist_ok=True)
     results.make_dirs('plotting/test.reconstruct', exist_ok=True)
+    results.make_dirs('plotting/svhn.reconstruct', exist_ok=True)
     results.make_dirs('train_summary', exist_ok=True)
 
     posterior_flow = spt.layers.planar_normalizing_flows(
@@ -1001,12 +1003,13 @@ def main():
                 plot_net['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
             x_origin_plots = 256.0 * tf.reshape(
                 plot_origin_net['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
-            reconstruct_q_net = q_net(input_x, posterior_flow)
-            reconstruct_z = reconstruct_q_net['z']
-            reconstruct_plots = 256.0 * tf.reshape(
-                p_net(observed={'z': reconstruct_z}, beta=beta)['x'].distribution.mean,
-                (-1,) + config.x_shape
-            ) / 2 + 127.5
+            with arg_scope([dropout], training=True):
+                reconstruct_q_net = q_net(input_x, posterior_flow)
+                reconstruct_z = reconstruct_q_net['z']
+                reconstruct_plots = 256.0 * tf.reshape(
+                    p_net(observed={'z': reconstruct_z}, beta=beta)['x'].distribution.mean,
+                    (-1,) + config.x_shape
+                ) / 2 + 127.5
             plot_reconstruct_energy = D_psi(reconstruct_plots)
             gan_z_pure_energy = plot_net['z'].distribution.log_prob(gan_z).pure_energy
             gan_z_energy = plot_net['z'].distribution.log_prob(gan_z).energy
@@ -1020,6 +1023,23 @@ def main():
                 extra_index = loop.epoch
             with loop.timeit('plot_time'):
                 # plot reconstructs
+                for [x] in reconstruct_svhn_flow:
+                    x_samples = x
+                    images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
+                    images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
+                    images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
+                    batch_reconstruct_plots, batch_reconstruct_z = session.run(
+                        [reconstruct_plots, reconstruct_z], feed_dict={input_x: x_samples})
+                    images[2::3, ...] = np.round(batch_reconstruct_plots)
+                    # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
+                    save_images_collection(
+                        images=images,
+                        filename='plotting/svhn.reconstruct/{}.png'.format(extra_index),
+                        grid_size=(20, 15),
+                        results=results,
+                    )
+                    break
+
                 for [x] in reconstruct_test_flow:
                     x_samples = x
                     images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
@@ -1139,6 +1159,11 @@ def main():
         [x_train], 100, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(
         [x_test], 100, shuffle=True, skip_incomplete=False)
+    (svhn_train, _), (svhn_test, __) = load_svhn(config.x_shape)
+    svhn_train = (svhn_train - 127.5) / 256.0 * 2
+    svhn_test = (svhn_test - 127.5) / 256.0 * 2
+    reconstruct_svhn_flow = spt.DataFlow.arrays(
+        [svhn_train], 100, shuffle=True, skip_incomplete=False)
     test_flow = spt.DataFlow.arrays(
         [x_test, x_test],
         config.test_batch_size)
