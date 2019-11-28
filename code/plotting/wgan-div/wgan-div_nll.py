@@ -25,6 +25,8 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 
 class ExpConfig(spt.Config):
+    len_train = 60000
+
     # model parameters
     z_dim = 256
     act_norm = False
