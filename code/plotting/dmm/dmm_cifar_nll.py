@@ -1212,7 +1212,7 @@ def main():
                              preffix + 'pn_energy': pn_energy,
                              preffix + 'recon': test_recon,
                              preffix + 'kl_adv_and_gaussian': kl_adv_and_gaussian},
-                             #preffix + 'mse': test_mse},
+                    # preffix + 'mse': test_mse},
                     inputs=[input_x, input_origin_x],
                     data_flow=flow,
                     time_metric_name=preffix + 'time'
@@ -1257,16 +1257,16 @@ def main():
                             pack = session.run(
                                 ops, feed_dict={
                                     input_x: batch_x
-                                }) #[3, batch_size]
-                            pack = np.transpose(np.asarray(pack), (1, 0)) # [batch_size, 3]
+                                })  # [3, batch_size]
+                            pack = np.transpose(np.asarray(pack), (1, 0))  # [batch_size, 3]
                             packs.append(pack)
-                        packs = np.concatenate(packs, axis=0) #[len_of_flow, 3]
-                        packs = np.transpose(np.asarray(packs), (1, 0)) #[3, len_of_flow]
+                        packs = np.concatenate(packs, axis=0)  # [len_of_flow, 3]
+                        packs = np.transpose(np.asarray(packs), (1, 0))  # [3, len_of_flow]
                         return packs
 
                     cifar_train_nll, cifar_train_lb, cifar_train_recon, cifar_train_energy = get_ele(
                         [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], train_flow)
-                    #print(cifar_train_nll.shape, cifar_train_lb.shape, cifar_train_recon.shape)
+                    # print(cifar_train_nll.shape, cifar_train_lb.shape, cifar_train_recon.shape)
 
                     cifar_test_nll, cifar_test_lb, cifar_test_recon, cifar_test_energy = get_ele(
                         [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], test_flow)
@@ -1284,9 +1284,9 @@ def main():
                         spines[sp].set_color('silver')
 
                     def draw_nll(nll, color, label):
-                        nll = list(nll/(3072*np.log(2)))
-                        #print(nll)
-                        #print(nll.shape)
+                        nll = list(nll)
+                        # print(nll)
+                        # print(nll.shape)
                         n, bins, patches = pyplot.hist(nll, 40, normed=True, facecolor=color, alpha=0.4, label=label)
 
                         index = []
@@ -1302,10 +1302,10 @@ def main():
                         pyplot.legend()
                         print('%s done.' % label)
 
-                    draw_nll(cifar_train_nll, 'red', 'CIFAR-10 Train')
-                    draw_nll(cifar_test_nll, 'salmon', 'CIFAR-10 Test')
-                    draw_nll(svhn_train_nll, 'green', 'SVHN Train')
-                    draw_nll(svhn_test_nll, 'lightgreen', 'SVHN Test')
+                    draw_nll(cifar_train_nll / (3072 * np.log(2)), 'red', 'CIFAR-10 Train')
+                    draw_nll(cifar_test_nll / (3072 * np.log(2)), 'salmon', 'CIFAR-10 Test')
+                    draw_nll(svhn_train_nll / (3072 * np.log(2)), 'green', 'SVHN Train')
+                    draw_nll(svhn_test_nll / (3072 * np.log(2)), 'lightgreen', 'SVHN Test')
                     pyplot.savefig('plotting/dmm/out_of_distribution.png')
 
                     pyplot.cla()
@@ -1327,6 +1327,7 @@ def main():
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')
     results.close()
+
 
 if __name__ == '__main__':
     main()
