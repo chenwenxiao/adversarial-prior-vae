@@ -935,28 +935,6 @@ def main():
             # adversarial training
             for epoch in epoch_iterator:
 
-                with loop.timeit('compute_Z_time'):
-                    # log_Z_list = []
-                    # for i in range(config.log_Z_times):
-                    #     log_Z_list.append(session.run(log_Z_compute_op))
-                    # from scipy.misc import logsumexp
-                    # log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                    # print('log_Z_list:{}'.format(log_Z_list))
-                    # print('log_Z:{}'.format(log_Z))
-
-                    log_Z_list = []
-                    for [batch_x] in train_flow:
-                        log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                            input_x: batch_x,
-                        }))
-                    from scipy.misc import logsumexp
-                    another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                    # print('log_Z_list:{}'.format(log_Z_list))
-                    print('another_log_Z:{}'.format(another_log_Z))
-                    # final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
-                    final_log_Z = another_log_Z  # TODO
-                    get_log_Z().set(final_log_Z)
-
                 with loop.timeit('out_of_distribution_test'):
                     def get_ele(ops, flow):
                         packs = []
@@ -1012,13 +990,6 @@ def main():
                         pyplot.legend()
                         print('%s done.' % label)
 
-                    draw_nll(cifar_train_nll / (3072 * np.log(2)), 'red', 'CIFAR-10 Train')
-                    draw_nll(cifar_test_nll / (3072 * np.log(2)), 'salmon', 'CIFAR-10 Test')
-                    draw_nll(svhn_train_nll / (3072 * np.log(2)), 'green', 'SVHN Train')
-                    draw_nll(svhn_test_nll / (3072 * np.log(2)), 'lightgreen', 'SVHN Test')
-                    pyplot.savefig('plotting/dmm/out_of_distribution.png')
-
-                    pyplot.cla()
                     draw_nll(cifar_train_energy, 'red', 'CIFAR-10 Train')
                     draw_nll(cifar_test_energy, 'salmon', 'CIFAR-10 Test')
                     draw_nll(svhn_train_energy, 'green', 'SVHN Train')
