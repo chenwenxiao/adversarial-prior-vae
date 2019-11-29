@@ -632,8 +632,8 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
 def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial_z=None):
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
-    normal = spt.Normal(mean=tf.zeros([1, 128]),
-                        logstd=tf.zeros([1, 128]))
+    normal = spt.Normal(mean=tf.zeros([1, 64]),
+                        logstd=tf.zeros([1, 64]))
     normal = normal.batch_ndims_to_value(1)
     z = net.add('z', normal, n_samples=n_z)
     z_channel = 16 * config.z_dim // config.x_shape[0] // config.x_shape[1]
@@ -868,17 +868,6 @@ def main():
     beta = tf.Variable(initial_value=0.1, dtype=tf.float32, name='beta', trainable=True)
     beta = tf.clip_by_value(beta, config.beta, 1.0)
 
-    # derive the loss for initializing
-    with tf.name_scope('initialization'), \
-         arg_scope([spt.layers.act_norm], initializing=True), \
-         spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
-        init_pn_omega = p_omega_net(n_z=config.train_n_pz, beta=beta)
-        init_pn_theta = p_net(n_z=config.train_n_pz, beta=beta)
-        init_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
-        init_p_net = p_net(observed={'x': input_x, 'z': init_q_net['z']}, n_z=config.train_n_qz, beta=beta)
-        init_loss = sum(
-            get_all_loss(init_q_net, init_p_net, init_pn_omega, init_pn_theta, 1.0, input_origin_x))
-
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
          arg_scope([batch_norm, dropout], training=True):
@@ -990,7 +979,7 @@ def main():
             initial_z = tf.placeholder(
                 dtype=tf.float32, shape=(sample_n_z, 1, config.z_dim), name='initial_z')
             gan_plots = 256.0 * gan_plots / 2 + 127.5
-            plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z)
+            plot_net = p_net(n_z=sample_n_z, mcmc_iterator=5, beta=beta, initial_z=initial_z)
             plot_origin_net = p_net(n_z=sample_n_z, mcmc_iterator=0, beta=beta, initial_z=initial_z)
             plot_history_e_z = plot_net['z'].history_e_z
             plot_history_z = plot_net['z'].history_z
@@ -1171,12 +1160,6 @@ def main():
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
         spt.utils.ensure_variables_initialized()
-
-        # initialize the network
-        for [x, origin_x] in train_flow:
-            print('Network initialized, first-batch loss is {:.6g}.\n'.
-                  format(session.run(init_loss, feed_dict={input_x: x, input_origin_x: origin_x})))
-            break
 
         # if config.z_dim == 512:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/48/19/6f3b6c3ef49ded8ba2d5/checkpoint/checkpoint/checkpoint.dat-390000'
