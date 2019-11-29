@@ -381,7 +381,7 @@ def batch_norm(inputs, training=False, scope=None):
 @add_arg_scope
 def dropout(inputs, training=False, scope=None):
     print(inputs, training)
-    return spt.layers.dropout(inputs, rate=0.2, training=training, name=scope)
+    return spt.layers.dropout(inputs, rate=0.5, training=training, name=scope)
 
 
 def get_z_moments(z, value_ndims, name=None):
@@ -480,8 +480,7 @@ def G_theta(z, return_std=False):
                    shortcut_kernel_size=config.shortcut_kernel_size,
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
-                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),
-                   dropout_fn=dropout):
+                   kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg),):
         z_dim_channel = 16 * config.z_dim // config.x_shape[0] // config.x_shape[1]
         # h_z = spt.layers.dense(z, config.z_dim, normalizer_fn=None)
         h_z = spt.ops.reshape_tail(z, ndims=1, shape=(config.x_shape[0] // 4, config.x_shape[1] // 4, z_dim_channel))
@@ -1006,8 +1005,10 @@ def main():
                 plot_origin_net['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
             reconstruct_q_net = q_net(input_x, posterior_flow)
             reconstruct_z = reconstruct_q_net['z']
+            reconstruct_p_net = p_net(observed={'z': reconstruct_z, 'x': input_x}, beta=beta)
+            reconstruct_prob = reconstruct_p_net['x'].log_prob()
             reconstruct_plots = 256.0 * tf.reshape(
-                p_net(observed={'z': reconstruct_z}, beta=beta)['x'].distribution.mean,
+                reconstruct_p_net['x'].distribution.mean,
                 (-1,) + config.x_shape
             ) / 2 + 127.5
             plot_reconstruct_energy = D_psi(reconstruct_plots)
@@ -1028,10 +1029,11 @@ def main():
                     images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
                     images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
                     images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
-                    batch_reconstruct_plots, batch_reconstruct_z = session.run(
-                        [reconstruct_plots, reconstruct_z], feed_dict={input_x: x_samples})
+                    batch_reconstruct_plots, batch_reconstruct_z, batch_reconstruct_prob = session.run(
+                        [reconstruct_plots, reconstruct_z, reconstruct_prob], feed_dict={input_x: x_samples})
                     images[2::3, ...] = np.round(batch_reconstruct_plots)
                     # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
+                    print("SVHN recon is {}".format(np.mean(reconstruct_prob)))
                     save_images_collection(
                         images=images,
                         filename='plotting/svhn.reconstruct/{}.png'.format(extra_index),
