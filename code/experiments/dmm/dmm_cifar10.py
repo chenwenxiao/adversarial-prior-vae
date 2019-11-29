@@ -1217,13 +1217,13 @@ def main():
             )
             svhn_evaluator = spt.Evaluator(
                 loop,
-                metrics={'test_nll': test_nll, 'test_lb': test_lb,
-                         'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb,
-                         'real_energy': real_energy,
-                         'test_recon': test_recon},
+                metrics={'svhn_test_nll': test_nll, 'svhn_test_lb': test_lb,
+                         'svhn_adv_test_nll': adv_test_nll, 'svhn_adv_test_lb': adv_test_lb,
+                         'svhn_real_energy': real_energy,
+                         'svhn_test_recon': test_recon},
                 inputs=[input_x],
                 data_flow=reconstruct_svhn_flow,
-                time_metric_name='test_time'
+                time_metric_name='svhn_test_time'
             )
 
             loop.print_training_summary()
