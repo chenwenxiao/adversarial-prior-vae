@@ -76,7 +76,7 @@ class ExpConfig(spt.Config):
     log_Z_times = 100000
     log_Z_x_samples = 8
 
-    len_train = 60000
+    len_train = 50000
     sample_n_z = 100
     fid_samples = 500
 

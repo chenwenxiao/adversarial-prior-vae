@@ -10,7 +10,6 @@ from matplotlib import pyplot
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
-from code.experiments.datasets.svhn import load_svhn
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
                                       bernoulli_as_pixel,
@@ -25,8 +24,6 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 
 class ExpConfig(spt.Config):
-    len_train = 60000
-
     # model parameters
     z_dim = 256
     act_norm = False
@@ -54,9 +51,9 @@ class ExpConfig(spt.Config):
     lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
     lr_anneal_step_freq = None
 
-    gradient_penalty_algorithm = 'interpolate'  # both or interpolate
-    gradient_penalty_weight = 2
-    gradient_penalty_index = 6
+    gradient_penalty_algorithm = 'interpolate-gp'  # both or interpolate
+    gradient_penalty_weight = 10
+    gradient_penalty_index = 2
     kl_balance_weight = 1.0
 
     n_critical = 5  # TODO
@@ -436,6 +433,8 @@ def get_log_Z():
     return __log_Z
 
 
+
+
 @add_arg_scope
 @spt.global_reuse
 def G_theta(z):
@@ -604,6 +603,25 @@ def get_all_loss(q_net, p_net, pn_net, warm=1.0):
             gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
             gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
 
+        if config.gradient_penalty_algorithm == 'interpolate-gp':
+            # Sample from interpolates
+            alpha = tf.random_uniform(
+                tf.concat([[config.batch_size], [1] * len(config.x_shape)], axis=0),
+                minval=0, maxval=1.0
+            )
+            x = tf.reshape(x, (-1,) + config.x_shape)
+            x_ = tf.reshape(x_, (-1,) + config.x_shape)
+            differences = x - x_
+            interpolates = x_ + alpha * differences
+            # print(interpolates)
+            D_interpolates = D_psi(interpolates)
+            # print(D_interpolates)
+            gradient_penalty = tf.square(tf.gradients(D_interpolates, [interpolates])[0])
+            gradient_penalty = tf.sqrt(tf.reduce_sum(gradient_penalty, tf.range(-len(config.x_shape), 0))) - 1.0
+            gradient_penalty = gradient_penalty ** 2
+            gradient_penalty = tf.pow(gradient_penalty, config.gradient_penalty_index / 2.0)
+            gradient_penalty = tf.reduce_mean(gradient_penalty) * config.gradient_penalty_weight
+
         if config.gradient_penalty_algorithm == 'both':
             # Sample from fake and real
             gradient_penalty_real = tf.square(tf.gradients(energy_real, [x.tensor if hasattr(x, 'tensor') else x])[0])
@@ -767,12 +785,9 @@ def main():
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
         test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta, log_Z=get_log_Z())
-        ele_test_recon = test_chain.model['x'].log_prob()
-        ele_test_recon = tf.reduce_mean(ele_test_recon, axis=0)
-        print(ele_test_recon.shape)
-        test_recon = tf.reduce_mean(ele_test_recon)
-
-        '''
+        test_recon = tf.reduce_mean(
+            test_chain.model['x'].log_prob()
+        )
         test_mse = tf.reduce_sum(
             (tf.round(test_chain.model['x'].distribution.mean * 128 + 127.5) - tf.round(
                 test_chain.model['x'] * 128 + 127.5)) ** 2, axis=[-1, -2, -3])  # (sample_dim, batch_dim, x_sample_dim)
@@ -780,10 +795,12 @@ def main():
         test_mse = tf.reduce_mean(tf.reduce_mean(tf.reshape(
             test_mse, (-1, config.test_x_samples,)
         ), axis=-1))
-        '''
         test_nll = -tf.reduce_mean(
-            test_chain.vi.evaluation.is_loglikelihood()
-        )
+            spt.ops.log_mean_exp(
+                tf.reshape(
+                    test_chain.vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
+                ), axis=-1)
+        ) + config.x_shape_multiple * np.log(128.0)
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
 
         vi = spt.VariationalInference(
@@ -793,15 +810,14 @@ def main():
             latent_log_probs=[test_q_net['z'].log_prob()],
             axis=0
         )
+        adv_test_nll = -tf.reduce_mean(
+            spt.ops.log_mean_exp(
+                tf.reshape(
+                    vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
+                ), axis=-1)
+        ) + config.x_shape_multiple * np.log(128.0)
+        adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
 
-        ele_adv_test_nll = -vi.evaluation.is_loglikelihood()
-        print(ele_adv_test_nll.shape)
-        adv_test_nll = tf.reduce_mean(ele_adv_test_nll)
-        ele_adv_test_lb = vi.lower_bound.elbo()
-        print(ele_adv_test_lb.shape)
-        adv_test_lb = tf.reduce_mean(ele_adv_test_lb)
-
-        ele_real_energy = D_psi(test_chain.model['x'])
         real_energy = tf.reduce_mean(D_psi(test_chain.model['x']))
         reconstruct_energy = tf.reduce_mean(D_psi(test_chain.model['x'].distribution.mean))
         pd_energy = tf.reduce_mean(
@@ -810,10 +826,6 @@ def main():
         pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.mean))
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
-
-        another_log_Z_compute_op = spt.ops.log_mean_exp(
-            -test_chain.model['z'].log_prob().energy - test_q_net['z'].log_prob() + np.log(config.len_train)
-        )
         kl_adv_and_gaussian = tf.reduce_mean(
             test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob
         )
@@ -849,35 +861,121 @@ def main():
             G_train_op = G_optimizer.apply_gradients(G_grads)
             D_train_op = D_optimizer.apply_gradients(D_grads)
 
+    # derive the plotting function
+    with tf.name_scope('plotting'):
+        sample_n_z = 100
+        gan_plots = tf.reshape(p_omega_net(n_z=sample_n_z, beta=beta)['x'].distribution.mean,
+                               (-1,) + config.x_shape)
+        initial_z = q_net(gan_plots, posterior_flow)['z']
+        gan_plots = 256.0 * gan_plots / 2 + 127.5
+        initial_z = tf.expand_dims(initial_z, axis=1)
+        plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z)
+        plot_history_e_z = plot_net['z'].history_e_z
+        plot_history_z = plot_net['z'].history_z
+        plot_history_pure_e_z = plot_net['z'].history_pure_e_z
+        plot_history_ratio = plot_net['z'].history_ratio
+        x_plots = 256.0 * tf.reshape(
+            plot_net['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
+        reconstruct_q_net = q_net(input_x, posterior_flow)
+        reconstruct_z = reconstruct_q_net['z']
+        reconstruct_plots = 256.0 * tf.reshape(
+            p_net(observed={'z': reconstruct_z}, beta=beta)['x'].distribution.mean,
+            (-1,) + config.x_shape
+        ) / 2 + 127.5
+        plot_reconstruct_energy = D_psi(reconstruct_plots)
+        gan_plots = tf.clip_by_value(gan_plots, 0, 255)
+        x_plots = tf.clip_by_value(x_plots, 0, 255)
+        reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
+
+    def plot_samples(loop):
+        with loop.timeit('plot_time'):
+            try:
+                # plot reconstructs
+                for [x] in reconstruct_train_flow:
+                    x_samples = uniform_sampler.sample(x)
+                    images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
+                    images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
+                    images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
+                    images[2::3, ...] = np.round(session.run(
+                        reconstruct_plots, feed_dict={input_x: x}))
+                    batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
+                    # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
+                    save_images_collection(
+                        images=images,
+                        filename='plotting/train.reconstruct/{}.png'.format(loop.epoch),
+                        grid_size=(20, 15),
+                        results=results,
+                    )
+                    break
+
+                # plot reconstructs
+                for [x] in reconstruct_test_flow:
+                    x_samples = uniform_sampler.sample(x)
+                    images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
+                    images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
+                    images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
+                    images[2::3, ...] = np.round(session.run(
+                        reconstruct_plots, feed_dict={input_x: x}))
+                    save_images_collection(
+                        images=images,
+                        filename='plotting/test.reconstruct/{}.png'.format(loop.epoch),
+                        grid_size=(20, 15),
+                        results=results,
+                    )
+                    break
+                # plot samples
+                [images, gan_images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
+                 batch_history_ratio] = session.run(
+                    [x_plots, gan_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio])
+                # print(batch_history_e_z)
+                # print(np.mean(batch_history_z ** 2, axis=-1))
+                # print(batch_history_pure_e_z)
+                # print(batch_history_ratio)
+                save_images_collection(
+                    images=np.round(gan_images),
+                    filename='plotting/sample/gan-{}.png'.format(loop.epoch),
+                    grid_size=(10, 10),
+                    results=results,
+                )
+                save_images_collection(
+                    images=np.round(images),
+                    filename='plotting/sample/{}.png'.format(loop.epoch),
+                    grid_size=(10, 10),
+                    results=results,
+                )
+            except Exception as e:
+                print(e)
+
     # prepare for training and testing data
-    (_x_train, _y_train), (_x_test, _y_test) = spt.datasets.load_cifar10(x_shape=config.x_shape)
+    (_x_train, _y_train), (_x_test, _y_test) = \
+        spt.datasets.load_cifar10(x_shape=config.x_shape)
+    # train_flow = bernoulli_flow(
+    #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
     x_train = (_x_train - 127.5) / 256.0 * 2
     x_test = (_x_test - 127.5) / 256.0 * 2
-    # uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0, dtype=np.float)
-    train_flow = spt.DataFlow.arrays([x_train], config.test_batch_size)
+    uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0, dtype=np.float)
+    train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
+    # train_flow = train_flow.map(uniform_sampler)
+    gan_train_flow = spt.DataFlow.arrays(
+        [np.concatenate([x_train, x_test], axis=0)], config.batch_size, shuffle=True, skip_incomplete=True)
+    gan_train_flow = gan_train_flow.map(uniform_sampler)
     reconstruct_train_flow = spt.DataFlow.arrays(
         [x_train], 100, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(
         [x_test], 100, shuffle=True, skip_incomplete=False)
     test_flow = spt.DataFlow.arrays(
-        [x_test],
-        config.test_batch_size)
-
-    (svhn_train, _), (svhn_test, __) = load_svhn(config.x_shape)
-    svhn_train = (svhn_train - 127.5) / 256.0 * 2
-    svhn_test = (svhn_test - 127.5) / 256.0 * 2
-    svhn_train_flow = spt.DataFlow.arrays([svhn_train], config.test_batch_size)
-    svhn_test_flow = spt.DataFlow.arrays([svhn_test], config.test_batch_size)
+        [np.repeat(x_test, config.test_x_samples, axis=0)], config.test_batch_size)
+    test_flow = test_flow.map(uniform_sampler)
 
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
         spt.utils.ensure_variables_initialized()
 
         # initialize the network
-        # for [x, origin_x] in train_flow:
-        #     print('Network initialized, first-batch loss is {:.6g}.\n'.
-        #           format(session.run(init_loss, feed_dict={input_x: x, input_origin_x: origin_x})))
-        #     break
+        for [x] in train_flow:
+            print('Network initialized, first-batch loss is {:.6g}.\n'.
+                  format(session.run(init_loss, feed_dict={input_x: x})))
+            break
 
         # if config.z_dim == 512:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/48/19/6f3b6c3ef49ded8ba2d5/checkpoint/checkpoint/checkpoint.dat-390000'
@@ -888,13 +986,12 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/24/29/6fc8930042bc9bab75d5/checkpoint/checkpoint/checkpoint.dat-195000'
+        restore_checkpoint = None
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
-                           var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega',
-                                       'D_kappa'],
-                           max_epoch=config.max_epoch + 1,
+                           var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi'],
+                           max_epoch=config.max_epoch,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
@@ -905,111 +1002,106 @@ def main():
                            restore_checkpoint=restore_checkpoint
                            ) as loop:
 
+            evaluator = spt.Evaluator(
+                loop,
+                metrics={'test_nll': test_nll, 'test_lb': test_lb,
+                         'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb,
+                         'reconstruct_energy': reconstruct_energy,
+                         'real_energy': real_energy,
+                         'pd_energy': pd_energy, 'pn_energy': pn_energy,
+                         'test_recon': test_recon, 'kl_adv_and_gaussian': kl_adv_and_gaussian, 'test_mse': test_mse},
+                inputs=[input_x],
+                data_flow=test_flow,
+                time_metric_name='test_time'
+            )
+
             loop.print_training_summary()
             spt.utils.ensure_variables_initialized()
 
-            def evaluator_generate(flow, preffix=''):
-                return spt.Evaluator(
-                    loop,
-                    metrics={preffix + 'nll': test_nll,
-                             preffix + 'lb': test_lb,
-                             preffix + 'adv_nll': adv_test_nll,
-                             preffix + 'adv_lb': adv_test_lb,
-                             preffix + 'reconstruct_energy': reconstruct_energy,
-                             preffix + 'real_energy': real_energy,
-                             preffix + 'pd_energy': pd_energy,
-                             preffix + 'pn_energy': pn_energy,
-                             preffix + 'recon': test_recon,
-                             preffix + 'kl_adv_and_gaussian': kl_adv_and_gaussian},
-                    # preffix + 'mse': test_mse},
-                    inputs=[input_x],
-                    data_flow=flow,
-                    time_metric_name=preffix + 'time'
-                )
-
-            cifar_train_evaluator = evaluator_generate(train_flow, 'cifar_train')
-            cifar_test_evaluator = evaluator_generate(test_flow, 'cifar_test')
-            svhn_train_evaluator = evaluator_generate(svhn_train_flow, 'svhn_train')
-            svhn_test_evaluator = evaluator_generate(svhn_test_flow, 'svhn_test')
-
             epoch_iterator = loop.iter_epochs()
 
+            n_critical = config.n_critical
             # adversarial training
             for epoch in epoch_iterator:
+                step_iterator = MyIterator(train_flow)
+                while step_iterator.has_next:
+                    if epoch <= config.warm_up_start:
+                        # discriminator training
+                        for step, [x] in loop.iter_steps(limited(step_iterator, n_critical)):
+                            [_, batch_D_loss, batch_D_real] = session.run(
+                                [D_train_op, D_loss, D_real], feed_dict={
+                                    input_x: x,
+                                })
+                            loop.collect_metrics(D_loss=batch_D_loss)
+                            loop.collect_metrics(D_real=batch_D_real)
 
-                with loop.timeit('out_of_distribution_test'):
-                    def get_ele(ops, flow):
-                        packs = []
-                        for [batch_x, batch_ox] in flow:
-                            pack = session.run(
-                                ops, feed_dict={
-                                    input_x: batch_x
-                                })  # [3, batch_size]
-                            pack = np.transpose(np.asarray(pack), (1, 0))  # [batch_size, 3]
-                            packs.append(pack)
-                        packs = np.concatenate(packs, axis=0)  # [len_of_flow, 3]
-                        packs = np.transpose(np.asarray(packs), (1, 0))  # [3, len_of_flow]
-                        return packs
+                        # generator training x
+                        [_, batch_G_loss] = session.run(
+                            [G_train_op, G_loss], feed_dict={
+                            })
+                        loop.collect_metrics(G_loss=batch_G_loss)
+                    else:
+                        # vae training
+                        for step, [x] in loop.iter_steps(limited(step_iterator, n_critical)):
+                            [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
+                             batch_VAE_D_real, batch_train_kl, batch_train_grad_penalty] = session.run(
+                                [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy, VAE_D_real,
+                                 train_kl, train_grad_penalty],
+                                feed_dict={
+                                    input_x: x,
+                                    warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
+                                })
+                            loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
+                            loop.collect_metrics(xi=xi_value)
+                            loop.collect_metrics(beta=beta_value)
+                            loop.collect_metrics(train_recon=batch_train_recon)
+                            loop.collect_metrics(train_recon_energy=batch_train_recon_energy)
+                            loop.collect_metrics(D_real=batch_VAE_D_real)
+                            loop.collect_metrics(train_kl=batch_train_kl)
+                            loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
+                            # loop.print_logs()
 
-                    cifar_train_nll, cifar_train_lb, cifar_train_recon, cifar_train_energy = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], train_flow)
-                    # print(cifar_train_nll.shape, cifar_train_lb.shape, cifar_train_recon.shape)
+                        # generator training x
+                        # [_, batch_VAE_G_loss] = session.run(
+                        #     [VAE_G_train_op, VAE_G_loss], feed_dict={
+                        #     })
+                        # loop.collect_metrics(VAE_G_loss=batch_VAE_G_loss)
 
-                    cifar_test_nll, cifar_test_lb, cifar_test_recon, cifar_test_energy = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], test_flow)
-                    svhn_train_nll, svhn_train_lb, svhn_train_recon, svhn_train_energy = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy],
-                        svhn_train_flow)
-                    svhn_test_nll, svhn_test_lb, svhn_test_recon, svhn_test_energy = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy],
-                        svhn_test_flow)
+                if epoch in config.lr_anneal_epoch_freq:
+                    learning_rate.anneal()
 
-                    # Draw the histogram or exrta the data here
-                    pyplot.plot()
-                    pyplot.grid(c='silver', ls='--')
-                    pyplot.xlabel('log(bits/dim)')
-                    spines = pyplot.gca().spines
-                    for sp in spines:
-                        spines[sp].set_color('silver')
+                if epoch == config.warm_up_start:
+                    learning_rate.set(config.initial_lr)
 
-                    def draw_nll(nll, color, label):
-                        nll = list(nll)
-                        # print(nll)
-                        # print(nll.shape)
-                        n, bins, patches = pyplot.hist(nll, 40, normed=True, facecolor=color, alpha=0.4,
-                                                       label=label)
+                if epoch % config.plot_epoch_freq == 0:
+                    plot_samples(loop)
 
-                        index = []
-                        for i in range(len(bins) - 1):
-                            index.append((bins[i] + bins[i + 1]) / 2)
+                if epoch % config.test_epoch_freq == 0:
+                    log_Z_list = []
+                    for i in range(config.log_Z_times):
+                        log_Z_list.append(session.run(log_Z_compute_op))
+                    from scipy.misc import logsumexp
+                    log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(config.log_Z_times)
+                    get_log_Z().set(log_Z)
+                    print('log_Z_list:{}'.format(log_Z_list))
+                    print('log_Z:{}'.format(log_Z))
+                    with loop.timeit('eval_time'):
+                        evaluator.run()
 
-                        def smooth(c, N=5):
-                            weights = np.hanning(N)
-                            return np.convolve(weights / weights.sum(), c)[N - 1:-N + 1]
+                    dataset_img = _x_train
 
-                        n[2:-2] = smooth(n)
-                        pyplot.plot(index, n, color=color)
-                        pyplot.legend()
-                        print('%s done.' % label)
+                    sample_img = []
+                    for i in range((len(x_train)) // 100 + 1):
+                        sample_img.append(session.run(gan_plots))
+                    sample_img = np.concatenate(sample_img, axis=0).astype('uint8')
+                    sample_img = sample_img[:len(dataset_img)]
+                    sample_img = np.asarray(sample_img)
 
-                    pyplot.plot()
-                    pyplot.grid(c='silver', ls='--')
-                    pyplot.xlabel('log(bits/dim)')
-                    spines = pyplot.gca().spines
-                    for sp in spines:
-                        spines[sp].set_color('silver')
-
-                    draw_nll(cifar_train_energy, 'red', 'CIFAR-10 Train')
-                    draw_nll(cifar_test_energy, 'salmon', 'CIFAR-10 Test')
-                    draw_nll(svhn_train_energy, 'green', 'SVHN Train')
-                    draw_nll(svhn_test_energy, 'lightgreen', 'SVHN Test')
-                    pyplot.savefig('plotting/dmm/out_of_distribution_energy.png')
-
-                with loop.timeit('eval_time'):
-                    cifar_train_evaluator.run()
-                    cifar_test_evaluator.run()
-                    svhn_train_evaluator.run()
-                    svhn_test_evaluator.run()
+                    FID = get_fid_google(sample_img, dataset_img)
+                    # turn to numpy array
+                    IS_mean, IS_std = get_inception_score(sample_img)
+                    loop.collect_metrics(FID=FID)
+                    loop.collect_metrics(IS=IS_mean)
 
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
