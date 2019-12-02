@@ -1222,7 +1222,7 @@ def main():
                                     })
                                 loop.collect_metrics(VAE_D_loss=batch_D_loss)
                                 loop.collect_metrics(VAE_D_real=batch_D_real)
-                                loop.collect_metrics(VAE_D_real=batch_G_loss)
+                                loop.collect_metrics(VAE_G_loss=batch_G_loss)
                 else:
                     step_iterator = MyIterator(train_flow)
                     while step_iterator.has_next:
