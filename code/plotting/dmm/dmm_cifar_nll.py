@@ -947,13 +947,15 @@ def main():
         print(ele_adv_test_lb.shape)
         adv_test_lb = tf.reduce_mean(ele_adv_test_lb)
 
-        ele_real_energy = tf.reduce_mean(D_psi(test_chain.model['x'].distribution.mean), axis=0)
-        real_energy = tf.reduce_mean(D_psi(test_chain.model['x']))
-        reconstruct_energy = tf.reduce_mean(D_psi(test_chain.model['x'].distribution.mean))
+        ele_real_energy = tf.reduce_mean(
+            D_psi(test_chain.model['x'].distribution.mean, mu=energy_mu, sigma=energy_sigma), axis=0)
+        real_energy = tf.reduce_mean(D_psi(test_chain.model['x'], mu=energy_mu, sigma=energy_sigma))
+        reconstruct_energy = tf.reduce_mean(
+            D_psi(test_chain.model['x'].distribution.mean, mu=energy_mu, sigma=energy_sigma))
         pd_energy = tf.reduce_mean(
             D_psi(test_pn_net['x'].distribution.mean) * tf.exp(
                 test_pn_net['z'].log_prob().log_energy_prob - test_pn_net['z'].log_prob()))
-        pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.mean))
+        pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.mean, mu=energy_mu, sigma=energy_sigma))
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
 
@@ -1295,6 +1297,10 @@ def main():
                         svhn_test_nll, svhn_test_lb, svhn_test_recon, svhn_test_energy = get_ele(
                             [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], svhn_test_flow,
                             global_energy_sigma, global_energy_mu)
+                        print('Mean nll is:')
+                        print(np.mean(cifar_train_nll), np.mean(cifar_test_nll), np.mean(svhn_train_nll), np.mean(svhn_test_nll))
+                        print('Mean energy is:')
+                        print(np.mean(cifar_train_energy), np.mean(cifar_test_energy), np.mean(svhn_train_energy), np.mean(svhn_test_energy))
 
                         # Draw the histogram or exrta the data here
 
@@ -1347,11 +1353,11 @@ def main():
                         draw_nll(svhn_test_energy, 'lightgreen', 'SVHN Test')
                         pyplot.savefig('plotting/dmm/out_of_distribution_energy-{}.png'.format(global_energy_sigma))
 
-                    with loop.timeit('eval_time'):
-                        cifar_train_evaluator.run()
-                        cifar_test_evaluator.run()
-                        svhn_train_evaluator.run()
-                        svhn_test_evaluator.run()
+                    # with loop.timeit('eval_time'):
+                    #     cifar_train_evaluator.run()
+                    #     cifar_test_evaluator.run()
+                    #     svhn_train_evaluator.run()
+                    #     svhn_test_evaluator.run()
 
                     loop.collect_metrics(lr=learning_rate.get())
                     loop.print_logs()
