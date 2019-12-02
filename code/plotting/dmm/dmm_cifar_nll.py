@@ -571,6 +571,7 @@ def D_psi(x, mu=None, sigma=None):
     h_x = spt.layers.dense(h_x, 1, scope='level_-1')
     if mu is not None and sigma is not None:
         h_x = h_x + tf.maximum(0.0, h_x - mu) * sigma
+        print(h_x)
     return tf.squeeze(h_x, axis=-1)
 
 
@@ -868,9 +869,9 @@ def main():
     warm = tf.placeholder(
         dtype=tf.float32, shape=(), name='warm')
     energy_mu = tf.placeholder(
-        dtype=tf.float32, shape=(), name='energy_mu')
+        dtype=tf.float32, shape=(1), name='energy_mu')
     energy_sigma = tf.placeholder(
-        dtype=tf.float32, shape=(), name='energy_sigma')
+        dtype=tf.float32, shape=(1), name='energy_sigma')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
     beta = tf.Variable(initial_value=0.1, dtype=tf.float32, name='beta', trainable=True)
@@ -1216,8 +1217,8 @@ def main():
                         pack = session.run(
                             ops, feed_dict={
                                 input_x: batch_x,
-                                energy_mu: mu,
-                                energy_sigma: sigma
+                                energy_mu: [mu],
+                                energy_sigma: [sigma]
                             })  # [3, batch_size]
                         pack = np.transpose(np.asarray(pack), (1, 0))  # [batch_size, 3]
                         packs.append(pack)
@@ -1230,7 +1231,8 @@ def main():
                 global_energy_mu = np.mean(cifar_train_energy)
 
                 print("global energy mu is {}".format(global_energy_mu))
-                for global_energy_sigma in [0.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0, 1024.0]:
+                for global_energy_sigma in [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0,
+                                            7.5, 8.0, 8.5, 9.0, 9.5, 10.0]:
 
                     def evaluator_generate(flow, preffix=''):
                         return spt.Evaluator(
@@ -1270,8 +1272,8 @@ def main():
                         for [batch_x, batch_ox] in train_flow:
                             log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
                                 input_x: batch_x,
-                                energy_mu: global_energy_mu,
-                                energy_sigma: global_energy_sigma
+                                energy_mu: [global_energy_mu],
+                                energy_sigma: [global_energy_sigma]
                             }))
                         from scipy.misc import logsumexp
                         another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
@@ -1285,22 +1287,24 @@ def main():
 
                         cifar_train_nll, cifar_train_lb, cifar_train_recon, cifar_train_energy = get_ele(
                             [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], train_flow,
-                            global_energy_sigma, global_energy_mu)
+                            global_energy_mu, global_energy_sigma)
                         # print(cifar_train_nll.shape, cifar_train_lb.shape, cifar_train_recon.shape)
 
                         cifar_test_nll, cifar_test_lb, cifar_test_recon, cifar_test_energy = get_ele(
                             [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], test_flow,
-                            global_energy_sigma, global_energy_mu)
+                            global_energy_mu, global_energy_sigma)
                         svhn_train_nll, svhn_train_lb, svhn_train_recon, svhn_train_energy = get_ele(
                             [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], svhn_train_flow,
-                            global_energy_sigma, global_energy_mu)
+                            global_energy_mu, global_energy_sigma)
                         svhn_test_nll, svhn_test_lb, svhn_test_recon, svhn_test_energy = get_ele(
                             [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], svhn_test_flow,
-                            global_energy_sigma, global_energy_mu)
+                            global_energy_mu, global_energy_sigma)
                         print('Mean nll is:')
-                        print(np.mean(cifar_train_nll), np.mean(cifar_test_nll), np.mean(svhn_train_nll), np.mean(svhn_test_nll))
+                        print(np.mean(cifar_train_nll), np.mean(cifar_test_nll), np.mean(svhn_train_nll),
+                              np.mean(svhn_test_nll))
                         print('Mean energy is:')
-                        print(np.mean(cifar_train_energy), np.mean(cifar_test_energy), np.mean(svhn_train_energy), np.mean(svhn_test_energy))
+                        print(np.mean(cifar_train_energy), np.mean(cifar_test_energy), np.mean(svhn_train_energy),
+                              np.mean(svhn_test_energy))
 
                         # Draw the histogram or exrta the data here
 
