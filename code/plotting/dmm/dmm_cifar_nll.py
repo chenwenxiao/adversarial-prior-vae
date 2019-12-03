@@ -1251,7 +1251,7 @@ def main():
                             inputs=[input_x, input_origin_x],
                             data_flow=flow,
                             time_metric_name=preffix + 'time',
-                            feed_dict={energy_mu: global_energy_mu, energy_sigma: global_energy_sigma}
+                            feed_dict={energy_mu: [global_energy_mu], energy_sigma: [global_energy_sigma]}
                         )
 
                     cifar_train_evaluator = evaluator_generate(train_flow, 'cifar_train_')
