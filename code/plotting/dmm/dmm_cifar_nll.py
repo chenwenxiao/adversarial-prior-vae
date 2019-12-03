@@ -1357,11 +1357,11 @@ def main():
                         draw_nll(svhn_test_energy, 'lightgreen', 'SVHN Test')
                         pyplot.savefig('plotting/dmm/out_of_distribution_energy-{}.png'.format(global_energy_sigma))
 
-                    # with loop.timeit('eval_time'):
-                    #     cifar_train_evaluator.run()
-                    #     cifar_test_evaluator.run()
-                    #     svhn_train_evaluator.run()
-                    #     svhn_test_evaluator.run()
+                    with loop.timeit('eval_time'):
+                        cifar_train_evaluator.run()
+                        cifar_test_evaluator.run()
+                        svhn_train_evaluator.run()
+                        svhn_test_evaluator.run()
 
                     loop.collect_metrics(lr=learning_rate.get())
                     loop.print_logs()
