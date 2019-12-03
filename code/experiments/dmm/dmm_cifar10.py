@@ -55,9 +55,9 @@ class ExpConfig(spt.Config):
     lr_anneal_step_freq = None
 
     use_dg = False
-    gradient_penalty_algorithm = 'interpolate-gp'  # both or interpolate
-    gradient_penalty_weight = 20
-    gradient_penalty_index = 2
+    gradient_penalty_algorithm = 'interpolate'  # both or interpolate
+    gradient_penalty_weight = 2
+    gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
     n_critical = 5
@@ -82,6 +82,7 @@ class ExpConfig(spt.Config):
 
     epsilon = -20.0
     min_logstd_of_q = -7.0
+    global_energy_sigma = 4.0
 
     @property
     def x_shape(self):
@@ -467,6 +468,17 @@ def get_log_Z():
     return __log_Z
 
 
+__energy_mu = None
+
+
+@spt.global_reuse
+def get_energy_mu():
+    global __energy_mu
+    if __energy_mu is None:
+        __energy_mu = spt.ScheduledVariable('energy_mu', dtype=tf.float32, initial_value=1e30, model_var=True)
+    return __energy_mu
+
+
 @add_arg_scope
 @spt.global_reuse
 def G_theta(z, return_std=False):
@@ -566,6 +578,7 @@ def D_psi(x, y=None):
         h_x = spt.layers.dense(h_x, 64, scope='level_-2')
     # sample z ~ q(z|x)
     h_x = spt.layers.dense(h_x, 1, scope='level_-1')
+    h_x = h_x + tf.maximum(0.0, h_x - get_energy_mu()) * config.global_energy_sigma
     return tf.squeeze(h_x, axis=-1)
 
 
@@ -718,7 +731,7 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
     return gradient_penalty
 
 
-def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None):
+def get_all_loss(q_net, p_net, pn_omega, pn_theta, input_origin_x=None):
     with tf.name_scope('adv_prior_loss'):
         gp_omega = get_gradient_penalty(q_net['z'].distribution.mean, pn_omega['f_z'].distribution.mean, D=D_kappa,
                                         space='f_z')
@@ -756,10 +769,11 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None
         )
         train_grad_penalty = gp_theta + gp_dg  # + gp_omega
         train_kl = tf.maximum(train_kl, 0.0)  # TODO
-        VAE_nD_loss = -train_recon + warm * train_kl
+        VAE_nD_loss = -train_recon + train_kl
         VAE_loss = VAE_nD_loss + train_grad_penalty
         VAE_G_loss = tf.reduce_mean(D_psi(pn_theta['x'].distribution.mean))
         VAE_D_real = tf.reduce_mean(D_psi(input_origin_x))
+        VAE_D_loss = -VAE_G_loss + VAE_D_real + train_grad_penalty
 
         energy_fake = D_kappa(pn_omega['f_z'].distribution.mean)
         energy_real = D_kappa(q_net['z'].distribution.mean)
@@ -768,7 +782,7 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None
             energy_real) + gp_omega
         adv_G_loss = tf.reduce_mean(energy_fake)
         adv_D_real = tf.reduce_mean(energy_real)
-    return VAE_nD_loss, VAE_loss, VAE_G_loss, VAE_D_real, adv_D_loss, adv_G_loss, adv_D_real
+    return VAE_nD_loss, VAE_loss, VAE_D_loss, VAE_G_loss, VAE_D_real, adv_D_loss, adv_G_loss, adv_D_real
 
 
 class MyIterator(object):
@@ -860,8 +874,6 @@ def main():
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_x')
     input_origin_x = tf.placeholder(
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_origin_x')
-    warm = tf.placeholder(
-        dtype=tf.float32, shape=(), name='warm')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
     beta = tf.Variable(initial_value=0.1, dtype=tf.float32, name='beta', trainable=True)
@@ -877,8 +889,8 @@ def main():
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']},
                             n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
 
-        VAE_nD_loss, VAE_loss, VAE_G_loss, VAE_D_real, D_loss, G_loss, D_real = get_all_loss(
-            train_q_net, train_p_net, train_pn_omega, train_pn_theta, warm, input_origin_x)
+        VAE_nD_loss, VAE_loss, VAE_D_loss, VAE_G_loss, VAE_D_real, D_loss, G_loss, D_real = get_all_loss(
+            train_q_net, train_p_net, train_pn_omega, train_pn_theta, input_origin_x)
         VAE_loss += tf.losses.get_regularization_loss()
         VAE_nD_loss += tf.losses.get_regularization_loss()
         D_loss += tf.losses.get_regularization_loss()
@@ -941,29 +953,28 @@ def main():
             'p_net/xi') + tf.trainable_variables('D_psi')
         VAE_nD_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
             'beta') + tf.trainable_variables('posterior_flow') + tf.trainable_variables('p_net/xi')
-        D_params = tf.trainable_variables('D_kappa')
+        D_psi_params = tf.trainable_variables('D_psi')
+        D_kappa_params = tf.trainable_variables('D_kappa')
         G_params = tf.trainable_variables('G_omega')
-        print("========VAE_params=========")
-        print(VAE_params)
-        print("========D_params=========")
-        print(D_params)
-        print("========G_params=========")
-        print(G_params)
         with tf.variable_scope('VAE_optimizer'):
             VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
             VAE_grads = VAE_optimizer.compute_gradients(VAE_loss, VAE_params)
         with tf.variable_scope('VAE_nD_optimizer'):
             VAE_nD_optimizer = tf.train.AdamOptimizer(learning_rate)
             VAE_nD_grads = VAE_nD_optimizer.compute_gradients(VAE_nD_loss, VAE_nD_params)
-        with tf.variable_scope('D_optimizer'):
+        with tf.variable_scope('D_psi_optimizer'):
+            VAE_D_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
+            VAE_D_grads = VAE_D_optimizer.compute_gradients(VAE_D_loss, D_psi_params)
+        with tf.variable_scope('D_kappa_optimizer'):
             D_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
-            D_grads = D_optimizer.compute_gradients(D_loss, D_params)
+            D_grads = D_optimizer.compute_gradients(D_loss, D_kappa_params)
         with tf.variable_scope('G_optimizer'):
             G_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
             G_grads = G_optimizer.compute_gradients(G_loss, G_params)
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             VAE_train_op = VAE_optimizer.apply_gradients(VAE_grads)
             VAE_nD_train_op = VAE_optimizer.apply_gradients(VAE_nD_grads)
+            VAE_D_train_op = VAE_D_optimizer.apply_gradients(VAE_D_grads)
             G_train_op = G_optimizer.apply_gradients(G_grads)
             D_train_op = D_optimizer.apply_gradients(D_grads)
 
@@ -1185,15 +1196,14 @@ def main():
                         for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
                             # vae training
                             [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
-                             batch_train_recon_pure_energy, batch_VAE_D_real, batch_VAE_G_loss, batch_train_kl,
+                             batch_train_recon_pure_energy, batch_train_kl,
                              batch_train_grad_penalty] = session.run(
-                                [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
-                                 train_recon_pure_energy, VAE_D_real, VAE_G_loss,
+                                [VAE_train_op if epoch <= config.warm_up_start // 2 else VAE_nD_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
+                                 train_recon_pure_energy,
                                  train_kl, train_grad_penalty],
                                 feed_dict={
                                     input_x: x,
-                                    input_origin_x: origin_x,
-                                    warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
+                                    input_origin_x: origin_x
                                 })
                             loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                             loop.collect_metrics(xi=xi_value)
@@ -1201,8 +1211,6 @@ def main():
                             loop.collect_metrics(train_recon=batch_train_recon)
                             loop.collect_metrics(train_recon_pure_energy=batch_train_recon_pure_energy)
                             loop.collect_metrics(train_recon_energy=batch_train_recon_energy)
-                            loop.collect_metrics(VAE_D_real=batch_VAE_D_real)
-                            loop.collect_metrics(VAE_G_loss=batch_VAE_G_loss)
                             loop.collect_metrics(train_kl=batch_train_kl)
                             loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
                 else:
@@ -1259,6 +1267,10 @@ def main():
 
                     with loop.timeit('eval_time'):
                         evaluator.run()
+
+                if epoch == config.warm_up_start // 2:
+                    print("Set energy mu to {}".format(evaluator.last_metrics_dict['reconstruct_energy']))
+                    get_energy_mu().set(evaluator.last_metrics_dict['reconstruct_energy'])
 
                 if epoch == config.max_epoch:
                     dataset_img = _x_train
