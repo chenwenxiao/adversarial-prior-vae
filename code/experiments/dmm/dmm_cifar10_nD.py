@@ -55,9 +55,9 @@ class ExpConfig(spt.Config):
     lr_anneal_step_freq = None
 
     use_dg = False
-    gradient_penalty_algorithm = 'interpolate-gp'  # both or interpolate
-    gradient_penalty_weight = 10
-    gradient_penalty_index = 2
+    gradient_penalty_algorithm = 'interpolate'  # both or interpolate
+    gradient_penalty_weight = 2
+    gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
     n_critical = 5
