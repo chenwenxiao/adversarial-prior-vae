@@ -1197,10 +1197,11 @@ def main():
                             # vae training
                             [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
                              batch_train_recon_pure_energy, batch_train_kl,
-                             batch_train_grad_penalty] = session.run(
-                                [VAE_train_op if epoch <= config.warm_up_start // 2 else VAE_nD_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
+                             batch_train_grad_penalty, batch_D_loss, batch_D_real, batch_G_loss] = session.run(
+                                [VAE_train_op if epoch <= config.warm_up_start // 2 else VAE_nD_train_op, VAE_loss,
+                                 beta, xi_node, train_recon, train_recon_energy,
                                  train_recon_pure_energy,
-                                 train_kl, train_grad_penalty],
+                                 train_kl, train_grad_penalty, VAE_D_loss, VAE_D_real, VAE_G_loss],
                                 feed_dict={
                                     input_x: x,
                                     input_origin_x: origin_x
@@ -1213,6 +1214,9 @@ def main():
                             loop.collect_metrics(train_recon_energy=batch_train_recon_energy)
                             loop.collect_metrics(train_kl=batch_train_kl)
                             loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
+                            loop.collect_metrics(VAE_D_loss=batch_D_loss)
+                            loop.collect_metrics(VAE_D_real=batch_D_real)
+                            loop.collect_metrics(VAE_G_loss=batch_G_loss)
                 else:
                     step_iterator = MyIterator(train_flow)
                     while step_iterator.has_next:
