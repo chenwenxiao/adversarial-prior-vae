@@ -56,8 +56,8 @@ class ExpConfig(spt.Config):
 
     use_dg = False
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
-    gradient_penalty_weight = 2
-    gradient_penalty_index = 6
+    gradient_penalty_weight = 10
+    gradient_penalty_index = 2
     kl_balance_weight = 1.0
 
     n_critical = 5
@@ -81,7 +81,7 @@ class ExpConfig(spt.Config):
     fid_samples = 500
 
     epsilon = -20.0
-    min_logstd_of_q = -7.0
+    min_logstd_of_q = -3.0
     global_energy_sigma = 4.0
 
     @property

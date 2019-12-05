@@ -82,7 +82,7 @@ class ExpConfig(spt.Config):
     fid_samples = 500
 
     epsilon = -20.0
-    min_logstd_of_q = -7.0
+    min_logstd_of_q = -3.0
     global_energy_sigma = 4.0
 
     @property
