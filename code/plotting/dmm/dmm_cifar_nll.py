@@ -83,7 +83,7 @@ class ExpConfig(spt.Config):
 
     epsilon = -20.0
     min_logstd_of_q = -3.0
-    global_energy_sigma = 4.0
+    global_energy_sigma = 0.0
 
     @property
     def x_shape(self):
