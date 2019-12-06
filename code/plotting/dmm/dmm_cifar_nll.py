@@ -83,7 +83,6 @@ class ExpConfig(spt.Config):
 
     epsilon = -20.0
     min_logstd_of_q = -3.0
-    global_energy_sigma = 0.0
 
     @property
     def x_shape(self):
@@ -469,17 +468,6 @@ def get_log_Z():
     return __log_Z
 
 
-__energy_mu = None
-
-
-@spt.global_reuse
-def get_energy_mu():
-    global __energy_mu
-    if __energy_mu is None:
-        __energy_mu = spt.ScheduledVariable('energy_mu', dtype=tf.float32, initial_value=1e30, model_var=True)
-    return __energy_mu
-
-
 @add_arg_scope
 @spt.global_reuse
 def G_theta(z, return_std=False):
@@ -579,7 +567,6 @@ def D_psi(x, y=None):
         h_x = spt.layers.dense(h_x, 64, scope='level_-2')
     # sample z ~ q(z|x)
     h_x = spt.layers.dense(h_x, 1, scope='level_-1')
-    h_x = h_x + tf.maximum(0.0, h_x - get_energy_mu()) * config.global_energy_sigma
     return tf.squeeze(h_x, axis=-1)
 
 
@@ -1216,7 +1203,6 @@ def main():
                     packs = np.transpose(np.asarray(packs), (1, 0))  # [3, len_of_flow]
                     return packs
 
-
                 def evaluator_generate(flow, preffix=''):
                     return spt.Evaluator(
                         loop,
@@ -1266,15 +1252,15 @@ def main():
                 with loop.timeit('out_of_distribution_test'):
 
                     cifar_train_nll, cifar_train_lb, cifar_train_recon, cifar_train_energy = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], train_flow,)
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], train_flow, )
                     # print(cifar_train_nll.shape, cifar_train_lb.shape, cifar_train_recon.shape)
 
                     cifar_test_nll, cifar_test_lb, cifar_test_recon, cifar_test_energy = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], test_flow,)
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], test_flow, )
                     svhn_train_nll, svhn_train_lb, svhn_train_recon, svhn_train_energy = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], svhn_train_flow,)
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], svhn_train_flow, )
                     svhn_test_nll, svhn_test_lb, svhn_test_recon, svhn_test_energy = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], svhn_test_flow,)
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], svhn_test_flow, )
                     print('Mean nll is:')
                     print(np.mean(cifar_train_nll), np.mean(cifar_test_nll), np.mean(svhn_train_nll),
                           np.mean(svhn_test_nll))

@@ -82,7 +82,6 @@ class ExpConfig(spt.Config):
 
     epsilon = -20.0
     min_logstd_of_q = -3.0
-    global_energy_sigma = 0.0
 
     @property
     def x_shape(self):
@@ -468,17 +467,6 @@ def get_log_Z():
     return __log_Z
 
 
-__energy_mu = None
-
-
-@spt.global_reuse
-def get_energy_mu():
-    global __energy_mu
-    if __energy_mu is None:
-        __energy_mu = spt.ScheduledVariable('energy_mu', dtype=tf.float32, initial_value=1e30, model_var=True)
-    return __energy_mu
-
-
 @add_arg_scope
 @spt.global_reuse
 def G_theta(z, return_std=False):
@@ -578,7 +566,6 @@ def D_psi(x, y=None):
         h_x = spt.layers.dense(h_x, 64, scope='level_-2')
     # sample z ~ q(z|x)
     h_x = spt.layers.dense(h_x, 1, scope='level_-1')
-    h_x = h_x + tf.maximum(0.0, h_x - get_energy_mu()) * config.global_energy_sigma
     return tf.squeeze(h_x, axis=-1)
 
 
@@ -1198,7 +1185,7 @@ def main():
                             [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
                              batch_train_recon_pure_energy, batch_train_kl,
                              batch_train_grad_penalty, batch_D_loss, batch_D_real, batch_G_loss] = session.run(
-                                [VAE_train_op if epoch <= config.warm_up_start // 2 else VAE_nD_train_op, VAE_loss,
+                                [VAE_train_op, VAE_loss,
                                  beta, xi_node, train_recon, train_recon_energy,
                                  train_recon_pure_energy,
                                  train_kl, train_grad_penalty, VAE_D_loss, VAE_D_real, VAE_G_loss],
@@ -1271,10 +1258,6 @@ def main():
 
                     with loop.timeit('eval_time'):
                         evaluator.run()
-
-                if epoch == config.warm_up_start // 2:
-                    print("Set energy mu to {}".format(evaluator.last_metrics_dict['reconstruct_energy']))
-                    get_energy_mu().set(evaluator.last_metrics_dict['reconstruct_energy'])
 
                 if epoch == config.max_epoch:
                     dataset_img = _x_train
