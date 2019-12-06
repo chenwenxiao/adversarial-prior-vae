@@ -920,6 +920,9 @@ def main():
             axis=0
         )
 
+        ele_grad = tf.gradients(D_psi(input_x), [input_x])[0]
+        ele_grad_norm = tf.reduce_sum(tf.square(ele_grad), axis=-1)
+
         ele_adv_test_nll = -vi.evaluation.is_loglikelihood()
         print(ele_adv_test_nll.shape)
         adv_test_nll = tf.reduce_mean(ele_adv_test_nll)
@@ -1251,16 +1254,16 @@ def main():
 
                 with loop.timeit('out_of_distribution_test'):
 
-                    cifar_train_nll, cifar_train_lb, cifar_train_recon, cifar_train_energy = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], train_flow, )
+                    cifar_train_nll, cifar_train_lb, cifar_train_recon, cifar_train_energy, cifar_train_norm = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm], train_flow)
                     # print(cifar_train_nll.shape, cifar_train_lb.shape, cifar_train_recon.shape)
 
-                    cifar_test_nll, cifar_test_lb, cifar_test_recon, cifar_test_energy = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], test_flow, )
-                    svhn_train_nll, svhn_train_lb, svhn_train_recon, svhn_train_energy = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], svhn_train_flow, )
-                    svhn_test_nll, svhn_test_lb, svhn_test_recon, svhn_test_energy = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], svhn_test_flow, )
+                    cifar_test_nll, cifar_test_lb, cifar_test_recon, cifar_test_energy, cifar_test_norm = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm], test_flow)
+                    svhn_train_nll, svhn_train_lb, svhn_train_recon, svhn_train_energy, svhn_train_norm = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm], svhn_train_flow)
+                    svhn_test_nll, svhn_test_lb, svhn_test_recon, svhn_test_energy, svhn_test_norm = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm], svhn_test_flow)
                     print('Mean nll is:')
                     print(np.mean(cifar_train_nll), np.mean(cifar_test_nll), np.mean(svhn_train_nll),
                           np.mean(svhn_test_nll))
@@ -1318,6 +1321,20 @@ def main():
                     draw_nll(svhn_train_energy, 'green', 'SVHN Train')
                     draw_nll(svhn_test_energy, 'lightgreen', 'SVHN Test')
                     pyplot.savefig('plotting/dmm/out_of_distribution_energy.png')
+
+                    pyplot.cla()
+                    pyplot.plot()
+                    pyplot.grid(c='silver', ls='--')
+                    pyplot.xlabel('log(bits/dim)')
+                    spines = pyplot.gca().spines
+                    for sp in spines:
+                        spines[sp].set_color('silver')
+
+                    draw_nll(cifar_train_norm, 'red', 'CIFAR-10 Train')
+                    draw_nll(cifar_test_norm, 'salmon', 'CIFAR-10 Test')
+                    draw_nll(svhn_train_norm, 'green', 'SVHN Train')
+                    draw_nll(svhn_test_norm, 'lightgreen', 'SVHN Test')
+                    pyplot.savefig('plotting/dmm/out_of_distribution_norm.png')
 
                 with loop.timeit('eval_time'):
                     cifar_train_evaluator.run()
