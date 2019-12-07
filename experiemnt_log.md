@@ -2,67 +2,42 @@
 
 基本分为两种数据集合，第一种是二值图片数据；第二种是自然图片数据。
 
-[Default Setting](http://mlserver.ipwx.me:7897/5dd4d25942d74cd7474dc054/)
+[Default Setting](http://mlserver.ipwx.me:7897/5de601d3ceacfbad434dc02a/)
 
 ## NLL
 
-|      | MNIST | FASHION | CIFAR10                                                      | CELEBA | Imagenet 32x32 |
-| ---- | :---: | ------- | ------------------------------------------------------------ | ------ | -------------- |
-| 1    |       |         | [6022.69](http://mlserver.ipwx.me:7897/5dd4d25942d74cd7474dc054/) |        |                |
-| 2    |       |         |                                                              |        |                |
-| 3    |       |         |                                                              |        |                |
-| 4    |       |         |                                                              |        |                |
+|      | MNIST | FASHION | CIFAR10 | CELEBA | Imagenet 32x32 |
+| ---- | :---: | ------- | ------- | ------ | -------------- |
+| 1    |       |         |         |        |                |
+| 2    |       |         |         |        |                |
+| 3    |       |         |         |        |                |
+| 4    |       |         |         |        |                |
 
-## FID
+s
 
-Final FID by tower model:
+## nll and FID, IS when z_dim is changed on cifar10
 
-
-
-## nll when pull_back_energy_weight is changed on cifar10
-
-| pull_back_energy_weight | Nll                                                          |
-| ----------------------- | ------------------------------------------------------------ |
-| 20                      |                                                              |
-| 40                      | [7620.93](http://mlserver.ipwx.me:7897/5dda3ec39eb234c36e4dbfe4/) |
-| 54                      |                                                              |
-| 56                      |                                                              |
-| 58                      | [6022.69](http://mlserver.ipwx.me:7897/5dd4d25942d74cd7474dc054/) |
-| 60                      | [6242.91](http://mlserver.ipwx.me:7897/5dd7844f9eb234c36e4dbfe2/) |
-| 62                      |                                                              |
-| 64                      |                                                              |
-| 66                      |                                                              |
-| 80                      |                                                              |
-
-
-
-## fid and nll when std is changed on cifar10
-
-| Log_std |  MALA  |  ORIGIN | GAN  | NLL |
-| ------- | ---- | ---- | ------ | ------- |
-| 2.0     |      |      |        |  |
-| 1.0   |      |      |        |  |
-| 0.0    |      |      |        |  |
-| -1.0 |      |      |  |  |
-| -2.0   |      |      |        |  |
-| -3.0  |      |      |        | [6022.69](http://mlserver.ipwx.me:7897/5dd4d25942d74cd7474dc054/) |
-| -4.0   |      |      |        | [7286.41](http://mlserver.ipwx.me:7897/5dd4d2859eb234c36e4dbfe1/) |
-| -5.0   |      |      |        | [6550.95](http://mlserver.ipwx.me:7897/5dd3bddbf9a08f4f544dc055/) |
-| -6.0 |      |      |        |  |
-
-
+| Z_dim         | Nll  | FID  | IS   |
+| ------------- | ---- | ---- | ---- |
+| 64            |      |      |      |
+| 128           |      |      |      |
+| 256           |      |      |      |
+| 512           |      |      |      |
+| 1024(default) |      |      |      |
 
 # 细节指标
 
-## Z计算的误差
+## Z计算的误差 和 NLL计算的误差
 
-重复计算Z，统计方差，至少10次，每次1M的采样数：
+重复计算Z和NLL，统计方差，至少10次，每次1M的采样数：
 
-Cifar:[]
+Cifar Z:[]
 
+Cifar NLL:[]
 
+Mnist Z:[]
 
-Mnist:[]
+Mnist NLL:[]
 
 
 
@@ -96,6 +71,8 @@ Fashion：
 
 ## 使用WGAN训练出的Discriminator直接进行VAE训练的NLL
 
+dmm_cifar10_nD.py
+
 
 
 
@@ -105,6 +82,22 @@ Fashion：
 我们在Cifar10和Mnist上进行模型的训练，那么期望在Cifar的训练集数据上的NLL<Cifar的测试集数据上的NLL<<在SVHN数据集上的NLL。如果有反常的现象，那么我们就认为是出现了out-of-distribution的现象。这一检测必须要在自然图片数据集和二值图片数据集上都进行，即Cifar10训练，SVHN测试；Mnist训练，NotMnist测试。
 
 Cifar和SVHN的NLL和对应的分布图：
+
+WGAN（energy, grad_norm）：
+
+​	WGAN-div, WGAN-gp, WGAN-both:
+
+​	
+
+dmm_nD（nll, energy, grad_norm）：
+
+​	dmm_nD-div, dmm_nD-gp, dmm_nD-both:
+
+
+
+dmm（nll, energy, grad_norm）：
+
+​	dmm-div, dmm-gp, dmm-both:
 
 
 
@@ -137,26 +130,6 @@ Fashion：
 ## 重构图
 
 除了每个数据集的重构图以外，对于log_std变化的实验也要列出重构图随着log_std变化的情况。比如，std较小的情况下，重构图很清晰；随着std增大，重构图慢慢变得模糊。
-
-Cifar：
-
-
-
-CelebA：
-
-
-
-Mnist：
-
-
-
-Fashion：
-
-
-
-## 塔模型图
-
-这里的采样图必须是通过由塔模型直接导出的图片，我们人工筛选一下尽量保留好看的图片。
 
 Cifar：
 
