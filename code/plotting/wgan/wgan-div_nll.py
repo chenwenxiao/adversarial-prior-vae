@@ -795,7 +795,7 @@ def main():
         )
 
         ele_grad = tf.gradients(D_psi(input_x), [input_x])[0]
-        ele_grad_norm = tf.reduce_sum(tf.square(ele_grad), axis=-1)
+        ele_grad_norm = tf.reduce_sum(tf.square(ele_grad), axis=[-1, -2, -3])
 
         ele_adv_test_nll = -vi.evaluation.is_loglikelihood()
         print(ele_adv_test_nll.shape)
