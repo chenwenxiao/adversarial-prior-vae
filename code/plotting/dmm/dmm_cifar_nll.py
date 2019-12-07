@@ -1306,7 +1306,7 @@ def main():
                     draw_nll(cifar_test_nll / (3072 * np.log(2)), 'salmon', 'CIFAR-10 Test')
                     draw_nll(svhn_train_nll / (3072 * np.log(2)), 'green', 'SVHN Train')
                     draw_nll(svhn_test_nll / (3072 * np.log(2)), 'lightgreen', 'SVHN Test')
-                    pyplot.savefig('plotting/wgan/out_of_distribution.png')
+                    pyplot.savefig('plotting/dmm/out_of_distribution.png')
 
                     pyplot.cla()
                     pyplot.plot()
@@ -1320,7 +1320,7 @@ def main():
                     draw_nll(cifar_test_energy, 'salmon', 'CIFAR-10 Test')
                     draw_nll(svhn_train_energy, 'green', 'SVHN Train')
                     draw_nll(svhn_test_energy, 'lightgreen', 'SVHN Test')
-                    pyplot.savefig('plotting/wgan/out_of_distribution_energy.png')
+                    pyplot.savefig('plotting/dmm/out_of_distribution_energy.png')
 
                     pyplot.cla()
                     pyplot.plot()
@@ -1334,7 +1334,7 @@ def main():
                     draw_nll(cifar_test_norm, 'salmon', 'CIFAR-10 Test')
                     draw_nll(svhn_train_norm, 'green', 'SVHN Train')
                     draw_nll(svhn_test_norm, 'lightgreen', 'SVHN Test')
-                    pyplot.savefig('plotting/wgan/out_of_distribution_norm.png')
+                    pyplot.savefig('plotting/dmm/out_of_distribution_norm.png')
 
                 with loop.timeit('eval_time'):
                     cifar_train_evaluator.run()
