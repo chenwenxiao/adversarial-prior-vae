@@ -1199,6 +1199,7 @@ def main():
                     packs = []
                     for [batch_x, batch_ox] in flow:
                         for [rx, rox] in random_train_flow:
+                            rx = rx[:len(batch_x)]
                             batch_x = radio * batch_x + (1.0 - radio) * rx
                             break
                         pack = session.run(
@@ -1314,7 +1315,7 @@ def main():
                         draw_nll(cifar_test_nll / (3072 * np.log(2)), 'salmon', 'CIFAR-10 Test')
                         draw_nll(svhn_train_nll / (3072 * np.log(2)), 'green', 'SVHN Train')
                         draw_nll(svhn_test_nll / (3072 * np.log(2)), 'lightgreen', 'SVHN Test')
-                        pyplot.savefig('plotting/dmm/out_of_distribution.png')
+                        pyplot.savefig('plotting/dmm/out_of_distribution-{}.png'.format(radio))
 
                         pyplot.cla()
                         pyplot.plot()
@@ -1328,7 +1329,7 @@ def main():
                         draw_nll(cifar_test_energy, 'salmon', 'CIFAR-10 Test')
                         draw_nll(svhn_train_energy, 'green', 'SVHN Train')
                         draw_nll(svhn_test_energy, 'lightgreen', 'SVHN Test')
-                        pyplot.savefig('plotting/dmm/out_of_distribution_energy.png')
+                        pyplot.savefig('plotting/dmm/out_of_distribution_energy-{}.png'.format(radio))
 
                         pyplot.cla()
                         pyplot.plot()
@@ -1342,7 +1343,7 @@ def main():
                         draw_nll(cifar_test_norm, 'salmon', 'CIFAR-10 Test')
                         draw_nll(svhn_train_norm, 'green', 'SVHN Train')
                         draw_nll(svhn_test_norm, 'lightgreen', 'SVHN Test')
-                        pyplot.savefig('plotting/dmm/out_of_distribution_norm.png')
+                        pyplot.savefig('plotting/dmm/out_of_distribution_norm-{}.png'.format(radio))
 
                 with loop.timeit('eval_time'):
                     cifar_train_evaluator.run()
