@@ -1198,10 +1198,10 @@ def main():
                 def get_ele(ops, flow, radio=0.5):
                     packs = []
                     for [batch_x, batch_ox] in flow:
-                        for [rx, rox] in random_train_flow:
-                            rx = rx[:len(batch_x)]
-                            batch_x = radio * batch_x + (1.0 - radio) * rx
-                            break
+                        fake = session.run(test_pn_net['x'].distribution.mean)
+                        fake = fake[:len(batch_x)]
+                        fake = np.reshape(fake, (-1,) + config.x_shape)
+                        batch_x = radio * fake + (1 - radio) * batch_x
                         pack = session.run(
                             ops, feed_dict={
                                 input_x: batch_x,
@@ -1259,26 +1259,44 @@ def main():
                     get_log_Z().set(final_log_Z)
 
                 with loop.timeit('out_of_distribution_test'):
-
-                    for radio in [1.0, 0.8, 0.6, 0.4, 0.2, 0.0]:
-                        cifar_train_nll, cifar_train_lb, cifar_train_recon, cifar_train_energy, cifar_train_norm = get_ele(
-                            [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm],
-                            train_flow, radio)
-                        cifar_test_nll, cifar_test_lb, cifar_test_recon, cifar_test_energy, cifar_test_norm = get_ele(
-                            [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm],
-                            test_flow, radio)
-                        svhn_train_nll, svhn_train_lb, svhn_train_recon, svhn_train_energy, svhn_train_norm = get_ele(
-                            [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm],
-                            svhn_train_flow, radio)
-                        svhn_test_nll, svhn_test_lb, svhn_test_recon, svhn_test_energy, svhn_test_norm = get_ele(
-                            [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm],
-                            svhn_test_flow, radio)
-                        print('Mean nll is:')
-                        print(np.mean(cifar_train_nll), np.mean(cifar_test_nll), np.mean(svhn_train_nll),
-                              np.mean(svhn_test_nll))
-                        print('Mean energy is:')
-                        print(np.mean(cifar_train_energy), np.mean(cifar_test_energy), np.mean(svhn_train_energy),
-                              np.mean(svhn_test_energy))
+                    average_cifar_train = []
+                    average_cifar_test = []
+                    average_svhn_train = []
+                    average_svhn_test = []
+                    for radio in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1]:
+                        print('radio is {}'.format(radio))
+                        if radio > 1.0:
+                            cifar_train_nll, cifar_train_energy, cifar_train_norm = np.mean(
+                                np.stack(average_cifar_train, axis=0), axis=0)
+                            cifar_test_nll, cifar_test_energy, cifar_test_norm = np.mean(
+                                np.stack(average_cifar_test, axis=0), axis=0)
+                            svhn_train_nll, svhn_train_energy, svhn_train_norm = np.mean(
+                                np.stack(average_svhn_train, axis=0), axis=0)
+                            svhn_test_nll, svhn_test_energy, svhn_test_norm = np.mean(
+                                np.stack(average_svhn_test, axis=0), axis=0)
+                        else:
+                            cifar_train_nll, cifar_train_lb, cifar_train_recon, cifar_train_energy, cifar_train_norm = get_ele(
+                                [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm],
+                                train_flow, radio)
+                            cifar_test_nll, cifar_test_lb, cifar_test_recon, cifar_test_energy, cifar_test_norm = get_ele(
+                                [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm],
+                                test_flow, radio)
+                            svhn_train_nll, svhn_train_lb, svhn_train_recon, svhn_train_energy, svhn_train_norm = get_ele(
+                                [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm],
+                                svhn_train_flow, radio)
+                            svhn_test_nll, svhn_test_lb, svhn_test_recon, svhn_test_energy, svhn_test_norm = get_ele(
+                                [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm],
+                                svhn_test_flow, radio)
+                            print('Mean nll is:')
+                            print(np.mean(cifar_train_nll), np.mean(cifar_test_nll), np.mean(svhn_train_nll),
+                                  np.mean(svhn_test_nll))
+                            print('Mean energy is:')
+                            print(np.mean(cifar_train_energy), np.mean(cifar_test_energy), np.mean(svhn_train_energy),
+                                  np.mean(svhn_test_energy))
+                            average_cifar_train.append([cifar_train_nll, cifar_train_energy, cifar_train_norm])
+                            average_cifar_test.append([cifar_test_nll, cifar_test_energy, cifar_test_norm])
+                            average_svhn_train.append([svhn_train_nll, svhn_train_energy, svhn_train_norm])
+                            average_svhn_test.append([svhn_test_norm, svhn_test_energy, svhn_test_norm])
 
                         # Draw the histogram or exrta the data here
 
