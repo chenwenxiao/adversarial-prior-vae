@@ -920,6 +920,9 @@ def main():
             axis=0
         )
 
+        ele_mixed_energy = tf.reduce_mean(test_adv_prior.energy, axis=0)
+        print(ele_mixed_energy.shape)
+
         ele_grad = tf.gradients(D_psi(input_x), [input_x])[0]
         ele_grad_norm = tf.reduce_sum(tf.square(ele_grad), axis=[-1, -2, -3])
         print(ele_grad_norm)
@@ -1195,13 +1198,9 @@ def main():
 
             # adversarial training
             for epoch in epoch_iterator:
-                def get_ele(ops, flow, radio=0.5):
+                def get_ele(ops, flow):
                     packs = []
                     for [batch_x, batch_ox] in flow:
-                        fake = session.run(test_pn_net['x'].distribution.mean)
-                        fake = fake[:len(batch_x)]
-                        fake = np.reshape(fake, (-1,) + config.x_shape)
-                        batch_x = radio * fake + (1 - radio) * batch_x
                         pack = session.run(
                             ops, feed_dict={
                                 input_x: batch_x,
@@ -1259,119 +1258,145 @@ def main():
                     get_log_Z().set(final_log_Z)
 
                 with loop.timeit('out_of_distribution_test'):
-                    average_cifar_train = []
-                    average_cifar_test = []
-                    average_svhn_train = []
-                    average_svhn_test = []
-                    for radio in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2]:
-                        print('radio is {}'.format(radio))
-                        if radio > 1.0:
-                            if radio == 1.1:
-                                cifar_train_nll, cifar_train_energy, cifar_train_norm = np.mean(
-                                    np.stack(average_cifar_train, axis=0), axis=0)
-                                cifar_test_nll, cifar_test_energy, cifar_test_norm = np.mean(
-                                    np.stack(average_cifar_test, axis=0), axis=0)
-                                svhn_train_nll, svhn_train_energy, svhn_train_norm = np.mean(
-                                    np.stack(average_svhn_train, axis=0), axis=0)
-                                svhn_test_nll, svhn_test_energy, svhn_test_norm = np.mean(
-                                    np.stack(average_svhn_test, axis=0), axis=0)
-                            else:
-                                cifar_train_nll, cifar_train_energy, cifar_train_norm = np.std(
-                                    np.stack(average_cifar_train, axis=0), axis=0)
-                                cifar_test_nll, cifar_test_energy, cifar_test_norm = np.std(
-                                    np.stack(average_cifar_test, axis=0), axis=0)
-                                svhn_train_nll, svhn_train_energy, svhn_train_norm = np.std(
-                                    np.stack(average_svhn_train, axis=0), axis=0)
-                                svhn_test_nll, svhn_test_energy, svhn_test_norm = np.std(
-                                    np.stack(average_svhn_test, axis=0), axis=0)
-                        else:
-                            cifar_train_nll, cifar_train_lb, cifar_train_recon, cifar_train_energy, cifar_train_norm = get_ele(
-                                [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm],
-                                train_flow, radio)
-                            cifar_test_nll, cifar_test_lb, cifar_test_recon, cifar_test_energy, cifar_test_norm = get_ele(
-                                [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm],
-                                test_flow, radio)
-                            svhn_train_nll, svhn_train_lb, svhn_train_recon, svhn_train_energy, svhn_train_norm = get_ele(
-                                [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm],
-                                svhn_train_flow, radio)
-                            svhn_test_nll, svhn_test_lb, svhn_test_recon, svhn_test_energy, svhn_test_norm = get_ele(
-                                [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm],
-                                svhn_test_flow, radio)
-                            print('Mean nll is:')
-                            print(np.mean(cifar_train_nll), np.mean(cifar_test_nll), np.mean(svhn_train_nll),
-                                  np.mean(svhn_test_nll))
-                            print('Mean energy is:')
-                            print(np.mean(cifar_train_energy), np.mean(cifar_test_energy), np.mean(svhn_train_energy),
-                                  np.mean(svhn_test_energy))
-                            average_cifar_train.append([cifar_train_nll, cifar_train_energy, cifar_train_norm])
-                            average_cifar_test.append([cifar_test_nll, cifar_test_energy, cifar_test_norm])
-                            average_svhn_train.append([svhn_train_nll, svhn_train_energy, svhn_train_norm])
-                            average_svhn_test.append([svhn_test_norm, svhn_test_energy, svhn_test_norm])
+                    cifar_train_nll, cifar_train_lb, cifar_train_recon, cifar_train_energy, cifar_train_norm, cifar_train_mixed_energy = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm,
+                         ele_mixed_energy],
+                        train_flow)
+                    cifar_test_nll, cifar_test_lb, cifar_test_recon, cifar_test_energy, cifar_test_norm, cifar_test_mixed_energy = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm,
+                         ele_mixed_energy],
+                        test_flow)
+                    svhn_train_nll, svhn_train_lb, svhn_train_recon, svhn_train_energy, svhn_train_norm, svhn_train_mixed_energy = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm,
+                         ele_mixed_energy],
+                        svhn_train_flow)
+                    svhn_test_nll, svhn_test_lb, svhn_test_recon, svhn_test_energy, svhn_test_norm, svhn_test_mixed_energy = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm,
+                         ele_mixed_energy],
+                        svhn_test_flow)
+                    print('Mean nll is:')
+                    print(np.mean(cifar_train_nll), np.mean(cifar_test_nll), np.mean(svhn_train_nll),
+                          np.mean(svhn_test_nll))
+                    print('Mean energy is:')
+                    print(np.mean(cifar_train_energy), np.mean(cifar_test_energy), np.mean(svhn_train_energy),
+                          np.mean(svhn_test_energy))
 
-                        # Draw the histogram or exrta the data here
+                    # Draw the histogram or exrta the data here
 
-                        def draw_nll(nll, color, label):
-                            nll = list(nll)
-                            # print(nll)
-                            # print(nll.shape)
+                    def draw_nll(nll, color, label):
+                        nll = list(nll)
+                        # print(nll)
+                        # print(nll.shape)
 
-                            n, bins, patches = pyplot.hist(nll, 40, normed=True, facecolor=color, alpha=0.4,
-                                                           label=label)
+                        n, bins, patches = pyplot.hist(nll, 40, normed=True, facecolor=color, alpha=0.4,
+                                                       label=label)
 
-                            index = []
-                            for i in range(len(bins) - 1):
-                                index.append((bins[i] + bins[i + 1]) / 2)
+                        index = []
+                        for i in range(len(bins) - 1):
+                            index.append((bins[i] + bins[i + 1]) / 2)
 
-                            def smooth(c, N=5):
-                                weights = np.hanning(N)
-                                return np.convolve(weights / weights.sum(), c)[N - 1:-N + 1]
+                        def smooth(c, N=5):
+                            weights = np.hanning(N)
+                            return np.convolve(weights / weights.sum(), c)[N - 1:-N + 1]
 
-                            n[2:-2] = smooth(n)
-                            pyplot.plot(index, n, color=color)
-                            pyplot.legend()
-                            print('%s done.' % label)
+                        n[2:-2] = smooth(n)
+                        pyplot.plot(index, n, color=color)
+                        pyplot.legend()
+                        print('%s done.' % label)
 
-                        pyplot.cla()
-                        pyplot.plot()
-                        pyplot.grid(c='silver', ls='--')
-                        pyplot.xlabel('log(bits/dim)')
-                        spines = pyplot.gca().spines
-                        for sp in spines:
-                            spines[sp].set_color('silver')
+                    pyplot.cla()
+                    pyplot.plot()
+                    pyplot.grid(c='silver', ls='--')
+                    pyplot.xlabel('log(bits/dim)')
+                    spines = pyplot.gca().spines
+                    for sp in spines:
+                        spines[sp].set_color('silver')
 
-                        draw_nll(cifar_train_nll / (3072 * np.log(2)), 'red', 'CIFAR-10 Train')
-                        draw_nll(cifar_test_nll / (3072 * np.log(2)), 'salmon', 'CIFAR-10 Test')
-                        draw_nll(svhn_train_nll / (3072 * np.log(2)), 'green', 'SVHN Train')
-                        draw_nll(svhn_test_nll / (3072 * np.log(2)), 'lightgreen', 'SVHN Test')
-                        pyplot.savefig('plotting/dmm/out_of_distribution-{}.png'.format(radio))
+                    draw_nll(cifar_train_nll / (3072 * np.log(2)), 'red', 'CIFAR-10 Train')
+                    draw_nll(cifar_test_nll / (3072 * np.log(2)), 'salmon', 'CIFAR-10 Test')
+                    draw_nll(svhn_train_nll / (3072 * np.log(2)), 'green', 'SVHN Train')
+                    draw_nll(svhn_test_nll / (3072 * np.log(2)), 'lightgreen', 'SVHN Test')
+                    pyplot.savefig('plotting/dmm/out_of_distribution.png')
 
-                        pyplot.cla()
-                        pyplot.plot()
-                        pyplot.grid(c='silver', ls='--')
-                        pyplot.xlabel('log(bits/dim)')
-                        spines = pyplot.gca().spines
-                        for sp in spines:
-                            spines[sp].set_color('silver')
+                    pyplot.cla()
+                    pyplot.plot()
+                    pyplot.grid(c='silver', ls='--')
+                    pyplot.xlabel('log(bits/dim)')
+                    spines = pyplot.gca().spines
+                    for sp in spines:
+                        spines[sp].set_color('silver')
 
-                        draw_nll(cifar_train_energy, 'red', 'CIFAR-10 Train')
-                        draw_nll(cifar_test_energy, 'salmon', 'CIFAR-10 Test')
-                        draw_nll(svhn_train_energy, 'green', 'SVHN Train')
-                        draw_nll(svhn_test_energy, 'lightgreen', 'SVHN Test')
-                        pyplot.savefig('plotting/dmm/out_of_distribution_energy-{}.png'.format(radio))
+                    draw_nll(cifar_train_energy, 'red', 'CIFAR-10 Train')
+                    draw_nll(cifar_test_energy, 'salmon', 'CIFAR-10 Test')
+                    draw_nll(svhn_train_energy, 'green', 'SVHN Train')
+                    draw_nll(svhn_test_energy, 'lightgreen', 'SVHN Test')
+                    pyplot.savefig('plotting/dmm/out_of_distribution_energy.png')
 
-                        pyplot.cla()
-                        pyplot.plot()
-                        pyplot.grid(c='silver', ls='--')
-                        pyplot.xlabel('log(bits/dim)')
-                        spines = pyplot.gca().spines
-                        for sp in spines:
-                            spines[sp].set_color('silver')
+                    pyplot.cla()
+                    pyplot.plot()
+                    pyplot.grid(c='silver', ls='--')
+                    pyplot.xlabel('log(bits/dim)')
+                    spines = pyplot.gca().spines
+                    for sp in spines:
+                        spines[sp].set_color('silver')
 
-                        draw_nll(cifar_train_norm, 'red', 'CIFAR-10 Train')
-                        draw_nll(cifar_test_norm, 'salmon', 'CIFAR-10 Test')
-                        draw_nll(svhn_train_norm, 'green', 'SVHN Train')
-                        draw_nll(svhn_test_norm, 'lightgreen', 'SVHN Test')
-                        pyplot.savefig('plotting/dmm/out_of_distribution_norm-{}.png'.format(radio))
+                    draw_nll(cifar_train_norm, 'red', 'CIFAR-10 Train')
+                    draw_nll(cifar_test_norm, 'salmon', 'CIFAR-10 Test')
+                    draw_nll(svhn_train_norm, 'green', 'SVHN Train')
+                    draw_nll(svhn_test_norm, 'lightgreen', 'SVHN Test')
+                    pyplot.savefig('plotting/dmm/out_of_distribution_norm.png')
+
+                    pyplot.cla()
+                    pyplot.plot()
+                    pyplot.grid(c='silver', ls='--')
+                    pyplot.xlabel('log(bits/dim)')
+                    spines = pyplot.gca().spines
+                    for sp in spines:
+                        spines[sp].set_color('silver')
+
+                    draw_nll(cifar_train_mixed_energy, 'red', 'CIFAR-10 Train')
+                    draw_nll(cifar_test_mixed_energy, 'salmon', 'CIFAR-10 Test')
+                    draw_nll(svhn_train_mixed_energy, 'green', 'SVHN Train')
+                    draw_nll(svhn_test_mixed_energy, 'lightgreen', 'SVHN Test')
+                    pyplot.savefig('plotting/dmm/out_of_distribution_mixed_energy.png')
+
+                    def turn_to_log_prob(base, another_arrays=None):
+                        mu, sigma = np.mean(base), np.std(base)
+                        log_prob = -((base - mu) ** 2) / (sigma ** 2) - np.log(np.sqrt(2 * np.pi) * sigma)
+                        another_log_probs = []
+                        for array in another_arrays:
+                            another_log_probs.append(
+                                -((array - mu) ** 2) / (sigma ** 2) - np.log(np.sqrt(2 * np.pi) * sigma))
+                        return log_prob, another_log_probs
+
+                    cifar_train_nll, [cifar_test_nll, svhn_train_nll, svhn_test_nll] = turn_to_log_prob(
+                        cifar_train_nll, [cifar_test_nll, svhn_train_nll, svhn_test_nll])
+                    cifar_train_energy, [cifar_test_energy, svhn_train_energy, svhn_test_energy] = turn_to_log_prob(
+                        cifar_train_energy, [cifar_test_energy, svhn_train_energy, svhn_test_energy])
+                    cifar_train_norm, [cifar_test_norm, svhn_train_norm, svhn_test_norm] = turn_to_log_prob(
+                        cifar_train_norm, [cifar_test_norm, svhn_train_norm, svhn_test_norm])
+                    cifar_train_mixed_energy, [cifar_test_mixed_energy, svhn_train_mixed_energy,
+                                               svhn_test_mixed_energy] = turn_to_log_prob(
+                        cifar_train_mixed_energy,
+                        [cifar_test_mixed_energy, svhn_train_mixed_energy, svhn_test_mixed_energy])
+
+                    pyplot.cla()
+                    pyplot.plot()
+                    pyplot.grid(c='silver', ls='--')
+                    pyplot.xlabel('log(bits/dim)')
+                    spines = pyplot.gca().spines
+                    for sp in spines:
+                        spines[sp].set_color('silver')
+
+                    draw_nll(cifar_train_nll + cifar_train_energy + cifar_train_norm, 'red',
+                             'CIFAR-10 Train')
+                    draw_nll(cifar_test_nll + cifar_test_energy + cifar_test_norm, 'salmon',
+                             'CIFAR-10 Test')
+                    draw_nll(svhn_train_nll + svhn_train_energy + svhn_train_norm, 'green',
+                             'SVHN Train')
+                    draw_nll(svhn_test_nll + svhn_test_energy + svhn_test_norm, 'lightgreen',
+                             'SVHN Test')
+                    pyplot.savefig('plotting/dmm/out_of_distribution_overall.png')
 
                 with loop.timeit('eval_time'):
                     cifar_train_evaluator.run()
