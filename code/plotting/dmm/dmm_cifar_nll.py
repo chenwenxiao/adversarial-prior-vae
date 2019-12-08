@@ -1263,17 +1263,27 @@ def main():
                     average_cifar_test = []
                     average_svhn_train = []
                     average_svhn_test = []
-                    for radio in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1]:
+                    for radio in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2]:
                         print('radio is {}'.format(radio))
                         if radio > 1.0:
-                            cifar_train_nll, cifar_train_energy, cifar_train_norm = np.mean(
-                                np.stack(average_cifar_train, axis=0), axis=0)
-                            cifar_test_nll, cifar_test_energy, cifar_test_norm = np.mean(
-                                np.stack(average_cifar_test, axis=0), axis=0)
-                            svhn_train_nll, svhn_train_energy, svhn_train_norm = np.mean(
-                                np.stack(average_svhn_train, axis=0), axis=0)
-                            svhn_test_nll, svhn_test_energy, svhn_test_norm = np.mean(
-                                np.stack(average_svhn_test, axis=0), axis=0)
+                            if radio == 1.1:
+                                cifar_train_nll, cifar_train_energy, cifar_train_norm = np.mean(
+                                    np.stack(average_cifar_train, axis=0), axis=0)
+                                cifar_test_nll, cifar_test_energy, cifar_test_norm = np.mean(
+                                    np.stack(average_cifar_test, axis=0), axis=0)
+                                svhn_train_nll, svhn_train_energy, svhn_train_norm = np.mean(
+                                    np.stack(average_svhn_train, axis=0), axis=0)
+                                svhn_test_nll, svhn_test_energy, svhn_test_norm = np.mean(
+                                    np.stack(average_svhn_test, axis=0), axis=0)
+                            else:
+                                cifar_train_nll, cifar_train_energy, cifar_train_norm = np.std(
+                                    np.stack(average_cifar_train, axis=0), axis=0)
+                                cifar_test_nll, cifar_test_energy, cifar_test_norm = np.std(
+                                    np.stack(average_cifar_test, axis=0), axis=0)
+                                svhn_train_nll, svhn_train_energy, svhn_train_norm = np.std(
+                                    np.stack(average_svhn_train, axis=0), axis=0)
+                                svhn_test_nll, svhn_test_energy, svhn_test_norm = np.std(
+                                    np.stack(average_svhn_test, axis=0), axis=0)
                         else:
                             cifar_train_nll, cifar_train_lb, cifar_train_recon, cifar_train_energy, cifar_train_norm = get_ele(
                                 [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm],
