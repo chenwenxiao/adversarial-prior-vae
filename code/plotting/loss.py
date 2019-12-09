@@ -12,11 +12,11 @@ kw_list: a list of keyword,
 
 src_path: the path of log file / src: string of log text
 
-dst_path: the directory to save figure
+dst_path: the directory to save figure, figure name will be "dir/loss curve.png"
 
 dpi: dpi of figure, default is 300
 
-seperate: save different curve seperately
+seperate: save different curve seperately, figures' name will be "dir/kw1.png", "dir/kw2.png"
 
 
 ================*=========================*====================
@@ -28,7 +28,7 @@ supporting command line arguments :
 if kw contains " ", using "+" instead
 like: "D+loss" instead of "D loss"  
 
-the picture will save as "my_plotting_dir/loss curves.py"
+the picture will save as "my_plotting_dir/loss curves.png"
 
 '''
 from matplotlib import pyplot as plt
