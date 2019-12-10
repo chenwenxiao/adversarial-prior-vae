@@ -1281,7 +1281,7 @@ def main():
 
                     # Draw the histogram or exrta the data here
 
-                    def plot_fig(data_list, color_list, label_list, x_label, fig_name):
+                    def plot_fig(data_list, color_list, label_list, x_label, fig_name, log_prob=False):
                         pyplot.cla()
                         pyplot.plot()
                         pyplot.grid(c='silver', ls='--')
@@ -1315,7 +1315,10 @@ def main():
                             draw_nll(data_list[i], color_list[i], label_list[i])
                         pyplot.savefig('plotting/dmm/%s.jpg' % fig_name)
 
-                        def draw_curve(cifar_test, svhn_test, fig_name):
+                        def draw_curve(cifar_test, svhn_test, fig_name, log_prob):
+                            if not log_prob:
+                                cifar_test = cifar_test * -1
+                                svhn_test = svhn_test * -1
                             label = np.concatenate(([1] * len(cifar_test), [-1] * len(svhn_test)))
                             score = np.concatenate((cifar_test, svhn_test))
 
@@ -1327,7 +1330,7 @@ def main():
 
                         pyplot.cla()
                         pyplot.plot()
-                        draw_curve(data_list[1], data_list[3], fig_name)
+                        draw_curve(data_list[1], data_list[3], fig_name, log_prob)
                         pyplot.savefig('plotting/dmm/%s_curve.jpg' % fig_name)
 
                     plot_fig([cifar_train_nll / (3072 * np.log(2)), cifar_test_nll / (3072 * np.log(2)), svhn_train_nll / (3072 * np.log(2)), svhn_test_nll / (3072 * np.log(2))],
@@ -1343,8 +1346,7 @@ def main():
                              'log(bits/dim)', 'out_of_distribution_norm')
 
                     plot_fig([cifar_train_mixed_energy, cifar_test_mixed_energy, svhn_train_mixed_energy, svhn_test_mixed_energy],
-                             ['red', 'salmon', 'green', 'lightgreen'],
-                             ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
+                             ['red', 'salmon', 'green', 'lightgreen'], ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
                              'log(bits/dim)', 'out_of_distribution_mixed_energy')
 
                     def turn_to_log_prob(base, another_arrays=None):
@@ -1367,11 +1369,26 @@ def main():
                         cifar_train_mixed_energy,
                         [cifar_test_mixed_energy, svhn_train_mixed_energy, svhn_test_mixed_energy])
 
-                    plot_fig([cifar_train_nll + cifar_train_energy + cifar_train_norm, cifar_test_nll + cifar_test_energy + cifar_test_norm,
-                              svhn_train_nll + svhn_train_energy + svhn_train_norm, svhn_test_nll + svhn_test_energy + svhn_test_norm],
+                    plot_fig([cifar_train_nll / (3072 * np.log(2)), cifar_test_nll / (3072 * np.log(2)),
+                              svhn_train_nll / (3072 * np.log(2)), svhn_test_nll / (3072 * np.log(2))],
                              ['red', 'salmon', 'green', 'lightgreen'],
                              ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
-                             'log(bits/dim)', 'out_of_distribution_overall')
+                             'bits/dim', 'out_of_distribution_log_prob', log_prob=True)
+
+                    plot_fig([cifar_train_energy, cifar_test_energy, svhn_train_energy, svhn_test_energy],
+                             ['red', 'salmon', 'green', 'lightgreen'],
+                             ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
+                             'energy', 'out_of_distribution_energy_log_prob', log_prob=True)
+
+                    plot_fig([cifar_train_norm, cifar_test_norm, svhn_train_norm, svhn_test_norm],
+                             ['red', 'salmon', 'green', 'lightgreen'],
+                             ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
+                             'log(bits/dim)', 'out_of_distribution_norm_log_prob', log_prob=True)
+
+                    plot_fig([cifar_train_nll + cifar_train_energy + cifar_train_norm, cifar_test_nll + cifar_test_energy + cifar_test_norm,
+                              svhn_train_nll + svhn_train_energy + svhn_train_norm, svhn_test_nll + svhn_test_energy + svhn_test_norm],
+                             ['red', 'salmon', 'green', 'lightgreen'], ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
+                             'log(bits/dim)', 'out_of_distribution_overall', log_prob=True)
 
                 with loop.timeit('eval_time'):
                     cifar_train_evaluator.run()
