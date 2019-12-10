@@ -1304,7 +1304,7 @@ def main():
                     pyplot.cla()
                     pyplot.plot()
                     pyplot.grid(c='silver', ls='--')
-                    pyplot.xlabel('log(bits/dim)')
+                    pyplot.xlabel('bits/dim')
                     spines = pyplot.gca().spines
                     for sp in spines:
                         spines[sp].set_color('silver')
@@ -1318,7 +1318,7 @@ def main():
                     pyplot.cla()
                     pyplot.plot()
                     pyplot.grid(c='silver', ls='--')
-                    pyplot.xlabel('log(bits/dim)')
+                    pyplot.xlabel('energy')
                     spines = pyplot.gca().spines
                     for sp in spines:
                         spines[sp].set_color('silver')
