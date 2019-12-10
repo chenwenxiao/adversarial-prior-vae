@@ -524,11 +524,8 @@ def G_omega(z, output_dim):
             shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 256)
         )
         h_z = spt.layers.resnet_deconv2d_block(h_z, 256, scope='level_1')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 256)  # output: (14, 14, 32)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 256, scope='level_2')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 256)  # output: (14, 14, 32)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_3')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 128)  # output: (14, 14, 32)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_4')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_5')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_6')  # output: (28, 28, 16)
@@ -577,7 +574,7 @@ def D_kappa(x, y=None):
     normalizer_fn = None
     # x = tf.round(256.0 * x / 2 + 127.5)
     # x = (x - 127.5) / 256.0 * 2
-    x = spt.ops.reshape_tail(x, 1, (config.x_shape[0], config.x_shape[1], -1))
+    x = spt.ops.reshape_tail(x, 1, (config.x_shape[0] // 4, config.x_shape[1] // 4, -1))
     with arg_scope([spt.layers.resnet_conv2d_block],
                    kernel_size=config.kernel_size,
                    shortcut_kernel_size=config.shortcut_kernel_size,
@@ -639,6 +636,7 @@ def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, i
     z_channel = 16 * config.z_dim // config.x_shape[0] // config.x_shape[1]
     x_mean = G_omega(z, z_channel)
     x_mean = spt.ops.reshape_tail(x_mean, ndims=3, shape=(-1,))
+    print(x_mean.shape)
     f_z = net.add('f_z', spt.Normal(mean=x_mean, std=1.0), group_ndims=1)
     x_mean = G_theta(x_mean)
     x = net.add('x', spt.Normal(mean=x_mean, std=1.0), group_ndims=3)
