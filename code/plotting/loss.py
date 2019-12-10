@@ -3,6 +3,9 @@ drawing curves from console log
 using curves() to draw from a file
 using curves_from_string() to draw from a string text
 
+e.g.:
+    curves(["D loss","D real"],src_path="../console.log",dst_path="../plotting/")
+
 def curves(kw_list,src_path="./console.log",dst_path="./",dpi=300,seprate=False)
 
 def curves_from_string(kw_list,src,dst_path="./",dpi=300,seprate=False):
@@ -27,6 +30,8 @@ supporting command line arguments :
 
 if kw contains " ", using "+" instead
 like: "D+loss" instead of "D loss"  
+!! only command line arguments should using "+" as a subtitute of " " in keyword
+!! do not use in curves() or curves_from_string()
 
 the picture will save as "my_plotting_dir/loss curves.png"
 
