@@ -23,6 +23,8 @@ from scipy.misc import logsumexp
 
 from tfsnippet.preprocessing import UniformNoiseSampler
 
+from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
+
 
 class ExpConfig(spt.Config):
     len_train = 50000
@@ -989,33 +991,64 @@ def main():
                         print('%s done.' % label)
 
                     # Draw the histogram or exrta the data here
-                    pyplot.cla()
-                    pyplot.plot()
-                    pyplot.grid(c='silver', ls='--')
-                    pyplot.xlabel('bits/dim')
-                    spines = pyplot.gca().spines
-                    for sp in spines:
-                        spines[sp].set_color('silver')
+                    def plot_fig(data_list, color_list, label_list, x_label, fig_name):
+                        pyplot.cla()
+                        pyplot.plot()
+                        pyplot.grid(c='silver', ls='--')
+                        pyplot.xlabel(x_label)
+                        spines = pyplot.gca().spines
+                        for sp in spines:
+                            spines[sp].set_color('silver')
 
-                    draw_nll(cifar_train_energy, 'red', 'CIFAR-10 Train')
-                    draw_nll(cifar_test_energy, 'salmon', 'CIFAR-10 Test')
-                    draw_nll(svhn_train_energy, 'green', 'SVHN Train')
-                    draw_nll(svhn_test_energy, 'lightgreen', 'SVHN Test')
-                    pyplot.savefig('plotting/wgan/out_of_distribution_energy.png')
+                        def draw_nll(nll, color, label):
+                            nll = list(nll)
+                            # print(nll)
+                            # print(nll.shape)
 
-                    pyplot.cla()
-                    pyplot.plot()
-                    pyplot.grid(c='silver', ls='--')
-                    pyplot.xlabel('log(bits/dim)')
-                    spines = pyplot.gca().spines
-                    for sp in spines:
-                        spines[sp].set_color('silver')
+                            n, bins, patches = pyplot.hist(nll, 40, normed=True, facecolor=color, alpha=0.4,
+                                                           label=label)
 
-                    draw_nll(cifar_train_norm, 'red', 'CIFAR-10 Train')
-                    draw_nll(cifar_test_norm, 'salmon', 'CIFAR-10 Test')
-                    draw_nll(svhn_train_norm, 'green', 'SVHN Train')
-                    draw_nll(svhn_test_norm, 'lightgreen', 'SVHN Test')
-                    pyplot.savefig('plotting/wgan/out_of_distribution_norm.png')
+                            index = []
+                            for i in range(len(bins) - 1):
+                                index.append((bins[i] + bins[i + 1]) / 2)
+
+                            def smooth(c, N=5):
+                                weights = np.hanning(N)
+                                return np.convolve(weights / weights.sum(), c)[N - 1:-N + 1]
+
+                            n[2:-2] = smooth(n)
+                            pyplot.plot(index, n, color=color)
+                            pyplot.legend()
+                            print('%s done.' % label)
+
+                        for i in range(len(data_list)):
+                            draw_nll(data_list[i], color_list[i], label_list[i])
+                        pyplot.savefig('plotting/wgan/%s.jpg' % fig_name)
+
+                        def draw_curve(cifar_test, svhn_test, fig_name):
+                            label = np.concatenate(([1] * len(cifar_test), [-1] * len(svhn_test)))
+                            score = np.concatenate((cifar_test, svhn_test))
+
+                            fpr, tpr, thresholds = roc_curve(label, score)
+                            precision, recall, thresholds = precision_recall_curve(label, score)
+                            pyplot.plot(recall, precision)
+                            pyplot.plot(fpr, tpr)
+                            print('%s auc: %4f, ap: %4f' % (fig_name, auc(fpr, tpr), average_precision_score(label, score)))
+
+                        pyplot.cla()
+                        pyplot.plot()
+                        draw_curve(data_list[1], data_list[3], fig_name)
+                        pyplot.savefig('plotting/wgan/%s_curve.jpg' % fig_name)
+
+                    plot_fig([cifar_train_energy, cifar_test_energy, svhn_train_energy, svhn_test_energy],
+                             ['red', 'salmon', 'green', 'lightgreen'],
+                             ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
+                             'energy', 'out_of_distribution_energy')
+
+                    plot_fig([cifar_train_norm, cifar_test_norm, svhn_train_norm, svhn_test_norm],
+                             ['red', 'salmon', 'green', 'lightgreen'],
+                             ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
+                             'log(bits/dim)', 'out_of_distribution_norm')
 
                 with loop.timeit('eval_time'):
                     cifar_train_evaluator.run()
