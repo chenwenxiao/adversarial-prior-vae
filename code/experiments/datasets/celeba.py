@@ -166,7 +166,7 @@ def _store_array_y(arr,path,dir_path,prefix):
         os.makedirs(path)
     with open(path,'w+') as f:
         for i in arr:
-            f.write(f"{prefix}{cnt} {i}\n")
+            f.write(f"{prefix}{cnt} {i}\r\n")
             cnt+=1
         
 
@@ -260,7 +260,6 @@ def load_celeba(x_shape=(218, 178), x_dtype=np.float32, y_dtype=np.int32,
         train_y = _fetch_array_y(TRAIN_Y_PATH)
         test_x = _fetch_array_x(TEST_X_PATH)
         test_y = _fetch_array_y(TEST_Y_PATH)
-    
 
     if normalize_x:
         train_x /= np.asarray(255., dtype=x.dtype)
