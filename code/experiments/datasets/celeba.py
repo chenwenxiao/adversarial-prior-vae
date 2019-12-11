@@ -6,6 +6,7 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.image as mpimg
 import random
+import cv2 as cv
 
 
 def download_file_from_google_drive(id, destination):
@@ -71,17 +72,25 @@ EVAL_PATH = '/home/cwx17/data/celeba/eval.txt'
 
 def _fetch_array_x(path):
     file_names = os.listdir(path)
+    file_names.sort()
     imgs = []
     if debug:
         cnt = 0
         for name in file_names:
-            imgs.append(mpimg.imread(path+'/'+name))
+            print(name)
+            u_img = mpimg.imread(path+'/'+name)
+            u_img = u_img[20:-20]
+            u_img = cv.resize(u_img,dsize=(32,32),interpolation=cv.INTER_LINEAR)
+            imgs.append(u_img)
             cnt+=1
             if cnt == 100:
                 break
     else:
         for name in file_names:
-            imgs.append(mpimg.imread(path+'/'+name))
+            u_img = mpimg.imread(path+'/'+name)
+            u_img = u_img[20:-20]
+            u_img = cv.resize(u_img,dsize=(32,32),interpolation=cv.INTER_LINEAR)
+            imgs.append(u_img)
         
     return np.array(imgs)
 
@@ -102,14 +111,10 @@ def _fetch_array_y(path):
                     break
         else:
             for line in f.readlines():
-                print(line.decode('utf-8'))
                 q = line.decode('utf-8')
                 q = q.strip()
-                print(q.split(' '))
                 q = int(q.split(' ')[1])
                 evalue.append(q)
-            
-
     return np.array(evalue)
 
 debug = False
