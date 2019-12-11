@@ -72,46 +72,94 @@ EVAL_PATH = '/home/cwx17/data/celeba/eval.txt'
 def _fetch_array_x(path):
     file_names = os.listdir(path)
     imgs = []
-    for name in file_names:
-        imgs.append(mpimg.imread(path+'/'+name))
+    if debug:
+        cnt = 0
+        for name in file_names:
+            imgs.append(mpimg.imread(path+'/'+name))
+            cnt+=1
+            if cnt == 100:
+                break
+    else:
+        for name in file_names:
+            imgs.append(mpimg.imread(path+'/'+name))
         
     return np.array(imgs)
 
 def _fetch_array_y(path):
     evalue = []
     with open(path,'rb') as f:
-        for line in f.readlines():
-            print(line.decode('utf-8'))
-            q = line.decode('utf-8')
-            q = q.strip()
-            print(q.split(' '))
-            q = int(q.split(' ')[1])
-            evalue.append(q)
+        if debug:
+            cnt =0
+            for line in f.readlines():
+                print(line.decode('utf-8'))
+                q = line.decode('utf-8')
+                q = q.strip()
+                print(q.split(' '))
+                q = int(q.split(' ')[1])
+                evalue.append(q)
+                cnt +=1 
+                if cnt == 100:
+                    break
+        else:
+            for line in f.readlines():
+                print(line.decode('utf-8'))
+                q = line.decode('utf-8')
+                q = q.strip()
+                print(q.split(' '))
+                q = int(q.split(' ')[1])
+                evalue.append(q)
+            
 
     return np.array(evalue)
+
+debug = False
 
 
 def load_celeba(x_shape=(218, 178), x_dtype=np.float32, y_dtype=np.int32,
                normalize_x=False):
-    if not os.path.exists(IMG_PATH):
-        print('img not exist')
-        if os.path.exists(IMG_ZIP_PATH):
-            print(f'zipped file exists\n unzipping\ndst: {IMG_PATH}')
-            misc.unzip(IMG_ZIP_PATH,IMG_PATH)
-            print('unzipped')
-        else:
-            print(f'zipped file dosen\'t exist\ndownloading img \ndst: {IMG_ZIP_PATH}')
-            misc.download_celeba_img(IMG_ZIP_PATH);
-            print(f'downloaded\nstart unzip\ndst: {IMG_PATH}')
-            misc.unzip(IMG_ZIP_PATH,IMG_PATH)
-            print('unzipped')
-    if not os.path.exists(EVAL_PATH):
-        print(f'eval doesn\'t exist\ndownloading eval \ndst: {EVAL_PATH}')
-        misc.download_celeba_eval(EVAL_PATH);
-        print('downloaded')
+    """
+    Load the CelebA dataset as NumPy arrays.
+    samilar to load_not_mnist
 
-    x = _fetch_array_x(IMG_PATH).astype(x_dtype)
-    y = _fetch_array_y(EVAL_PATH).astype(y_dtype)
+    Args:
+        Unimplemented!(haven't found a good way to resize) x_shape: Reshape each digit into this shape.  Default ``(218, 178)``.
+        x_dtype: Cast each digit into this data type.  Default `np.float32`.
+        y_dtype: Cast each label into this data type.  Default `np.int32`.
+        normalize_x (bool): Whether or not to normalize x into ``[0, 1]``,
+            by dividing each pixel value with 255.?  (default :obj:`False`)
+
+    Returns:
+        (np.ndarray, np.ndarray), (np.ndarray, np.ndarray): The
+            (train_x, train_y), (test_x, test_y)
+            
+    """
+    if debug:
+        if not os.path.exists(DEBUG_EVAL):
+            print(f'eval doesn\'t exist\ndownloading eval \ndst: {DEBUG_EVAL}')
+            misc.download_celeba_eval(DEBUG_EVAL);
+            print('downloaded')
+        x = _fetch_array_x(DEBUG_IMG).astype(x_dtype)
+        y = _fetch_array_y(DEBUG_EVAL).astype(y_dtype)
+    else:   
+        if not os.path.exists(IMG_PATH):
+            print('img not exist')
+            if os.path.exists(IMG_ZIP_PATH):
+                print(f'zipped file exists\n unzipping\ndst: {IMG_PATH}')
+                misc.unzip(IMG_ZIP_PATH,IMG_PATH)
+                print('unzipped')
+            else:
+                print(f'zipped file dosen\'t exist\ndownloading img \ndst: {IMG_ZIP_PATH}')
+                misc.download_celeba_img(IMG_ZIP_PATH);
+                print(f'downloaded\nstart unzip\ndst: {IMG_PATH}')
+                misc.unzip(IMG_ZIP_PATH,IMG_PATH)
+                print('unzipped')
+        if not os.path.exists(EVAL_PATH):
+            print(f'eval doesn\'t exist\ndownloading eval \ndst: {EVAL_PATH}')
+            misc.download_celeba_eval(EVAL_PATH);
+            print('downloaded')
+
+        x = _fetch_array_x(IMG_PATH).astype(x_dtype)
+        y = _fetch_array_y(EVAL_PATH).astype(y_dtype)
 
     train_x = []
     train_y = []
@@ -149,3 +197,4 @@ if __name__ == '__main__':
     plotwindow = fig.add_subplot(111)
     print(im)
     plt.imshow(im)
+    plt.show()
