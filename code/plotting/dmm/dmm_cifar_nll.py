@@ -1405,11 +1405,11 @@ def main():
                         mu, sigma = np.mean(base), np.std(base)
 
                         if tag == 'log_prob':
-                            log_prob = -((base - mu) ** 2) / (sigma ** 2) - np.log(np.sqrt(2 * np.pi) * sigma)
+                            log_prob = ((base - mu) ** 2) / (sigma ** 2) + np.log(np.sqrt(2 * np.pi) * sigma)
                             another_log_probs = []
                             for array in another_arrays:
                                 another_log_probs.append(
-                                    -((array - mu) ** 2) / (sigma ** 2) - np.log(np.sqrt(2 * np.pi) * sigma))
+                                    ((array - mu) ** 2) / (sigma ** 2) + np.log(np.sqrt(2 * np.pi) * sigma))
                             return log_prob, another_log_probs
                         else:
                             ood = (base - mu) / (sigma ** 2)
