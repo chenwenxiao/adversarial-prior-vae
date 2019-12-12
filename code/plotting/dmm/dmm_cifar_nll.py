@@ -1412,10 +1412,10 @@ def main():
                                     ((array - mu) ** 2) / (sigma ** 2) + np.log(np.sqrt(2 * np.pi) * sigma))
                             return log_prob, another_log_probs
                         else:
-                            ood = (base - mu) / (sigma ** 2)
+                            ood = (base - mu) / sigma
                             another_oods = []
                             for array in another_arrays:
-                                another_oods.append((array - mu) / (sigma ** 2))
+                                another_oods.append((array - mu) / sigma)
                             if tag == 'nll':
                                 ood = np.abs(ood)
                                 for i in range(len(another_oods)):
