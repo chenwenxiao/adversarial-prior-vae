@@ -1207,7 +1207,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/3d/0c/d445f4f80a9fee59aed5/checkpoint/checkpoint/checkpoint.dat-273000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/3d/0c/d445f4f80a9fee59aed5/checkpoint/checkpoint/checkpoint.dat-312000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1456,10 +1456,10 @@ def main():
                                  ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
                                  'log(bits/dim)', 'out_of_distribution_norm_{}'.format('log_prob' if log_prob else 'ood'))
 
-                        plot_fig([_cifar_train_nll + _cifar_train_energy + _cifar_train_norm,
-                                  _cifar_test_nll + _cifar_test_energy + _cifar_test_norm,
-                                  _svhn_train_nll + _svhn_train_energy + _svhn_train_norm,
-                                  _svhn_test_nll + _svhn_test_energy + _svhn_test_norm],
+                        plot_fig([_cifar_train_nll + _cifar_train_norm,
+                                  _cifar_test_nll + _cifar_test_norm,
+                                  _svhn_train_nll + _svhn_train_norm,
+                                  _svhn_test_nll + _svhn_test_norm],
                                  ['red', 'salmon', 'green', 'lightgreen'],
                                  ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
                                  'log(bits/dim)', 'out_of_distribution_overall_{}'.format('log_prob' if log_prob else 'ood'))
