@@ -600,6 +600,8 @@ def D_kappa(x, y=None):
     return tf.squeeze(h_x, axis=-1)
 
 '''
+
+
 @add_arg_scope
 @spt.global_reuse
 def D_kappa(x, y=None):
@@ -629,7 +631,6 @@ def D_kappa(x, y=None):
     # sample z ~ q(z|x)
     h_x = spt.layers.dense(h_x, 1, scope='level_-1')
     return tf.squeeze(h_x, axis=-1)
-
 
 
 @add_arg_scope
@@ -1314,7 +1315,8 @@ def main():
 
                     # Draw the histogram or exrta the data here
 
-                    def plot_fig(data_list, color_list, label_list, x_label, fig_name, log_prob=False):
+                    def plot_fig(data_list, color_list, label_list, x_label, fig_name, order=False):
+                        # order = False means the is the less data is more likely be categorized to cifar-10.
                         pyplot.cla()
                         pyplot.plot()
                         pyplot.grid(c='silver', ls='--')
@@ -1348,8 +1350,8 @@ def main():
                             draw_nll(data_list[i], color_list[i], label_list[i])
                         pyplot.savefig('plotting/dmm/%s.jpg' % fig_name)
 
-                        def draw_curve(cifar_test, svhn_test, fig_name, log_prob):
-                            if not log_prob:
+                        def draw_curve(cifar_test, svhn_test, fig_name, order):
+                            if not order:
                                 cifar_test = cifar_test * -1
                                 svhn_test = svhn_test * -1
                             label = np.concatenate(([1] * len(cifar_test), [-1] * len(svhn_test)))
@@ -1359,28 +1361,29 @@ def main():
                             precision, recall, thresholds = precision_recall_curve(label, score)
                             pyplot.plot(recall, precision)
                             pyplot.plot(fpr, tpr)
-                            print('%s auc: %4f, ap: %4f' % (fig_name, auc(fpr, tpr), average_precision_score(label, score)))
+                            print('%s auc: %4f, ap: %4f' % (
+                                fig_name, auc(fpr, tpr), average_precision_score(label, score)))
 
                         pyplot.cla()
                         pyplot.plot()
-                        draw_curve(data_list[1], data_list[3], fig_name, log_prob)
+                        draw_curve(data_list[1], data_list[3], fig_name, order)
                         pyplot.savefig('plotting/dmm/%s_curve.jpg' % fig_name)
 
-                    plot_fig([cifar_train_nll / (3072 * np.log(2)), cifar_test_nll / (3072 * np.log(2)), svhn_train_nll / (3072 * np.log(2)), svhn_test_nll / (3072 * np.log(2))],
-                             ['red', 'salmon', 'green', 'lightgreen'], ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
-                             'bits/dim', 'out_of_distribution', log_prob=True)
+                    plot_fig([cifar_train_nll / (3072 * np.log(2)), cifar_test_nll / (3072 * np.log(2)),
+                              svhn_train_nll / (3072 * np.log(2)), svhn_test_nll / (3072 * np.log(2))],
+                             ['red', 'salmon', 'green', 'lightgreen'],
+                             ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
+                             'bits/dim', 'out_of_distribution')
 
                     plot_fig([cifar_train_energy, cifar_test_energy, svhn_train_energy, svhn_test_energy],
-                             ['red', 'salmon', 'green', 'lightgreen'], ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
+                             ['red', 'salmon', 'green', 'lightgreen'],
+                             ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
                              'energy', 'out_of_distribution_energy')
 
                     plot_fig([cifar_train_norm, cifar_test_norm, svhn_train_norm, svhn_test_norm],
-                             ['red', 'salmon', 'green', 'lightgreen'], ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
-                             'log(bits/dim)', 'out_of_distribution_norm', log_prob=True)
-
-                    plot_fig([cifar_train_mixed_energy, cifar_test_mixed_energy, svhn_train_mixed_energy, svhn_test_mixed_energy],
-                             ['red', 'salmon', 'green', 'lightgreen'], ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
-                             'log(bits/dim)', 'out_of_distribution_mixed_energy')
+                             ['red', 'salmon', 'green', 'lightgreen'],
+                             ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
+                             'log(bits/dim)', 'out_of_distribution_norm', order=True)
 
                     def t_perm(base, another_arrays=None):
                         base = sorted(base)
@@ -1400,56 +1403,69 @@ def main():
 
                     def ood_standardlize(base, another_arrays, tag):
                         mu, sigma = np.mean(base), np.std(base)
-                        log_prob = -((base - mu) ** 2) / (sigma ** 2) - np.log(np.sqrt(2 * np.pi) * sigma)
-                        another_log_probs = []
-                        for array in another_arrays:
-                            another_log_probs.append(
-                                -((array - mu) ** 2) / (sigma ** 2) - np.log(np.sqrt(2 * np.pi) * sigma))
 
-                        if tag == 'nll':
-                            for i in range(len(another_log_probs)):
-                                another_log_probs[i] = np.abs(np.asarray(another_log_probs[i]))
-                        if tag == 'energy':
-                            another_log_probs = another_log_probs
-                        if tag == 'norm':
-                            for i in range(len(another_log_probs)):
-                                another_log_probs[i] = np.asarray(another_log_probs[i]) * -1
                         if tag == 'log_prob':
-                            another_log_probs = another_log_probs
+                            log_prob = -((base - mu) ** 2) / (sigma ** 2) - np.log(np.sqrt(2 * np.pi) * sigma)
+                            another_log_probs = []
+                            for array in another_arrays:
+                                another_log_probs.append(
+                                    -((array - mu) ** 2) / (sigma ** 2) - np.log(np.sqrt(2 * np.pi) * sigma))
+                            return log_prob, another_log_probs
+                        else:
+                            ood = (base - mu) / (sigma ** 2)
+                            another_oods = []
+                            for array in another_arrays:
+                                another_oods.append((array - mu) / (sigma ** 2))
+                            if tag == 'nll':
+                                ood = np.abs(ood)
+                                for i in range(len(another_oods)):
+                                    another_oods[i] = np.abs(another_oods[i])
+                            if tag == 'norm':
+                                ood = -ood
+                                for i in range(len(another_oods)):
+                                    another_oods[i] = -another_oods[i]
+                            return ood, another_oods
 
-                        return log_prob, another_log_probs
+                    def plot_overall(log_prob=False):
+                        _cifar_train_nll, [_cifar_test_nll, _svhn_train_nll, _svhn_test_nll] = \
+                            ood_standardlize(cifar_train_nll,
+                                             [cifar_test_nll, svhn_train_nll, svhn_test_nll],
+                                             'log_prob' if log_prob else 'nll')
+                        _cifar_train_energy, [_cifar_test_energy, _svhn_train_energy, _svhn_test_energy] = \
+                            ood_standardlize(cifar_train_energy,
+                                             [cifar_test_energy, svhn_train_energy, svhn_test_energy],
+                                             'log_prob' if log_prob else 'energy')
+                        _cifar_train_norm, [_cifar_test_norm, _svhn_train_norm, _svhn_test_norm] = \
+                            ood_standardlize(cifar_train_norm,
+                                             [cifar_test_norm, svhn_train_norm, svhn_test_norm],
+                                             'log_prob' if log_prob else 'norm')
 
-                    cifar_train_nll, [cifar_test_nll, svhn_train_nll, svhn_test_nll] = \
-                        ood_standardlize(cifar_train_nll, [cifar_test_nll, svhn_train_nll, svhn_test_nll], 'nll')
-                    cifar_train_energy, [cifar_test_energy, svhn_train_energy, svhn_test_energy] = \
-                        ood_standardlize(cifar_train_energy, [cifar_test_energy, svhn_train_energy, svhn_test_energy], 'energy')
-                    cifar_train_norm, [cifar_test_norm, svhn_train_norm, svhn_test_norm] = \
-                        ood_standardlize(cifar_train_norm, [cifar_test_norm, svhn_train_norm, svhn_test_norm], 'norm')
+                        plot_fig([_cifar_train_nll, _cifar_test_nll,
+                                  _svhn_train_nll, _svhn_test_nll],
+                                 ['red', 'salmon', 'green', 'lightgreen'],
+                                 ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
+                                 'bits/dim', 'out_of_distribution_{}'.format('log_prob' if log_prob else 'ood'))
 
+                        plot_fig([_cifar_train_energy, _cifar_test_energy, _svhn_train_energy, _svhn_test_energy],
+                                 ['red', 'salmon', 'green', 'lightgreen'],
+                                 ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
+                                 'energy', 'out_of_distribution_energy_{}'.format('log_prob' if log_prob else 'ood'))
 
-                    plot_fig([cifar_train_nll / (3072 * np.log(2)), cifar_test_nll / (3072 * np.log(2)),
-                              svhn_train_nll / (3072 * np.log(2)), svhn_test_nll / (3072 * np.log(2))],
-                             ['red', 'salmon', 'green', 'lightgreen'],
-                             ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
-                             'bits/dim', 'out_of_distribution_ood')
+                        plot_fig([_cifar_train_norm, _cifar_test_norm, _svhn_train_norm, _svhn_test_norm],
+                                 ['red', 'salmon', 'green', 'lightgreen'],
+                                 ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
+                                 'log(bits/dim)', 'out_of_distribution_norm_{}'.format('log_prob' if log_prob else 'ood'))
 
-                    plot_fig([cifar_train_energy, cifar_test_energy, svhn_train_energy, svhn_test_energy],
-                             ['red', 'salmon', 'green', 'lightgreen'],
-                             ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
-                             'energy', 'out_of_distribution_energy_ood')
+                        plot_fig([_cifar_train_nll + _cifar_train_energy + _cifar_train_norm,
+                                  _cifar_test_nll + _cifar_test_energy + _cifar_test_norm,
+                                  _svhn_train_nll + _svhn_train_energy + _svhn_train_norm,
+                                  _svhn_test_nll + _svhn_test_energy + _svhn_test_norm],
+                                 ['red', 'salmon', 'green', 'lightgreen'],
+                                 ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
+                                 'log(bits/dim)', 'out_of_distribution_overall_{}'.format('log_prob' if log_prob else 'ood'))
 
-
-                    plot_fig([cifar_train_norm, cifar_test_norm, svhn_train_norm, svhn_test_norm],
-                             ['red', 'salmon', 'green', 'lightgreen'],
-                             ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
-                             'log(bits/dim)', 'out_of_distribution_norm_ood')
-
-                    plot_fig([cifar_train_nll + cifar_train_energy + cifar_train_norm, cifar_test_nll + cifar_test_energy + cifar_test_norm,
-                              svhn_train_nll + svhn_train_energy + svhn_train_norm, svhn_test_nll + svhn_test_energy + svhn_test_norm],
-                             ['red', 'salmon', 'green', 'lightgreen'], ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
-                             'log(bits/dim)', 'out_of_distribution_overall')
-
-
+                    plot_overall()
+                    plot_overall(log_prob=True)
 
                 with loop.timeit('eval_time'):
                     cifar_train_evaluator.run()
