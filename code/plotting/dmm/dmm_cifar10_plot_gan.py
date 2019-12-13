@@ -1188,6 +1188,8 @@ def main():
                 loop.collect_metrics(FID_ori=FID)
                 loop.collect_metrics(IS_ori=IS_mean)
 
+                np.savez('sample_store', gan_img=gan_img, ori_img=ori_img, mala_img=mala_img)
+
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
 
