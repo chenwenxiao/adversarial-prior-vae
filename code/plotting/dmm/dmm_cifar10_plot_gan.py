@@ -26,7 +26,7 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 1024
+    z_dim = 256
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -48,7 +48,7 @@ class ExpConfig(spt.Config):
     max_step = None
     batch_size = 128
     noise_len = 8
-    smallest_step = 5e-4
+    smallest_step = 5e-5
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600]
@@ -78,7 +78,7 @@ class ExpConfig(spt.Config):
 
     len_train = 50000
     sample_n_z = 100
-    fid_samples = 500
+    fid_samples = 5000
 
     epsilon = -20.0
     min_logstd_of_q = -3.0
@@ -1056,7 +1056,7 @@ def main():
 
                         step_length = config.smallest_step
                         with loop.timeit('mala_sample_time'):
-                            for i in range(0, 1001):
+                            for i in range(0, 101):
                                 [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                                  batch_history_ratio] = session.run(
                                     [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z,
@@ -1138,7 +1138,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/54/0c/d434dabfcaecc1d4fed5/checkpoint/checkpoint/checkpoint.dat-624000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/0e/0c/d445f4f80a9fdd33fed5/checkpoint/checkpoint/checkpoint.dat-624000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1180,6 +1180,13 @@ def main():
                 IS_mean, IS_std = get_inception_score(mala_img)
                 loop.collect_metrics(FID=FID)
                 loop.collect_metrics(IS=IS_mean)
+
+                ori_img = np.concatenate(ori_img, axis=0).astype('uint8')
+                ori_img = np.asarray(ori_img)
+                FID = get_fid_google(ori_img, dataset_img)
+                IS_mean, IS_std = get_inception_score(ori_img)
+                loop.collect_metrics(FID_ori=FID)
+                loop.collect_metrics(IS_ori=IS_mean)
 
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
