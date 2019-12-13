@@ -26,6 +26,7 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 class ExpConfig(spt.Config):
     # model parameters
+    gan_z_dim = 128
     z_dim = 1024
     act_norm = False
     weight_norm = False
@@ -48,7 +49,7 @@ class ExpConfig(spt.Config):
     max_step = None
     batch_size = 128
     noise_len = 8
-    smallest_step = 5e-4
+    smallest_step = 5e-5
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600]
@@ -629,8 +630,8 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
 def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial_z=None):
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
-    normal = spt.Normal(mean=tf.zeros([1, 128]),
-                        logstd=tf.zeros([1, 128]))
+    normal = spt.Normal(mean=tf.zeros([1, config.gan_z_dim]),
+                        logstd=tf.zeros([1, config.gan_z_dim]))
     normal = normal.batch_ndims_to_value(1)
     z = net.add('z', normal, n_samples=n_z)
     z_channel = 16 * config.z_dim // config.x_shape[0] // config.x_shape[1]
@@ -1144,7 +1145,7 @@ def main():
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega', 'D_kappa'],
                            max_epoch=config.max_epoch,
-                           max_step=config.max_step,
+                           max_step=config.max_step + 1,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
                            summary_graph=tf.get_default_graph(),
