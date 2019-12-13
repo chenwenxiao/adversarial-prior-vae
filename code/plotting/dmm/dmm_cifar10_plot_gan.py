@@ -48,7 +48,7 @@ class ExpConfig(spt.Config):
     max_step = None
     batch_size = 128
     noise_len = 8
-    smallest_step = 5e-5
+    smallest_step = 5e-4
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600]
@@ -1056,7 +1056,7 @@ def main():
 
                         step_length = config.smallest_step
                         with loop.timeit('mala_sample_time'):
-                            for i in range(0, 101):
+                            for i in range(0, 1001):
                                 [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                                  batch_history_ratio] = session.run(
                                     [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z,
