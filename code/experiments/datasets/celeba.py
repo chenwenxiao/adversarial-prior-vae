@@ -101,12 +101,14 @@ TRAIN_DIR_PATH = '/home/cwx17/data/celeba/train'
 TRAIN_X_PATH = '/home/cwx17/data/celeba/train/img'
 TRAIN_Y_PATH = '/home/cwx17/data/celeba/train/train_eval.txt'
 TRAIN_INFO_PATH = '/home/cwx17/data/celeba/train/info.txt'
+TRAIN_X_ARR_PATH = '/home/cwx17/data/celeba/train/imgarr.npy'
 
 
 TEST_DIR_PATH = '/home/cwx17/data/celeba/test'
 TEST_X_PATH = '/home/cwx17/data/celeba/test/img'
 TEST_Y_PATH = '/home/cwx17/data/celeba/test/test_eval.txt'
 TEST_INFO_PATH = '/home/cwx17/data/celeba/test/info.txt'
+TEST_X_ARR_PATH = '/home/cwx17/data/celeba/test/imgarr.npy'
 
 def _fetch_array_x(path):
     file_names = os.listdir(path)
@@ -166,7 +168,6 @@ def _store_array_y(arr,path,dir_path,prefix):
             f.write(f"{prefix}{cnt} {i}\r\n")
             cnt+=1
         
-
 debug = False
 
 
@@ -202,33 +203,25 @@ def load_celeba(x_shape=(218, 178), x_dtype=np.float32, y_dtype=np.int32,
             for i in test:
                 f.write(i)
 
-        if debug:
-            if not os.path.exists(DEBUG_EVAL):
-                print(f'eval doesn\'t exist\ndownloading eval \ndst: {DEBUG_EVAL}')
-                misc.download_celeba_eval(DEBUG_EVAL);
-                print('downloaded')
-            x = _fetch_array_x(DEBUG_IMG).astype(x_dtype)
-            y = _fetch_array_y(DEBUG_EVAL).astype(y_dtype)
-        else:   
-            if not os.path.exists(IMG_PATH):
-                print('img not exist')
-                if os.path.exists(IMG_ZIP_PATH):
-                    print(f'zipped file exists\n unzipping\ndst: {IMG_PATH}')
-                    misc.unzip(IMG_ZIP_PATH,IMG_PATH)
-                    print('unzipped')
-                else:
-                    print(f'zipped file dosen\'t exist\ndownloading img \ndst: {IMG_ZIP_PATH}')
-                    misc.download_celeba_img(IMG_ZIP_PATH);
-                    print(f'downloaded\nstart unzip\ndst: {IMG_PATH}')
-                    misc.unzip(IMG_ZIP_PATH,IMG_PATH)
-                    print('unzipped')
-            if not os.path.exists(EVAL_PATH):
-                print(f'eval doesn\'t exist\ndownloading eval \ndst: {EVAL_PATH}')
-                misc.download_celeba_eval(EVAL_PATH);
-                print('downloaded')
+        if not os.path.exists(IMG_PATH):
+            print('img not exist')
+            if os.path.exists(IMG_ZIP_PATH):
+                print(f'zipped file exists\n unzipping\ndst: {IMG_PATH}')
+                misc.unzip(IMG_ZIP_PATH,IMG_PATH)
+                print('unzipped')
+            else:
+                print(f'zipped file dosen\'t exist\ndownloading img \ndst: {IMG_ZIP_PATH}')
+                misc.download_celeba_img(IMG_ZIP_PATH);
+                print(f'downloaded\nstart unzip\ndst: {IMG_PATH}')
+                misc.unzip(IMG_ZIP_PATH,IMG_PATH)
+                print('unzipped')
+        if not os.path.exists(EVAL_PATH):
+            print(f'eval doesn\'t exist\ndownloading eval \ndst: {EVAL_PATH}')
+            misc.download_celeba_eval(EVAL_PATH);
+            print('downloaded')
 
-            x = _fetch_array_x(IMG_PATH).astype(x_dtype)
-            y = _fetch_array_y(EVAL_PATH).astype(y_dtype)
+        x = _fetch_array_x(IMG_PATH).astype(x_dtype)
+        y = _fetch_array_y(EVAL_PATH).astype(y_dtype)
 
         train_x = []
         train_y = []
@@ -248,19 +241,14 @@ def load_celeba(x_shape=(218, 178), x_dtype=np.float32, y_dtype=np.int32,
         test_x = np.array(test_x)
         test_y = np.array(test_y)
 
-        _store_array_x(train_x,TRAIN_X_PATH,'train')
-        _store_array_y(train_y,TRAIN_Y_PATH, TRAIN_DIR_PATH,'train')
-        _store_array_x(test_x,TEST_X_PATH,'test')
-        _store_array_y(test_y,TEST_Y_PATH, TEST_DIR_PATH,'test')
-    else:
-        train_x = _fetch_array_x(TRAIN_X_PATH)
-        train_y = _fetch_array_y(TRAIN_Y_PATH)
-        test_x = _fetch_array_x(TEST_X_PATH)
-        test_y = _fetch_array_y(TEST_Y_PATH)
-
-    if normalize_x:
         train_x /= np.asarray(255., dtype=x.dtype)
         test_x /= np.asarray(255., dtype=x.dtype)
+
+        np.save(train_x,TRAIN_X_ARR_PATH)
+        np.save(test_x,TEST_X_ARR_PATH)
+
+    train_x = np.load(TRAIN_X_ARR_PATH)
+    test_x = np.load(TEST_X_ARR_PATH)
 
     return (train_x, train_y), (test_x, test_y)
 

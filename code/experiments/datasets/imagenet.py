@@ -18,11 +18,11 @@ import numpy as np
 
 TRAIN_DIR_PATH = '/home/cwx17/data/imagenet/train'
 TRAIN_X_PATH = '/home/cwx17/data/imagenet/train/img'
-# TRAIN_Y_PATH = '/home/cwx17/data/imagenet/train/train_eval.txt'
+TRAIN_X_ARR_PATH = '/home/cwx17/data/imagenet/train/imgarr.npy'
 
 TEST_DIR_PATH = '/home/cwx17/data/imagenet/test'
 TEST_X_PATH = '/home/cwx17/data/imagenet/test/img'
-# TEST_Y_PATH = '/home/cwx17/data/imagenet/test/test_eval.txt'
+TEST_X_ARR_PATH = '/home/cwx17/data/imagenet/test/imgarr.npy'
 
 
 def _fetch_array_x(path):
@@ -76,17 +76,30 @@ def load_imagenet(x_shape=(32, 32), x_dtype=np.float32, y_dtype=np.int32,
     elif (not os.path.exists(TEST_DIR_PATH)):
         print("test dir not found")
     else:
-        train_x = _fetch_array_x(TRAIN_X_PATH)
-        test_x = _fetch_array_x(TEST_X_PATH)
+        prepare_arr()
 
-    if normalize_x:
-        train_x /= np.asarray(255., dtype=x_dtype)
-        test_x /= np.asarray(255., dtype=x_dtype)
+    train_x = np.load(TRAIN_X_ARR_PATH)
+    test_x = np.load(TEST_X_ARR_PATH)
     
     train_y = range(0,len(train_x))
     test_y = range(0,len(test_x))
 
     return (train_x, train_y), (test_x, test_y)
+
+def prepare_arr():
+    if (not os.path.exists(TRAIN_X_ARR_PATH)): 
+        print('train arr not found')
+        train_x = _fetch_array_x(TRAIN_X_PATH)
+        train_x /= np.asarray(255., dtype=np.int32)
+        np.save(train_x,TRAIN_X_ARR_PATH)
+    elif (not os.path.exists(TEST_X_ARR_PATH)):
+        print("test arr not found")
+        test_x = _fetch_array_x(TEST_X_PATH)
+        test_x /= np.asarray(255., dtype=np.int32)
+        np.save(test_x,TEST_X_ARR_PATH)
+    else:
+        return
+
 
 if __name__ == '__main__':
     (_x_train, _y_train), (_x_test, _y_test) = load_imagenet()
