@@ -8,6 +8,9 @@ usage:
     (train_x, train_y), (test_x, test_y) = load_celeba()
 
 '''
+from PIL import Image
+from scipy.ndimage import filters
+from scipy.misc import imresize, imsave
 import requests
 import zipfile,os
 import tfsnippet as spt
@@ -109,23 +112,17 @@ def _fetch_array_x(path):
     file_names = os.listdir(path)
     file_names.sort()
     imgs = []
-    if debug:
-        cnt = 0
-        for name in file_names:
-            print(name)
-            u_img = mpimg.imread(path+'/'+name)
-            u_img = u_img[20:-20]
-            u_img = cv.resize(u_img,dsize=(32,32),interpolation=cv.INTER_LINEAR)
-            imgs.append(u_img)
-            cnt+=1
-            if cnt == 100:
-                break
-    else:
-        for name in file_names:
-            u_img = mpimg.imread(path+'/'+name)
-            u_img = u_img[20:-20]
-            u_img = cv.resize(u_img,dsize=(32,32),interpolation=cv.INTER_LINEAR)
-            imgs.append(u_img)
+    scale = 148 / float(64)
+    sigma = np.sqrt(scale) / 2.0
+    for name in file_names:
+        im = Image.open(os.path.join(path,name))
+        im = im.crop((15,40,163,188))
+        img = np.asarray(im)
+        img.setflags(write=True)
+        for dim in range(img.shape[2]):
+            img[...,dim] = filters.gaussian_filter(img[...,dim], sigma=(sigma,sigma))
+        img = imresize(img,(64,64,3))
+        imgs.append(img)
         
     return np.array(imgs)
 
