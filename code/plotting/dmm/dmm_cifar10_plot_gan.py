@@ -78,7 +78,7 @@ class ExpConfig(spt.Config):
 
     len_train = 50000
     sample_n_z = 100
-    fid_samples = 5000
+    fid_samples = 50000
 
     epsilon = -20.0
     min_logstd_of_q = -3.0
@@ -1079,28 +1079,28 @@ def main():
                                         print(e)
 
                         mala_images = images
-                        batch_z = batch_reconstruct_z
-                        batch_z = np.expand_dims(batch_z, axis=1)
-                        for i in range(0, 101):
-                            [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
-                             batch_history_ratio] = session.run(
-                                [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
-                                feed_dict={
-                                    initial_z: batch_z,
-                                })
-                            batch_z = batch_history_z[-1]
-                            if i % 100 == 0:
-                                print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
-                                try:
-                                    save_images_collection(
-                                        images=np.round(images),
-                                        filename='plotting/sample/{}-ORI-{}.png'.format(extra_index, i),
-                                        grid_size=(10, 10),
-                                        results=results,
-                                    )
-                                except Exception as e:
-                                    print(e)
-                        ori_images = images
+                        # batch_z = batch_reconstruct_z
+                        # batch_z = np.expand_dims(batch_z, axis=1)
+                        # for i in range(0, 101):
+                        #     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
+                        #      batch_history_ratio] = session.run(
+                        #         [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
+                        #         feed_dict={
+                        #             initial_z: batch_z,
+                        #         })
+                        #     batch_z = batch_history_z[-1]
+                        #     if i % 100 == 0:
+                        #         print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
+                        #         try:
+                        #             save_images_collection(
+                        #                 images=np.round(images),
+                        #                 filename='plotting/sample/{}-ORI-{}.png'.format(extra_index, i),
+                        #                 grid_size=(10, 10),
+                        #                 results=results,
+                        #             )
+                        #         except Exception as e:
+                        #             print(e)
+                        ori_images = mala_images
 
                     return gan_images, mala_images, ori_images
 
