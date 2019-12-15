@@ -1285,7 +1285,7 @@ def main():
                         evaluator.run()
 
                 if epoch == config.max_epoch:
-                    dataset_img = _x_train
+                    dataset_img = np.tile(_x_train, (1, 1, 1, 3))
                     gan_img = []
                     mala_img = []
                     ori_img = []
@@ -1296,26 +1296,29 @@ def main():
                         ori_img.append(ori_images)
                         print('{}-th sample finished...'.format(i))
 
-                    # gan_img = np.concatenate(gan_img, axis=0).astype('uint8')
-                    # gan_img = np.asarray(gan_img)
-                    # FID = get_fid_google(gan_img, dataset_img)
-                    # IS_mean, IS_std = get_inception_score(gan_img)
-                    # loop.collect_metrics(FID_gan=FID)
-                    # loop.collect_metrics(IS_gan=IS_mean)
-                    #
-                    # mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
-                    # mala_img = np.asarray(mala_img)
-                    # FID = get_fid_google(mala_img, dataset_img)
-                    # IS_mean, IS_std = get_inception_score(mala_img)
-                    # loop.collect_metrics(FID=FID)
-                    # loop.collect_metrics(IS=IS_mean)
-                    #
-                    # ori_img = np.concatenate(ori_img, axis=0).astype('uint8')
-                    # ori_img = np.asarray(ori_img)
-                    # FID = get_fid_google(ori_img, dataset_img)
-                    # IS_mean, IS_std = get_inception_score(ori_img)
-                    # loop.collect_metrics(FID_ori=FID)
-                    # loop.collect_metrics(IS_ori=IS_mean)
+                    gan_img = np.concatenate(gan_img, axis=0).astype('uint8')
+                    gan_img = np.asarray(gan_img)
+                    gan_img = np.tile(gan_img, (1, 1, 1, 3))
+                    FID = get_fid_google(gan_img, dataset_img)
+                    IS_mean, IS_std = get_inception_score(gan_img)
+                    loop.collect_metrics(FID_gan=FID)
+                    loop.collect_metrics(IS_gan=IS_mean)
+
+                    mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
+                    mala_img = np.asarray(mala_img)
+                    mala_img = np.tile(mala_img, (1, 1, 1, 3))
+                    FID = get_fid_google(mala_img, dataset_img)
+                    IS_mean, IS_std = get_inception_score(mala_img)
+                    loop.collect_metrics(FID=FID)
+                    loop.collect_metrics(IS=IS_mean)
+
+                    ori_img = np.concatenate(ori_img, axis=0).astype('uint8')
+                    ori_img = np.asarray(ori_img)
+                    ori_img = np.tile(ori_img, (1, 1, 1, 3))
+                    FID = get_fid_google(ori_img, dataset_img)
+                    IS_mean, IS_std = get_inception_score(ori_img)
+                    loop.collect_metrics(FID_ori=FID)
+                    loop.collect_metrics(IS_ori=IS_mean)
 
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
