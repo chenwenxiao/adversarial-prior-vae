@@ -6,12 +6,12 @@
 
 ## NLL
 
-|      | MNIST | FASHION | CIFAR10 | CELEBA | Imagenet 32x32 |
-| ---- | :---: | ------- | ------- | ------ | -------------- |
-| 1    |       |         |         |        |                |
-| 2    |       |         |         |        |                |
-| 3    |       |         |         |        |                |
-| 4    |       |         |         |        |                |
+|      | CIFAR10 | CELEBA(64x64) | MNIST(Bernouli) | FASHION | LSUN |
+| ---- | :-----: | ------------- | --------------- | ------- | ---- |
+| 1    |         |               |                 |         |      |
+| 2    |         |               |                 |         |      |
+| 3    |         |               |                 |         |      |
+| 4    |         |               |                 |         |      |
 
 s
 
@@ -69,9 +69,11 @@ Fashion：
 
 
 
-## 使用WGAN训练出的Discriminator直接进行VAE训练的NLL
+## 使用WGAN训练出的Discriminator直接进行VAE训练的NLL及其Loss曲线
 
 dmm_cifar10_nD.py
+
+
 
 
 

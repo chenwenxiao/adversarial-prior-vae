@@ -49,8 +49,8 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 1600
-    warm_up_start = 800
+    max_epoch = 800
+    warm_up_start = 400
     warm_up_epoch = 800
     beta = 1e-8
     initial_xi = 0.0
@@ -62,7 +62,7 @@ class ExpConfig(spt.Config):
     smallest_step = 5e-5
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600]
+    lr_anneal_epoch_freq = [100, 200, 300, 400, 500, 600, 700, 800]
     lr_anneal_step_freq = None
 
     use_dg = False
@@ -440,7 +440,7 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg), ):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
+        # h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_3')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_4')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_6')  # output: (7, 7, 64)
@@ -498,7 +498,7 @@ def G_theta(z):
         # h_z = spt.layers.resnet_deconv2d_block(h_z, 512, strides=2, scope='level_2')  # output: (7, 7, 64)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, strides=2, scope='level_3')  # output: (7, 7, 64)
         h_z = spt.layers.resnet_deconv2d_block(h_z, 64, strides=2, scope='level_5')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_6')  # output:
+        # h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_6')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_7')  # output:
         h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_8')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
@@ -548,7 +548,7 @@ def D_psi(x, y=None):
         h_x = tf.to_float(x)
         h_x = spt.layers.resnet_conv2d_block(h_x, 16, scope='level_0')  # output: (28, 28, 16)
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_2')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_3')  # output: (14, 14, 32)
+        # h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_3')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_4')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, strides=2, scope='level_6')  # output: (7, 7, 64)
         # h_x = spt.layers.resnet_conv2d_block(h_x, 512, strides=2, scope='level_8')  # output: (7, 7, 64)
@@ -1285,7 +1285,7 @@ def main():
                         evaluator.run()
 
                 if epoch == config.max_epoch:
-                    dataset_img = _x_train
+                    dataset_img = np.tile(_x_train, (1, 1, 1, 3))
                     gan_img = []
                     mala_img = []
                     ori_img = []
@@ -1296,26 +1296,29 @@ def main():
                         ori_img.append(ori_images)
                         print('{}-th sample finished...'.format(i))
 
-                    # gan_img = np.concatenate(gan_img, axis=0).astype('uint8')
-                    # gan_img = np.asarray(gan_img)
-                    # FID = get_fid_google(gan_img, dataset_img)
-                    # IS_mean, IS_std = get_inception_score(gan_img)
-                    # loop.collect_metrics(FID_gan=FID)
-                    # loop.collect_metrics(IS_gan=IS_mean)
-                    #
-                    # mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
-                    # mala_img = np.asarray(mala_img)
-                    # FID = get_fid_google(mala_img, dataset_img)
-                    # IS_mean, IS_std = get_inception_score(mala_img)
-                    # loop.collect_metrics(FID=FID)
-                    # loop.collect_metrics(IS=IS_mean)
-                    #
-                    # ori_img = np.concatenate(ori_img, axis=0).astype('uint8')
-                    # ori_img = np.asarray(ori_img)
-                    # FID = get_fid_google(ori_img, dataset_img)
-                    # IS_mean, IS_std = get_inception_score(ori_img)
-                    # loop.collect_metrics(FID_ori=FID)
-                    # loop.collect_metrics(IS_ori=IS_mean)
+                    gan_img = np.concatenate(gan_img, axis=0).astype('uint8')
+                    gan_img = np.asarray(gan_img)
+                    gan_img = np.tile(gan_img, (1, 1, 1, 3))
+                    FID = get_fid_google(gan_img, dataset_img)
+                    IS_mean, IS_std = get_inception_score(gan_img)
+                    loop.collect_metrics(FID_gan=FID)
+                    loop.collect_metrics(IS_gan=IS_mean)
+
+                    mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
+                    mala_img = np.asarray(mala_img)
+                    mala_img = np.tile(mala_img, (1, 1, 1, 3))
+                    FID = get_fid_google(mala_img, dataset_img)
+                    IS_mean, IS_std = get_inception_score(mala_img)
+                    loop.collect_metrics(FID=FID)
+                    loop.collect_metrics(IS=IS_mean)
+
+                    ori_img = np.concatenate(ori_img, axis=0).astype('uint8')
+                    ori_img = np.asarray(ori_img)
+                    ori_img = np.tile(ori_img, (1, 1, 1, 3))
+                    FID = get_fid_google(ori_img, dataset_img)
+                    IS_mean, IS_std = get_inception_score(ori_img)
+                    loop.collect_metrics(FID_ori=FID)
+                    loop.collect_metrics(IS_ori=IS_mean)
 
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
