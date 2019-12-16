@@ -26,7 +26,6 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 class ExpConfig(spt.Config):
     # model parameters
-    gan_z_dim = 128
     z_dim = 1024
     act_norm = False
     weight_norm = False
@@ -517,19 +516,19 @@ def G_omega(z, output_dim):
                    activation_fn=tf.nn.leaky_relu,
                    normalizer_fn=normalizer_fn,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
-        h_z = spt.layers.dense(z, output_dim * 8 * config.x_shape[0] // 8 * config.x_shape[1] // 8, scope='level_0',
+        h_z = spt.layers.dense(z, 256 * config.x_shape[0] // 8 * config.x_shape[1] // 8, scope='level_0',
                                normalizer_fn=None)
         h_z = spt.ops.reshape_tail(
             h_z,
             ndims=1,
-            shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, output_dim * 8)
+            shape=(config.x_shape[0] // 8, config.x_shape[1] // 8, 256)
         )
-        h_z = spt.layers.resnet_deconv2d_block(h_z, output_dim * 8, scope='level_1')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, output_dim * 8, scope='level_2')  # output: (7, 7, 64)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, output_dim * 4, strides=2, scope='level_3')  # output: (14, 14, 32)
-        h_z = spt.layers.resnet_deconv2d_block(h_z, output_dim * 4, scope='level_4')  # output:
-        h_z = spt.layers.resnet_deconv2d_block(h_z, output_dim * 4, scope='level_5')  # output:
-        h_z = spt.layers.resnet_deconv2d_block(h_z, output_dim * 4, scope='level_6')  # output: (28, 28, 16)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 256, scope='level_1')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 256, scope='level_2')  # output: (7, 7, 64)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 128, strides=2, scope='level_3')  # output: (14, 14, 32)
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 64, scope='level_4')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 32, scope='level_5')  # output:
+        h_z = spt.layers.resnet_deconv2d_block(h_z, 16, scope='level_6')  # output: (28, 28, 16)
     x_mean = spt.layers.conv2d(
         h_z, output_dim, (1, 1), padding='same', scope='feature_map_mean_to_pixel',
         kernel_initializer=tf.zeros_initializer(), activation_fn=None
@@ -630,8 +629,8 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
 def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial_z=None):
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
-    normal = spt.Normal(mean=tf.zeros([1, config.gan_z_dim]),
-                        logstd=tf.zeros([1, config.gan_z_dim]))
+    normal = spt.Normal(mean=tf.zeros([1, 128]),
+                        logstd=tf.zeros([1, 128]))
     normal = normal.batch_ndims_to_value(1)
     z = net.add('z', normal, n_samples=n_z)
     z_channel = 16 * config.z_dim // config.x_shape[0] // config.x_shape[1]

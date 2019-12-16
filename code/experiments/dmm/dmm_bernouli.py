@@ -1066,7 +1066,7 @@ def main():
 
                         step_length = config.smallest_step
                         with loop.timeit('mala_sample_time'):
-                            for i in range(0, 1001):
+                            for i in range(0, 101):
                                 [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                                  batch_history_ratio] = session.run(
                                     [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z,
