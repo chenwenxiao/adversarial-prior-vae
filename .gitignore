@@ -4,3 +4,4 @@
 *.pyc
 *.pdf
 code/experiments/datasets/scripts_process_celeba.py
+**/.DS_Store
