@@ -80,7 +80,7 @@ class ExpConfig(spt.Config):
     len_train = 50000
     sample_n_z = 100
     fid_samples = 50000
-    fid_test_times = 1
+    fid_test_times = 10
 
     epsilon = -20.0
     min_logstd_of_q = -3.0
