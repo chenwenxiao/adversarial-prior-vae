@@ -75,12 +75,11 @@ def load_imagenet_test(x_shape=(32, 32), x_dtype=np.float32, y_dtype=np.int32,
     test_x = _fetch_array_x(TEST_X_PATH)
     test_y = np.array(range(0,len(test_x)))
 
-    return (np.zeros(1), np.zeros(1)), (test_x, test_y)
+    return (test_x, test_y)
 
 
 if __name__ == '__main__':
-    (_x_train, _y_train), (_x_test, _y_test) = load_imagenet_test()
-    print(_x_train.shape)
+    (_x_test, _y_test) = load_imagenet_test()
     print(_x_test.shape)
 
     im = np.array(_x_test[19])
