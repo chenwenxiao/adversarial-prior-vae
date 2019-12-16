@@ -8,19 +8,12 @@ usage:
     (train_x, train_y), (test_x, test_y) = load_celeba()
 
 '''
-from PIL import Image
-from scipy.ndimage import filters
-from scipy.misc import imresize, imsave
 import requests
 import zipfile,os
-import tfsnippet as spt
-from tfsnippet import DataFlow
-import tensorflow as tf
+
 import numpy as np
 import matplotlib.image as mpimg
 import random
-import cv2 as cv
-import shutil
 
 from functools import partial
 from typing import Optional
@@ -31,157 +24,22 @@ from PIL import Image as PILImage
 from skimage import transform, filters
 from tqdm import tqdm
 
-from .base import StandardImageDataSet
 
 
-def download_file_from_google_drive(id, destination):
-    # usage : download_file_from_google_drive(file_id_on_google_drive, path)
-    def get_confirm_token(response):
-        for key, value in response.cookies.items():
-            if key.startswith('download_warning'):
-                return value
-
-        return None
-
-    def save_response_content(response, destination):
-        CHUNK_SIZE = 32768
-
-        with open(destination, "wb") as f:
-            for chunk in response.iter_content(CHUNK_SIZE):
-                if chunk: # filter out keep-alive new chunks
-                    f.write(chunk)
-
-    URL = "https://docs.google.com/uc?export=download"
-
-    session = requests.Session()
-
-    response = session.get(URL, params = { 'id' : id }, stream = True)
-    token = get_confirm_token(response)
-
-    if token:
-        params = { 'id' : id, 'confirm' : token }
-        response = session.get(URL, params = params, stream = True)
-
-    save_response_content(response, destination)  
-
-class misc():
-    @staticmethod 
-    def download_celeba_img(path):
-        'url of aligned & cropped celeba https://drive.google.com/open?id=0B7EVK8r0v71pZjFTYXZWM3FlRnM'
-        ' size: 218*178'
-        ' format: jpg'
-        download_file_from_google_drive('0B7EVK8r0v71pZjFTYXZWM3FlRnM',path)
-
-    @staticmethod 
-    def download_celeba_eval(path):
-        'url of celeba eval https://drive.google.com/open?id=0B7EVK8r0v71pY0NSMzRuSXJEVkk'
-        download_file_from_google_drive('0B7EVK8r0v71pY0NSMzRuSXJEVkk',path)
-
-    @staticmethod
-    def unzip(src,dest):
-        '''
-        src: address of the zip
-        dest: a directory to store the file
-        '''
-        f = zipfile.ZipFile(src)
-        if not os.path.exists(dest):
-            os.makedirs(dest)
-        f.extractall(dest)  
-
-    celba_size = 202598;
-    @staticmethod
-    def get_tt():
-        train=[]
-        test=[]
-        for i in range(202598):
-            random.seed(i)
-            if (random.random()>0.83333):
-                test.append(i)
-            else:
-                train.append(i)
-        return train,test
 
 DEBUG_IMG = '/Users/lwd/Downloads/img_align_celeba'
 DEBUG_EVAL = '/Users/lwd/Downloads/list_eval_partition.txt'
 
+PRE_DIR_PATH = '/home/cwx17/data/celeba'
 IMG_ZIP_PATH = '/home/cwx17/data/celeba/img_align_celeba.zip'
 IMG_PATH = '/home/cwx17/data/celeba/img_align_celeba'
+
 EVAL_PATH = '/home/cwx17/data/celeba/list_eval_partition.txt'
 MAP_DIR_PATH = '/home/cwx/data'
 MAP_PATH = '/home/cwx/data/CelebA'
 
-# TRAIN_DIR_PATH = '/home/cwx17/data/celeba/train'
-# TRAIN_X_PATH = '/home/cwx17/data/celeba/train/img'
-# TRAIN_Y_PATH = '/home/cwx17/data/celeba/train/train_eval.txt'
-# TRAIN_INFO_PATH = '/home/cwx17/data/celeba/train/info.txt'
-# TRAIN_X_ARR_PATH = '/home/cwx17/data/celeba/train/imgarr.npy'
-
-
-# TEST_DIR_PATH = '/home/cwx17/data/celeba/test'
-# TEST_X_PATH = '/home/cwx17/data/celeba/test/img'
-# TEST_Y_PATH = '/home/cwx17/data/celeba/test/test_eval.txt'
-# TEST_INFO_PATH = '/home/cwx17/data/celeba/test/info.txt'
-# TEST_X_ARR_PATH = '/home/cwx17/data/celeba/test/imgarr.npy'
-
-def _fetch_array_x(path):
-    file_names = os.listdir(path)
-    file_names.sort()
-    imgs = []
-    scale = 148 / float(64)
-    sigma = np.sqrt(scale) / 2.0
-    for name in file_names:
-        im = Image.open(os.path.join(path,name))
-        im = im.crop((15,40,163,188))
-        img = np.asarray(im)
-        img.setflags(write=True)
-        for dim in range(img.shape[2]):
-            img[...,dim] = filters.gaussian_filter(img[...,dim], sigma=(sigma,sigma))
-        img = imresize(img,(64,64,3))
-        imgs.append(img)
-        
-    return np.array(imgs)
-
-def _fetch_array_y(path):
-    evalue = []
-    with open(path,'rb') as f:
-        if debug:
-            cnt =0
-            for line in f.readlines():
-                print(line.decode('utf-8'))
-                q = line.decode('utf-8')
-                q = q.strip()
-                print(q.split(' '))
-                q = int(q.split(' ')[1])
-                evalue.append(q)
-                cnt +=1 
-                if cnt == 100:
-                    break
-        else:
-            for line in f.readlines():
-                q = line.decode('utf-8')
-                q = q.strip()
-                q = int(q.split(' ')[1])
-                evalue.append(q)
-    return np.array(evalue)
-
-def _store_array_x(arr,path,prefix):
-    cnt=1;
-    if not os.path.exists(path):
-        os.makedirs(path)
-    for img in arr:
-        mpimg.imsave(f'{path}/{prefix}{cnt}.jpg',img)
-        cnt+=1
-
-def _store_array_y(arr,path,dir_path,prefix):
-    cnt = 1;
-    if not os.path.exists(path):
-        os.makedirs(path)
-    with open(path,'w+') as f:
-        for i in arr:
-            f.write(f"{prefix}{cnt} {i}\r\n")
-            cnt+=1
-        
 debug = False
+
 
 
 __all__ = ['CelebADataSet']
@@ -231,32 +89,9 @@ def _resize(img, img_size=64, bbox=(40, 218-30, 15, 178-15)):
     return img
 
 
-class CelebADataSet(StandardImageDataSet):
+class CelebADataSet():
 
-    def __init__(self,
-                 image_size: int = 64,
-                 mmap_base_dir: Optional[str] = None,
-                 use_validation: bool = False,
-                 random_state: Optional[np.random.RandomState] = None):
-        super(CelebADataSet, self).__init__(
-            name='CelebA',
-            mmap_base_dir=mmap_base_dir,
-            loader_fn=partial(load_celeba, img_size=image_size),
-            color_depth=256,
-            has_y=False,
-            valid_data_count=19867 if use_validation else 0,
-            random_state=random_state,
-        )
-
-        assert (self.value_shape == (image_size, image_size, 3))
-        if use_validation:
-            assert (self.train_data_count == 162770)
-            assert (self.valid_data_count == 19867)
-        else:
-            assert (self.train_data_count == 182637)
-            assert (self.valid_data_count == 0)
-        assert (self.test_data_count == 19962)
-
+    
     @staticmethod
     def make_mmap(source_dir: str,
                   mmap_base_dir: str,
@@ -270,14 +105,14 @@ class CelebADataSet(StandardImageDataSet):
         Args:
             source_dir: The root directory of the original CelebA dataset.
                 The following directory and file are expected to exist:
-                * aligned images: `source_dir + "/Img/img_align_celeba"`
-                * partition file: `source_dir + "/Eval/list_eval/partition.txt"`
+                * aligned images: `source_dir + "/img_align_celeba/img_align_celeba"`
+                * partition file: `source_dir + "/list_eval/partition.txt"`
             mmap_base_dir: The mmap base directory.
             force: Whether or not to force generate the files even if they
                 have been already generated?
         """
         # check file system paths
-        image_dir = os.path.join(source_dir, 'img_align_celeba')
+        image_dir = os.path.join(source_dir, 'img_align_celeba/img_align_celeba')
         partition_file = os.path.join(
             source_dir, 'list_eval_partition.txt')
 
@@ -344,8 +179,62 @@ class CelebADataSet(StandardImageDataSet):
             process_set(0, f'{pfx}/train.dat', s)
 
 
-def prepare_celeba(x_shape=(218, 178), x_dtype=np.float32, y_dtype=np.int32,
-               normalize_x=False):
+def download_file_from_google_drive(id, destination):
+    # usage : download_file_from_google_drive(file_id_on_google_drive, path)
+    def get_confirm_token(response):
+        for key, value in response.cookies.items():
+            if key.startswith('download_warning'):
+                return value
+
+        return None
+
+    def save_response_content(response, destination):
+        CHUNK_SIZE = 32768
+
+        with open(destination, "wb") as f:
+            for chunk in response.iter_content(CHUNK_SIZE):
+                if chunk: # filter out keep-alive new chunks
+                    f.write(chunk)
+
+    URL = "https://docs.google.com/uc?export=download"
+
+    session = requests.Session()
+
+    response = session.get(URL, params = { 'id' : id }, stream = True)
+    token = get_confirm_token(response)
+
+    if token:
+        params = { 'id' : id, 'confirm' : token }
+        response = session.get(URL, params = params, stream = True)
+
+    save_response_content(response, destination)  
+
+class misc():
+    @staticmethod 
+    def download_celeba_img(path):
+        'url of aligned & cropped celeba https://drive.google.com/open?id=0B7EVK8r0v71pZjFTYXZWM3FlRnM'
+        ' size: 218*178'
+        ' format: jpg'
+        download_file_from_google_drive('0B7EVK8r0v71pZjFTYXZWM3FlRnM',path)
+
+    @staticmethod 
+    def download_celeba_eval(path):
+        'url of celeba eval https://drive.google.com/open?id=0B7EVK8r0v71pY0NSMzRuSXJEVkk'
+        download_file_from_google_drive('0B7EVK8r0v71pY0NSMzRuSXJEVkk',path)
+
+    @staticmethod
+    def unzip(src,dest):
+        '''
+        src: address of the zip
+        dest: a directory to store the file
+        '''
+        f = zipfile.ZipFile(src)
+        if not os.path.exists(dest):
+            os.makedirs(dest)
+        f.extractall(dest)  
+    celba_size = 202598
+
+def prepare_celeba():
     """
     Load the CelebA dataset as NumPy arrays.
     samilar to load_not_mnist
@@ -362,59 +251,27 @@ def prepare_celeba(x_shape=(218, 178), x_dtype=np.float32, y_dtype=np.int32,
             (train_x, train_y), (test_x, test_y)
              
     """
-    if (not os.path.exists(IMG_PATH)) or (len(os.listdir(IMG_PATH))!=202598):
-        print('img file not exist or img num wrong')
+    if (not os.path.exists(IMG_PATH)):
+        print('img file not exist')
         if os.path.exists(IMG_ZIP_PATH):
             print(f'zipped file exists\n unzipping\ndst: {IMG_PATH}')
             misc.unzip(IMG_ZIP_PATH,IMG_PATH)
             print('unzipped')
         else:
             print(f'zipped file dosen\'t exist\ndownloading img \ndst: {IMG_ZIP_PATH}')
-            misc.download_celeba_img(IMG_ZIP_PATH);
+            misc.download_celeba_img(IMG_ZIP_PATH)
             print(f'downloaded\nstart unzip\ndst: {IMG_PATH}')
             misc.unzip(IMG_ZIP_PATH,IMG_PATH)
             print('unzipped')
     if not os.path.exists(EVAL_PATH):
         print(f'eval doesn\'t exist\ndownloading eval \ndst: {EVAL_PATH}')
-        misc.download_celeba_eval(EVAL_PATH);
+        misc.download_celeba_eval(EVAL_PATH)
         print('downloaded')
 
-        # x = _fetch_array_x(IMG_PATH).astype(x_dtype)
-        # y = _fetch_array_y(EVAL_PATH).astype(y_dtype)
-
-        # train_x = []
-        # train_y = []
-        # test_x = []
-        # test_y = []
-
-        # for i in train:
-        #     train_x.append(x[i])
-        #     train_y.append(y[i])
-
-        # for i in test:
-        #     test_x.append(x[i])
-        #     test_y.append(y[i])
-
-        # train_x = np.array(train_x)
-        # train_y = np.array(train_y)
-        # test_x = np.array(test_x)
-        # test_y = np.array(test_y)
-
-        # train_x /= np.asarray(255., dtype=x.dtype)
-        # test_x /= np.asarray(255., dtype=x.dtype)
-
-        # np.save(train_x,TRAIN_X_ARR_PATH)
-        # np.save(test_x,TEST_X_ARR_PATH)
-
-    # train_x = np.load(TRAIN_X_ARR_PATH)
-    # test_x = np.load(TEST_X_ARR_PATH)
-
-    # return (train_x, train_y), (test_x, test_y)
-
 if __name__ == '__main__':
-    prepare_celeba()
-    # CelebADataSet.make_mmap(IMG_PATH,MAP_DIR_PATH,True)
-    # x_train,_,x_test=load_celeba()
+    # prepare_celeba()
+    CelebADataSet.make_mmap(PRE_DIR_PATH,MAP_DIR_PATH,True)
+    # x_train,x_validate,x_test=load_celeba()
 
     # print(x_train.shape)
     # print(x_test.shape)
