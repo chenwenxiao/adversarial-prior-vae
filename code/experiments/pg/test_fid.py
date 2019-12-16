@@ -14,10 +14,10 @@ if __name__ == "__main__":
 
     (cifar_train,_),(_,_) = spt.datasets.load_cifar10()
 
-    names = os.listdir(debug_dir)
+    names = os.listdir(ori_dir)
     ori_images = []
     for name in names:
-        big_image = Image.open(os.path.join(debug_dir,name))
+        big_image = Image.open(os.path.join(ori_dir,name))
         for x in range(10):
             for y in range(10):
                 image = big_image.crop((x*32,y*32,(x+1)*32,(y+1)*32))
