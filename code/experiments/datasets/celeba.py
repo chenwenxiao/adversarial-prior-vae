@@ -36,7 +36,7 @@ IMG_PATH = '/home/cwx17/data/celeba/img_align_celeba'
 
 EVAL_PATH = '/home/cwx17/data/celeba/list_eval_partition.txt'
 MAP_DIR_PATH = '/home/cwx/data'
-MAP_PATH = '/home/cwx/data/CelebA'
+MAP_PATH = '/home/cwx/data'
 
 debug = False
 
@@ -106,7 +106,7 @@ class CelebADataSet():
             source_dir: The root directory of the original CelebA dataset.
                 The following directory and file are expected to exist:
                 * aligned images: `source_dir + "/img_align_celeba/img_align_celeba"`
-                * partition file: `source_dir + "/list_eval/partition.txt"`
+                * partition file: `source_dir + "/list_eval_partition.txt"`
             mmap_base_dir: The mmap base directory.
             force: Whether or not to force generate the files even if they
                 have been already generated?
@@ -172,11 +172,10 @@ class CelebADataSet():
             with open(processed_file, 'wb') as f:
                 f.write(b'\n')
 
-        for s in (32, 64):
-            pfx = f'{s}x{s}'
-            process_set(2, f'{pfx}/test.dat', s)
-            process_set(1, f'{pfx}/val.dat', s)
-            process_set(0, f'{pfx}/train.dat', s)
+        pfx = f'{64}x{64}'
+        process_set(2, f'{pfx}/test.dat', 64)
+        process_set(1, f'{pfx}/val.dat', 64)
+        process_set(0, f'{pfx}/train.dat', 64)
 
 
 def download_file_from_google_drive(id, destination):
