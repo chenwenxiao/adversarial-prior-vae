@@ -1168,16 +1168,16 @@ def main():
                     ori_img.append(ori_images)
                     print('{}-th sample finished...'.format(i))
 
+                gan_img = np.concatenate(gan_img, axis=0).astype('uint8')
+                gan_img = np.asarray(gan_img)
+                mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
+                mala_img = np.asarray(mala_img)
                 for i in range(config.fid_test_times):
-                    gan_img = np.concatenate(gan_img, axis=0).astype('uint8')
-                    gan_img = np.asarray(gan_img)
                     FID = get_fid_google(gan_img, dataset_img)
                     IS_mean, IS_std = get_inception_score(gan_img)
                     loop.collect_metrics(FID_gan=FID)
                     loop.collect_metrics(IS_gan=IS_mean)
 
-                    mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
-                    mala_img = np.asarray(mala_img)
                     FID = get_fid_google(mala_img, dataset_img)
                     IS_mean, IS_std = get_inception_score(mala_img)
                     loop.collect_metrics(FID=FID)
