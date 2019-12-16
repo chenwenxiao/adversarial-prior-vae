@@ -5,7 +5,12 @@ usage:
 
     import celeba
 
-    (train_x, train_y), (test_x, test_y) = load_celeba()
+
+    try:
+        train_x, validate_x, test_x = celea.load_celeba()
+    except ValueError:
+        celeba.CelebADataSet.make_mmap(celeba.PRE_DIR_PATH, celeba.MAP_DIR_PATH,True)
+        train_x, validate_x, test_x = celea.load_celeba()
 
 '''
 import requests
