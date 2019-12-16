@@ -729,8 +729,7 @@ def main():
         dtype=tf.float32, shape=(), name='warm')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
-    beta = tf.Variable(initial_value=0.1, dtype=tf.float32, name='beta', trainable=True)
-    beta = tf.clip_by_value(beta, config.beta, 1.0)
+    beta = tf.Variable(initial_value=0.0, dtype=tf.float32, name='beta', trainable=True)
 
     # derive the loss for initializing
     with tf.name_scope('initialization'), \

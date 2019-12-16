@@ -851,8 +851,7 @@ def main():
         dtype=tf.float32, shape=(1,), name='mcmc_alpha')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
-    beta = tf.Variable(initial_value=0.1, dtype=tf.float32, name='beta', trainable=True)
-    beta = tf.clip_by_value(beta, config.beta, 1.0)
+    beta = tf.Variable(initial_value=0.0, dtype=tf.float32, name='beta', trainable=True)
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \

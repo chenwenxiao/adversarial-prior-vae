@@ -46,6 +46,7 @@ class ExpConfig(spt.Config):
     beta = 1e-8
     initial_xi = 0.0
     pull_back_energy_weight = 1000.0
+    uniform_scale = False
 
     max_step = None
     batch_size = 128
@@ -651,7 +652,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
     x_mean, x_logstd = G_theta(z, return_std=True)
     x = net.add('x', DiscretizedLogistic(
         mean=x_mean,
-        log_scale=spt.ops.maybe_clip_value(x_logstd, min_val=config.epsilon),
+        log_scale=spt.ops.maybe_clip_value(beta if config.uniform_scale else x_logstd, min_val=config.epsilon),
         bin_size=2.0 / 256.0,
         min_val=-1.0 + 1.0 / 256.0,
         max_val=1.0 - 1.0 / 256.0,
@@ -896,8 +897,7 @@ def main():
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_origin_x')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
-    beta = tf.Variable(initial_value=0.1, dtype=tf.float32, name='beta', trainable=True)
-    beta = tf.clip_by_value(beta, config.beta, 1.0)
+    beta = tf.Variable(initial_value=0.0, dtype=tf.float32, name='beta', trainable=True)
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
