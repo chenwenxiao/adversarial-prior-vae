@@ -16,12 +16,12 @@ import tensorflow as tf
 import numpy as np
 
 
-TRAIN_DIR_PATH = '/home/cwx17/data/imagenet/train'
-TRAIN_X_PATH = '/home/cwx17/data/imagenet/train/img'
-TRAIN_X_ARR_PATH = '/home/cwx17/data/imagenet/train/imgarr.npy'
+# TRAIN_DIR_PATH = '/home/cwx17/data/imagenet/train'
+# TRAIN_X_PATH = '/home/cwx17/data/imagenet/train/img'
+# TRAIN_X_ARR_PATH = '/home/cwx17/data/imagenet/train/imgarr.npy'
 
-TEST_DIR_PATH = '/home/cwx17/data/imagenet/test'
-TEST_X_PATH = '/home/cwx17/data/imagenet/test/img'
+TEST_DIR_PATH = '/home/cwx17/data/imagenet/test/valid_32x32'
+TEST_X_PATH = '/home/cwx17/data/imagenet/test/valid_32x32'
 TEST_X_ARR_PATH = '/home/cwx17/data/imagenet/test/imgarr.npy'
 
 
@@ -53,7 +53,7 @@ def _fetch_array_y(path):
             evalue.append(q)
     return np.array(evalue)
             
-def load_imagenet(x_shape=(32, 32), x_dtype=np.float32, y_dtype=np.int32,
+def load_imagenet_test(x_shape=(32, 32), x_dtype=np.float32, y_dtype=np.int32,
                normalize_x=False):
     """
     Load the imagenet dataset as NumPy arrays.
@@ -71,42 +71,18 @@ def load_imagenet(x_shape=(32, 32), x_dtype=np.float32, y_dtype=np.int32,
             (train_x, train_y), (test_x, test_y)
             
     """
-    if (not os.path.exists(TRAIN_DIR_PATH)): 
-        print('train dir not found')
-    elif (not os.path.exists(TEST_DIR_PATH)):
-        print("test dir not found")
-    else:
-        prepare_arr()
 
-    train_x = np.load(TRAIN_X_ARR_PATH)
-    test_x = np.load(TEST_X_ARR_PATH)
-    
-    train_y = range(0,len(train_x))
-    test_y = range(0,len(test_x))
+    test_x = _fetch_array_x(TEST_X_PATH)
+    test_y = np.array(range(0,len(test_x)))
 
-    return (train_x, train_y), (test_x, test_y)
-
-def prepare_arr():
-    if (not os.path.exists(TRAIN_X_ARR_PATH)): 
-        print('train arr not found')
-        train_x = _fetch_array_x(TRAIN_X_PATH)
-        train_x /= np.asarray(255., dtype=np.int32)
-        np.save(train_x,TRAIN_X_ARR_PATH)
-    elif (not os.path.exists(TEST_X_ARR_PATH)):
-        print("test arr not found")
-        test_x = _fetch_array_x(TEST_X_PATH)
-        test_x /= np.asarray(255., dtype=np.int32)
-        np.save(test_x,TEST_X_ARR_PATH)
-    else:
-        return
+    return (test_x, test_y)
 
 
 if __name__ == '__main__':
-    (_x_train, _y_train), (_x_test, _y_test) = load_imagenet()
-    print(_x_train.shape)
+    (_x_test, _y_test) = load_imagenet_test()
     print(_x_test.shape)
 
-    im = np.array(_x_train[19])
+    im = np.array(_x_test[19])
     im /= np.asarray(255., dtype=np.int32)
 
     import matplotlib.pyplot as plt
