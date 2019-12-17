@@ -274,11 +274,12 @@ def prepare_celeba():
 
 if __name__ == '__main__':
     # prepare_celeba()
-    CelebADataSet.make_mmap(PRE_DIR_PATH,MAP_DIR_PATH,True)
-    # x_train,x_validate,x_test=load_celeba()
+    # CelebADataSet.make_mmap(PRE_DIR_PATH,MAP_DIR_PATH,True)
+    x_train,x_validate,x_test=load_celeba()
 
-    # print(x_train.shape)
-    # print(x_test.shape)
+    print(x_train.shape)
+    print(x_validate.shape)
+    print(x_test.shape)
 
     # im = np.array(x_train[19])
     # im /= np.asarray(255., dtype=np.int32)

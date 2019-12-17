@@ -87,9 +87,9 @@ if __name__ == '__main__':
     im = np.array(_x_test[19])
     im /= np.asarray(255., dtype=np.int32)
 
-    import matplotlib.pyplot as plt
-    fig = plt.figure()
-    plotwindow = fig.add_subplot(111)
+    # import matplotlib.pyplot as plt
+    # fig = plt.figure()
+    # plotwindow = fig.add_subplot(111)
     print(im)
-    plt.imshow(im)
-    plt.show()
+    # plt.imshow(im)
+    # plt.show()
