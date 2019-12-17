@@ -1,16 +1,16 @@
 '''
-load CelebA dataset as numpy array
+load CelebA dataset(cropped 64x64) as numpy array
+len(train_x)==162770
+len(validate_x)==19867
+len(test_x)==19962
 
 usage:
 
     import celeba
 
+    train_x, validate_x, test_x = celea.load_celeba()
 
-    try:
-        train_x, validate_x, test_x = celea.load_celeba()
-    except ValueError:
-        celeba.CelebADataSet.make_mmap(celeba.PRE_DIR_PATH, celeba.MAP_DIR_PATH,True)
-        train_x, validate_x, test_x = celea.load_celeba()
+
 
 '''
 import requests

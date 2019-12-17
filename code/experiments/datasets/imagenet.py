@@ -1,11 +1,13 @@
 '''
-load imagenet dataset as numpy array
+load imagenet test dataset as numpy array
+len(test_x)==50000
 
 usage:
 
     import imagenet
 
-    (train_x, train_y), (test_x, test_y) = load_imagenet()
+    test_x, test_y = imagenet.load_imagenet_test()
+
 
 '''
 from PIL import Image
