@@ -85,11 +85,11 @@ class ExpConfig(spt.Config):
     test_fid_n_pz = 5000
     test_x_samples = 8
     log_Z_times = 100000
-    log_Z_x_samples = 8
+    log_Z_x_samples = 64
 
     len_train = 50000
     sample_n_z = 100
-    fid_samples = 500
+    fid_samples = 5000
 
     epsilon = -20.0
     min_logstd_of_q = -3.0
@@ -851,8 +851,7 @@ def main():
         dtype=tf.float32, shape=(1,), name='mcmc_alpha')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
-    beta = tf.Variable(initial_value=0.1, dtype=tf.float32, name='beta', trainable=True)
-    beta = tf.clip_by_value(beta, config.beta, 1.0)
+    beta = tf.Variable(initial_value=0.0, dtype=tf.float32, name='beta', trainable=True)
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
@@ -1062,12 +1061,11 @@ def main():
                         print(e)
 
                     mala_images = None
-                    ori_images = None
                     if loop.epoch >= config.max_epoch:
 
                         step_length = config.smallest_step
                         with loop.timeit('mala_sample_time'):
-                            for i in range(0, 1001):
+                            for i in range(0, 101):
                                 [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                                  batch_history_ratio] = session.run(
                                     [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z,
@@ -1091,31 +1089,8 @@ def main():
                                         print(e)
 
                         mala_images = images
-                        batch_z = batch_reconstruct_z
-                        batch_z = np.expand_dims(batch_z, axis=1)
-                        for i in range(0, 101):
-                            [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
-                             batch_history_ratio] = session.run(
-                                [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
-                                feed_dict={
-                                    initial_z: batch_z,
-                                    mcmc_alpha: np.asarray([config.smallest_step])
-                                })
-                            batch_z = batch_history_z[-1]
-                            if i % 100 == 0:
-                                print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
-                                try:
-                                    save_images_collection(
-                                        images=np.round(images),
-                                        filename='plotting/sample/{}-ORI-{}.png'.format(extra_index, i),
-                                        grid_size=(10, 10),
-                                        results=results,
-                                    )
-                                except Exception as e:
-                                    print(e)
-                        ori_images = images
 
-                    return gan_images, mala_images, ori_images
+                    return mala_images
 
     # prepare for training and testing data
     (_x_train, _y_train), (_x_test, _y_test) = \
@@ -1286,23 +1261,11 @@ def main():
 
                 if epoch == config.max_epoch:
                     dataset_img = np.tile(_x_train, (1, 1, 1, 3))
-                    gan_img = []
                     mala_img = []
-                    ori_img = []
                     for i in range(config.fid_samples // config.sample_n_z):
-                        gan_images, mala_images, ori_images = plot_samples(loop, 10000 + i)
-                        gan_img.append(gan_images)
+                        mala_images = plot_samples(loop, 10000 + i)
                         mala_img.append(mala_images)
-                        ori_img.append(ori_images)
                         print('{}-th sample finished...'.format(i))
-
-                    gan_img = np.concatenate(gan_img, axis=0).astype('uint8')
-                    gan_img = np.asarray(gan_img)
-                    gan_img = np.tile(gan_img, (1, 1, 1, 3))
-                    FID = get_fid_google(gan_img, dataset_img)
-                    IS_mean, IS_std = get_inception_score(gan_img)
-                    loop.collect_metrics(FID_gan=FID)
-                    loop.collect_metrics(IS_gan=IS_mean)
 
                     mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
                     mala_img = np.asarray(mala_img)
@@ -1311,14 +1274,6 @@ def main():
                     IS_mean, IS_std = get_inception_score(mala_img)
                     loop.collect_metrics(FID=FID)
                     loop.collect_metrics(IS=IS_mean)
-
-                    ori_img = np.concatenate(ori_img, axis=0).astype('uint8')
-                    ori_img = np.asarray(ori_img)
-                    ori_img = np.tile(ori_img, (1, 1, 1, 3))
-                    FID = get_fid_google(ori_img, dataset_img)
-                    IS_mean, IS_std = get_inception_score(ori_img)
-                    loop.collect_metrics(FID_ori=FID)
-                    loop.collect_metrics(IS_ori=IS_mean)
 
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
