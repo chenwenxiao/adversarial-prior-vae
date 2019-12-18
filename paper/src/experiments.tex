@@ -10,26 +10,29 @@ We will firstly use some experiments to show the selection of hyper-parameters i
 Model  &  $-\log p_\theta(x)$ \\
 \midrule
 Results with autoregressive   \\
-PIXELCNN         &  $= 81.30$      \\
-DRAW             &  $< 80.97$      \\
-IAFVAE           &  $\leq 79.88$      \\
-PIXELVAE         &  $\leq 79.66$      \\
-PIXELRNN         &  $=79.20$      \\
-VLAE             &  $\leq 79.03$      \\
-PixelHVAE with VampPrior        &  $\leq 78.45$      \\
+PIXELCNN         &  81.30      \\
+DRAW             &  80.97      \\
+IAFVAE           &  79.88      \\
+PIXELVAE         &  79.66      \\
+PIXELRNN         &  79.20      \\
+VLAE             &  79.03      \\
+PixelHVAE with VampPrior        &  78.45      \\
 \midrule
 Results without autoregressive   \\
-DISCRETE VAE     &  $\leq 81.01$      \\
+DISCRETE VAE     &  81.01      \\
 \midrule
 Results without learnable prior   \\
-VampPrior        &  $\leq 79.75$      \\
-VAEPP            &  $\leq 81.01$      \\
-Improved VAEPP   &  $\leq 81.01$      \\
+VampPrior        &  79.75      \\
+LARS             &  80.30     \\
+VAEPP            &  TODO      \\
+Improved VAEPP   &  TODO      \\
 \bottomrule
 \end{tabular}
 \caption{Test log-likelihood on MNIST}
 \label{tab:mnist-nll}
 \end{table}
+
+
 
 \subsection{Quality of Sampling}
 
