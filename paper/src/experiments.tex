@@ -3,11 +3,35 @@ We test VAEPP in vast common datasets including MNIST, Fashion-MNIST, CIFAR-10 a
 We will firstly use some experiments to show the selection of hyper-parameters in CIFAR-10. And then we will test the performance on other dataset without fine-turn hyper-parameters. In the 2nd subsection, we will show the quality of sampling. In the 3rd subsection, we will show how VAEPP solve the out-of-distribution problem. 
 \subsection{Log-likelihood}
 
-
+\begin{table}
+\centering
+\begin{tabular}{lrr}  
+\toprule
+Model  &  $-\log p_\theta(x)$ \\
+\midrule
+Results with autoregressive   \\
+PIXELCNN         &  $= 81.30$      \\
+DRAW             &  $< 80.97$      \\
+IAFVAE           &  $\leq 79.88$      \\
+PIXELVAE         &  $\leq 79.66$      \\
+PIXELRNN         &  $=79.20$      \\
+VLAE             &  $\leq 79.03$      \\
+PixelHVAE with VampPrior        &  $\leq 78.45$      \\
+\midrule
+Results without autoregressive   \\
+DISCRETE VAE     &  $\leq 81.01$      \\
+\midrule
+Results without learnable prior   \\
+VampPrior        &  $\leq 79.75$      \\
+VAEPP            &  $\leq 81.01$      \\
+Improved VAEPP   &  $\leq 81.01$      \\
+\bottomrule
+\end{tabular}
+\caption{Test log-likelihood on MNIST}
+\label{tab:mnist-nll}
+\end{table}
 
 \subsection{Quality of Sampling}
-
-
 
 
 \subsection{Out-of-Distribution}
