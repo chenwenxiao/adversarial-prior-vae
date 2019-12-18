@@ -61,7 +61,7 @@ class ExpConfig(spt.Config):
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    n_critical = 5
+    n_critical = 1
     # evaluation parameters
     train_n_pz = 128
     train_n_qz = 1
@@ -1176,14 +1176,14 @@ def main():
                             loop.collect_metrics(train_kl=batch_train_kl)
                             loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
 
-                            [_, batch_D_loss, batch_D_real, batch_G_loss] = session.run(
-                                [VAE_D_train_op, VAE_D_loss, VAE_D_real, VAE_G_loss], feed_dict={
-                                    input_x: x,
-                                    input_origin_x: origin_x,
-                                })
-                            loop.collect_metrics(VAE_D_loss=batch_D_loss)
-                            loop.collect_metrics(VAE_D_real=batch_D_real)
-                            loop.collect_metrics(VAE_G_loss=batch_G_loss)
+                        [_, batch_D_loss, batch_D_real, batch_G_loss] = session.run(
+                            [VAE_D_train_op, VAE_D_loss, VAE_D_real, VAE_G_loss], feed_dict={
+                                input_x: x,
+                                input_origin_x: origin_x,
+                            })
+                        loop.collect_metrics(VAE_D_loss=batch_D_loss)
+                        loop.collect_metrics(VAE_D_real=batch_D_real)
+                        loop.collect_metrics(VAE_G_loss=batch_G_loss)
                 else:
                     step_iterator = MyIterator(train_flow)
                     while step_iterator.has_next:

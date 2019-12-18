@@ -44,32 +44,65 @@ Because $\beta$ is optimized from small to large during training, we use both es
 \end{equation*}
 which means the $\hat{p}_\theta(x)$ is a lower bound of real model density $p_\theta(x)$.  
 
-Thanks to the stable and efficient gradient penalty regularizer term provided by WGAN-GP and WGAN-div, we enjoy stable and powerful training process. Training algorithm for VAEPP based on WGAN-GP is provided as \cref{alg:vaepp}:
+Thanks to the stable and efficient gradient penalty regularizer term provided by WGAN-GP and WGAN-div, we enjoy stable and powerful training process. Training algorithm for VAEPP based on WGAN-GP is provided as \cref{alg:vaepp}. We remove $n_{critic}$, number of critic iterations per generator iteration, from WGAN-GP framework since there is no significant difference when $n_{critic}$ varies in VAEPP.
 \begin{algorithm}[tb]
 \caption{VAEPP training algorithm}
 \label{alg:vaepp}
-\textbf{Require}: The gradient penalty algorithm $R$, the number of critic iterations $n_c$, the batch size $b$. The parameters for Adam Optimizers, $\tau$. 
+\textbf{Require}: The gradient penalty algorithm $R$, the batch size $b$, the parameters for Adam Optimizers, $\tau$. 
+
 \begin{algorithmic}[1] %[1] enables line numbers
 \WHILE{$\theta, \phi, \beta, \omega$ have not converged}
-\FOR {$t = 1, \ldots, n_c$}
 \FOR {$i = 1, \ldots, b$}
 \STATE Sample real data $x \sim p^*$, latent variable $z \sim p_\mathcal{N}$.
-
 \STATE	$\hat{x} = \E_{p_\theta(x|z)}[x]$
 \STATE Get gradient penalty $\zeta \gets R(x, \hat{x})$. 
 \STATE $L^{(i)} \gets D(\hat{x}) - D(x) + \zeta$
 \ENDFOR
 \STATE $\omega \gets $ Adam $(\nabla_{\omega} \frac{1}{b}\sum_{i}^b L^{(i)}, \omega, \tau)$
-\ENDFOR
 \FOR {$i = 1, \ldots, b$}
 \STATE Sample real data $x \sim p^*$, $z \sim q_\phi(z|x)$, $\epsilon \sim p_\mathcal{N}$.
 \STATE $Z^{(i)} \gets \frac{1}{2}(\exp\{-\beta * D(G(\epsilon))\} + N \frac{f_\lambda(z)}{q_\phi(z|x)})$
-\STATE $\mathcal{L}^{(i)} \gets \log p_\theta(x|z) + \log f_\lambda(z) - \log q_\phi(z|x)$
+\STATE $\mathcal{L}^{(i)} \gets \ln p_\theta(x|z) + \ln f_\lambda(z) - \ln q_\phi(z|x)$
 \ENDFOR
-\STATE $\mathcal{L} \gets \frac{1}{b}\sum_{i}^b \mathcal{L}^{(i)} - \log (\frac{1}{b}\sum_{i}^b Z^{(i)})$
+\STATE $\mathcal{L} \gets \frac{1}{b}\sum_{i}^b \mathcal{L}^{(i)} - \ln (\frac{1}{b}\sum_{i}^b Z^{(i)})$
 \STATE $\theta, \phi, \beta \gets $ Adam $(\nabla_{\theta, \phi, \beta} \mathcal{L}, \{\theta, \phi, \beta\}, \tau)$
 \ENDWHILE
 \end{algorithmic}
 \end{algorithm}
 
+\subsection{Improvement of VAEPP}
+We have introduced the architecture and training algorithm for VAEPP, whose performance is better than vanilla VAE and some variants of VAE with learnable prior. However, we notice that in the training process, the optimization of $\omega$ may influence the optimization of $\theta, \phi, \beta$, \EG the optimization for $\omega$ significantly worsen the loss function which have been optimized well. The reason is that the optimization for $\omega$ is independent to the optimization of $\theta, \phi, \beta$ in \cref{alg:vaepp}. This independence is from the philosophy of GAN but it may suffer the performance of VAEPP (log-likelihood). Hence, is it possible to combine this two optimization into one to improve the performance and stability of VAEPP? Our answer is positive and our goal is to use SGVB with gradient penalty regularizer to train it. 
+
+Let's see what will happen if $\mathcal{L}(\theta, \phi, \beta, \omega)$ is directly trained by SGVB. The behavior of $\theta, \phi, \beta$ will be same as \cref{alg:vaepp} since the optimization for them is not changed. The only thing we need to check is the optimization for $\max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$ (sign $\simeq$ means that there is only a constant difference between left and right). We firstly show a inequality of $\ln Z$:
+\begin{equation*}
+	\ln Z = \ln \E_{p_\mathcal{N}} \exp \{- \beta * D(G(z))\} \geq \E_{p_\mathcal{N}} [- \beta * D(G(z))]
+\end{equation*}
+Then $\max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$ indeed find a suboptimal solution for $W^1(p^*, p_\theta)$. 
+\begin{align*}\label{eq:improve_vaepp}
+	\max_{Lip(D) \leq 1} \mathcal{L} &\simeq \max_{Lip(D) \leq 1} \{ -\E_{q_\phi(z)} \beta*D(G(z)) - \ln Z \}\\ 
+	&\leq \beta \max_{Lip(D) \leq 1} \{ \E_{p_\mathcal{N}} D(G(z)) - E_{q_\phi(z)} D(G(z)) \} \\
+	&= \beta W^1(p_\theta, p_r) \approx \beta W^1(p_\theta, p^*) \tag{11}
+\end{align*}
+where $p_r$ denotes $p_r(x) = \E_{q_\phi(z)} p_\theta(x|z)$, consisting of reconstructed data. The last approximation sign is from the fact that $p_\theta \rightarrow p^*$ after a few epoch in the training of VAE. 
+
+\cref{eq:improve_vaepp} indicates that is is possible to obtain a suboptimal solution for $D$ by directly optimizing $\mathcal{L}$. By this way, the optimizations for $\omega$ and $\theta, \phi, \beta$ is combined into one, which is provides as \cref{alg:improved_vaepp}. 
+
+\begin{algorithm}[tb]
+\caption{Improved VAEPP training algorithm}
+\label{alg:improved_vaepp}
+\textbf{Require}: The gradient penalty algorithm $R$, the batch size $b$, the parameters for Adam Optimizers, $\tau$. 
+
+\begin{algorithmic}[1] %[1] enables line numbers
+\WHILE{$\theta, \phi, \beta, \omega$ have not converged}
+\FOR {$i = 1, \ldots, b$}
+\STATE Sample real data $x \sim p^*$, $z \sim q_\phi(z|x)$, $\epsilon \sim p_\mathcal{N}$.
+\STATE $Z^{(i)} \gets \frac{1}{2}(\exp\{-\beta * D(G(\epsilon))\} + N \frac{f_\lambda(z)}{q_\phi(z|x)})$
+\STATE $\mathcal{L}^{(i)} \gets \ln p_\theta(x|z) + \ln f_\lambda(z) - \ln q_\phi(z|x)$
+\ENDFOR
+\STATE $\mathcal{L} \gets \frac{1}{b}\sum_{i}^b \mathcal{L}^{(i)} - \ln (\frac{1}{b}\sum_{i}^b Z^{(i)})$
+\STATE $\theta, \phi, \beta, \omega \gets $ Adam $(\nabla_{\theta, \phi, \beta} \mathcal{L}, \{\theta, \phi, \beta, \omega\}, \tau)$
+\ENDWHILE
+\end{algorithmic}
+\end{algorithm}
+ 
  
