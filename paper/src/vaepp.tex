@@ -5,9 +5,9 @@ In \cref{sec:pull_back_prior}, we focus on the 2nd optimization and propose the 
 
 \subsection{Determine $\beta$}
 
-$\beta$ in \cref{eq:pull_back_prior} represents how far $p_\lambda$ is from $p_\mathcal{N}$, but how we decide the value of $\beta$? When $\beta$ is smaller, the difference between $p_\lambda$ and $p_\mathcal{N}$ is less, i.e. the representation ability of $p_\lambda$ is severely limited. When $\beta$ is larger, $p_\lambda$ is farther from $p_\mathcal{N}$. But noticing that in \cref{eq:final_optimization}, we simplify the optimization of $D$ by a fixed $D$ obtained in $W^1(\E_{p_\mathcal{N}}p_\theta(x|z), p^*)$, if $p_\lambda$ is enough far from $p_\mathcal{N}$, this approximation will become invalid. Consequently, $\beta$ should be set to an appropriate value which can't limit the representation ability of $p_\lambda$ and could make sure the approximation $D$ is valid. It is important to realize that the Pull-back Prior is serving for better ELBO. Whatever the representation ability of $p_\lambda$ is limited or approximation $D$ is invalid, the ELBO will suffer. Therefore, it is reasonable to set $\beta$ by the optimization for ELBO ($\lambda$ contains $\beta$ and the parameters of $D$):
+$\beta$ in \cref{eq:pull_back_prior} represents how far $p_\lambda$ is from $p_\mathcal{N}$, but how we decide the value of $\beta$? When $\beta$ is smaller, the difference between $p_\lambda$ and $p_\mathcal{N}$ is less, i.e. the representation ability of $p_\lambda$ is severely limited. When $\beta$ is larger, $p_\lambda$ is farther from $p_\mathcal{N}$. But noticing that in \cref{eq:final_optimization}, we simplify the optimization of $D$ by a fixed $D$ obtained in $W^1(\E_{p_\mathcal{N}}p_\theta(x|z), p^*)$, if $p_\lambda$ is enough far from $p_\mathcal{N}$, this approximation will become invalid. Consequently, $\beta$ should be set to an appropriate value which can't limit the representation ability of $p_\lambda$ and could make sure the approximation $D$ is valid. It is important to realize that the Pull-back Prior is serving for better ELBO. Whatever the representation ability of $p_\lambda$ is limited or approximation $D$ is invalid, the ELBO will suffer. Therefore, it is reasonable to set $\beta$ by the optimization for ELBO ($\lambda$ contains $\beta$ and $\omega$ which is the parameters of $D$):
 \begin{equation}
-	\beta = \arg \min_{\beta} \mathcal{L}(\theta, \phi, \lambda) = \arg \min_{\beta} \mathcal{L}(\theta, \phi, \beta, D) \tag{8}
+	\beta = \arg \min_{\beta} \mathcal{L}(\theta, \phi, \lambda) = \arg \min_{\beta} \mathcal{L}(\theta, \phi, \beta, \omega) \tag{8}
 \end{equation}
 
 Afterwards, let we research the behavior of $\beta$ during training, i.e. the sign of $\partial \mathcal{L}/\partial \beta$.
@@ -44,6 +44,32 @@ Because $\beta$ is optimized from small to large during training, we use both es
 \end{equation*}
 which means the $\hat{p}_\theta(x)$ is a lower bound of real model density $p_\theta(x)$.  
 
-\subsection{Sampling}
-TODO
+Thanks to the stable and efficient gradient penalty regularizer term provided by WGAN-GP and WGAN-div, we enjoy stable and powerful training process. Training algorithm for VAEPP based on WGAN-GP is provided as \cref{alg:vaepp}:
+\begin{algorithm}[tb]
+\caption{VAEPP training algorithm}
+\label{alg:vaepp}
+\textbf{Require}: The gradient penalty algorithm $R$, the number of critic iterations $n_c$, the batch size $b$. The parameters for Adam Optimizers, $\tau$. 
+\begin{algorithmic}[1] %[1] enables line numbers
+\WHILE{$\theta, \phi, \beta, \omega$ have not converged}
+\FOR {$t = 1, \ldots, n_c$}
+\FOR {$i = 1, \ldots, b$}
+\STATE Sample real data $x \sim p^*$, latent variable $z \sim p_\mathcal{N}$.
+
+\STATE	$\hat{x} = \E_{p_\theta(x|z)}[x]$
+\STATE Get gradient penalty $\zeta \gets R(x, \hat{x})$. 
+\STATE $L^{(i)} \gets D(\hat{x}) - D(x) + \zeta$
+\ENDFOR
+\STATE $\omega \gets $ Adam $(\nabla_{\omega} \frac{1}{b}\sum_{i}^b L^{(i)}, \omega, \tau)$
+\ENDFOR
+\FOR {$i = 1, \ldots, b$}
+\STATE Sample real data $x \sim p^*$, $z \sim q_\phi(z|x)$, $\epsilon \sim p_\mathcal{N}$.
+\STATE $Z^{(i)} \gets \frac{1}{2}(\exp\{-\beta * D(G(\epsilon))\} + N \frac{f_\lambda(z)}{q_\phi(z|x)})$
+\STATE $\mathcal{L}^{(i)} \gets \log p_\theta(x|z) + \log f_\lambda(z) - \log q_\phi(z|x)$
+\ENDFOR
+\STATE $\mathcal{L} \gets \frac{1}{b}\sum_{i}^b \mathcal{L}^{(i)} - \log (\frac{1}{b}\sum_{i}^b Z^{(i)})$
+\STATE $\theta, \phi, \beta \gets $ Adam $(\nabla_{\theta, \phi, \beta} \mathcal{L}, \{\theta, \phi, \beta\}, \tau)$
+\ENDWHILE
+\end{algorithmic}
+\end{algorithm}
+
  
