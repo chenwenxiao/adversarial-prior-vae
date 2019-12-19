@@ -37,7 +37,36 @@ Improved VAEPP   &  TODO      \\
 \centering
 \begin{tabular}{lrr}  
 \toprule
-Model  &  $-\log p_\theta(x) / (3072 * \ln 2)$ \\
+Model  &  bits/dim \\
+\midrule
+Results with autoregressive   \\
+CONVDRAW         &  3.58      \\
+IAFVAE           &  3.15      \\
+IAFVAE           &  3.11      \\
+GATEDPIXELCNN    &  3.03      \\
+PIXELRNN         &  3.00      \\
+VLAE             &  2.95      \\
+PIXELCNN++       &  2.92      \\
+\midrule
+Results without learnable prior   \\
+NICE             &  4.48      \\
+DEEPGMMS         &  4.00      \\
+REALNVP          &  3.49      \\
+DISCRETE VAE++   &  3.38      \\
+GLOW             &  3.35      \\
+ VAEPP           &  TODO.     \\
+Improved VAEPP   &  TODO.     \\
+\bottomrule
+\end{tabular}
+\caption{Test log-likelihood on CIFAR-10. Bits/dim means $-\log p_\theta(x|z) / (3072 * \ln(2))$.}
+\label{tab:cifar-nll}
+\end{table}
+
+\begin{table}
+\centering
+\begin{tabular}{lrr}  
+\toprule
+Model  &  bits/dim \\
 \midrule
 Results with autoregressive   \\
 CONVDRAW         &  3.58      \\
@@ -55,12 +84,58 @@ REALNVP          &  3.49      \\
 DISCRETE VAE++   &  3.38      \\
 GLOW             &  3.35      \\
 VAEPP            &  TODO      \\
-Improved VAEPP   &  TODO.     \\
+Improved VAEPP   &  TODO      \\
 \bottomrule
 \end{tabular}
-\caption{Test log-likelihood on CIFAR-10}
+\caption{Test log-likelihood on CELEBA.  }
 \label{tab:cifar-nll}
 \end{table}
+
+We evaluate and compare the performance of VAEPP after training by \cref{alg:vaepp} and \cref{alg:improved_vaepp} on CIFAR10 when the dimension of latent space is varied from 64 to 1024 and the garadient penalty algorithm is selected from 3 strategy: WGAN-GP, WGAN-div-1  (sampling the linear combination of two real or two fake data points), WGAN-div-2 (sampling both real or fake data points) as shown in \cref{tab:compre_nD_over_z_dim} and \cref{tab:compre_nD_over_R}. Our conclusion is that \cref{alg:improved_vaepp} outperforms \cref{alg:vaepp} under all of settings in CIFAR-10 dataset. We then evaluate them on other datasets, MNIST, CELEBA. This conclusion also holds for them. This validate our proposition in \cref{subsec:improve_of_vaepp}. 
+
+\begin{table}
+\centering
+\begin{tabular}{lrr}  
+\toprule
+Model  &  dim $\mathcal{Z}$  &  bits/dim \\
+\midrule
+VAEPP            &  64   & TODO      \\
+                 &  128  & TODO      \\
+                 &  256  & TODO      \\
+                 &  512  & TODO      \\
+                 &  1024 & TODO      \\
+Improved VAEPP   &  64   & TODO      \\
+                 &  128  & TODO      \\
+                 &  256  & TODO      \\
+                 &  512  & TODO      \\
+                 &  1024 & TODO      \\
+\bottomrule
+\end{tabular}
+\caption{Comparation between VAEPP and Improved VAEPP when the dimension of latent space is varied on CIFAR-10}
+\label{tab:compre_nD_over_z_dim}
+\end{table}
+
+\begin{table}
+\centering
+\begin{tabular}{lrr}  
+\toprule
+Model  &  GP Strategy  &  bits/dim \\
+\midrule
+VAEPP            &  WGAN-GP   & TODO      \\
+                 &  WGAN-div-1  & TODO      \\
+                 &  WGAN-div-2  & TODO      \\
+Improved VAEPP   &  WGAN-GP   & TODO      \\
+                 &  WGAN-div-1  & TODO     \\
+                 &  WGAN-div-2  & TODO      \\
+\bottomrule
+\end{tabular}
+\caption{Comparation between VAEPP and Improved VAEPP when gradient penalty strategy is varied on CIFAR-10 with dim $\mathcal{Z} = 1024$. }
+\label{tab:compre_nD_over_R}
+\end{table}
+
+We compare our algorithms with other log-likelihood based model on MNIST, CIFAR-10 and CELEBA. Because the improvement of auto-regressive components is significant, we separate models by whether use auto-regressive component as [] did. Improved VAEPP outperforms most of the models without autoregressive component and is competitive to the models with autoregressive. The reason of why VAEPP don't use auto-regressive component is that VAEPP is time-consuming in training,  evaluation and sampling due to the huge structure (need additional discriminator) and Langevin dynamics. It is not easy to apply auto-regressive component on VAEPP considering the cost of auto-regressive is also time-consuming. Concretely, a whole process including training, evaluation and sampling on CIFAR10 will cost roughly one week on single Nvidia 2080Ti GPU card. On the other hand, we expect that the pure improvement on learnable prior could improve the performance of VAE rather than the improvement on encoder or decoder, since it is clearer and easier to develop in theory. Therefore, how to apply autoregressive component on VAEPP is a valuable and challenging work. We leave it as a future work.
+
+We evaluate $Z$ by two ways mentioned in \cref{subsec:determine_z} and compare the variance of them in 10 times on CIFAR-10. The variance of estimation based on $q_\phi(z)$ (TODO), is much less than the variance of estimation based on $p_\mathcal{N}$ (TODO), which supports our proposition in \cref{subsec:determine_z}. Since the variance of $Z$ also influence the variance of log-likelihood, we also evaluate the variance of log-likelihood in 10 times on CIFAR-10 (TODO) to ensure the stability of evaluation. 
 
 \subsection{Quality of Sampling}
 

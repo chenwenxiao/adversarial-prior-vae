@@ -17,7 +17,7 @@ Afterwards, let we research the behavior of $\beta$ during training, i.e. the si
 \end{align*}
 The 1st term in \cref{eq:behavior_of_beta} is the mean of discriminator on data generated from $p_\lambda$. The 2nd term in \cref{eq:behavior_of_beta} is the mean of discriminator on reconstructed data which is near same as real data when reconstruction is well-trained. Hence, $\partial \mathcal{L}/\partial \beta = 0$ represents that the discriminator can't distinguish the reconstructed data (near same as real data) and generated data. It coincides the philosophy of GAN. 
 
-\subsection{Determine $Z$}
+\subsection{Determine $Z$}\label{subsec:determine_z}
 
 We have known that $Z = \int_{\mathcal{Z}} p_\mathcal{N}(z) \exp\{- \beta * D(G(z))\} \dd z$, denoted by $\int_{\mathcal{Z}} f_\lambda(z) \dd z$. It is natural to determine $Z$ by importance sampling $Z = \E_{p_\mathcal{N}(z)} \exp\{- \beta * D(G(z))\}$ as [] did. By the theory of importance sampling, the variance of the estimation of $Z$ is $\frac{1}{M} Var_{p_b}[\frac{f_\lambda}{p_b}]$ where $M$ is the number of samples. and hence the variance will be larger when $f_\lambda$ is farther from $p_b$. If we choose $p_b$ as $p_\mathcal{N}$, when $\beta$ is large, the variance will be larger and it will influence the optimization and evaluation. 
 
@@ -69,7 +69,7 @@ Thanks to the stable and efficient gradient penalty regularizer term provided by
 \end{algorithmic}
 \end{algorithm}
 
-\subsection{Improvement of VAEPP}
+\subsection{Improvement of VAEPP} \label{subsec:improve_of_vaepp}
 We have introduced the architecture and training algorithm for VAEPP, whose performance is better than vanilla VAE and some variants of VAE with learnable prior. However, we notice that in the training process, the optimization of $\omega$ may influence the optimization of $\theta, \phi, \beta$, \EG the optimization for $\omega$ significantly worsen the loss function which have been optimized well. The reason is that the optimization for $\omega$ is independent to the optimization of $\theta, \phi, \beta$ in \cref{alg:vaepp}. This independence is from the philosophy of GAN but it may suffer the performance of VAEPP (log-likelihood). Hence, is it possible to combine this two optimization into one to improve the performance and stability of VAEPP? Our answer is positive and our goal is to use SGVB with gradient penalty regularizer to train it. 
 
 Let's see what will happen if $\mathcal{L}(\theta, \phi, \beta, \omega)$ is directly trained by SGVB. The behavior of $\theta, \phi, \beta$ will be same as \cref{alg:vaepp} since the optimization for them is not changed. The only thing we need to check is the optimization for $\max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$ (sign $\simeq$ means that there is only a constant difference between left and right). We firstly show a inequality of $\ln Z$:
