@@ -368,6 +368,11 @@ def inception_transform_np(inputs, batch_size):
 
 def get_fid_compare_gan(sample, real):
     """Returns the FID
+    
+    basically this function has same 
+    logical reesult with get_fid_google
+    this function is same with compare_gan
+    at https://github.com/google/compare_gan/blob/master/compare_gan/eval_utils.py
 
     Returns:
       A float, the Frechet Inception Distance.
