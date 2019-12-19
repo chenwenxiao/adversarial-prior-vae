@@ -40,8 +40,8 @@ IMG_ZIP_PATH = '/home/cwx17/data/celeba/img_align_celeba.zip'
 IMG_PATH = '/home/cwx17/data/celeba/img_align_celeba'
 
 EVAL_PATH = '/home/cwx17/data/celeba/list_eval_partition.txt'
-MAP_DIR_PATH = '/home/cwx/data'
-MAP_PATH = '/home/cwx/data'
+MAP_DIR_PATH = '/home/cwx17/data/CelebA_mmp'
+MAP_PATH = '/home/cwx17/data/CelebA_mmp'
 
 debug = False
 
