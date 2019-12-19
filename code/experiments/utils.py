@@ -333,6 +333,62 @@ def get_fid_google(sample, real):
         fid = sess.run(fid)
     return fid
 
+def inception_transform(inputs):
+    with tf.control_dependencies([
+        tf.assert_greater_equal(inputs, 0.0),
+        tf.assert_less_equal(inputs, 255.0)]):
+        inputs = tf.identity(inputs)
+    preprocessed_inputs = tf.map_fn(
+        fn=tfgan.eval.preprocess_image, 
+        elems=inputs, 
+        back_prop=False)
+    return tfgan.eval.run_inception(
+        preprocessed_inputs,
+        graph_def=graph_def,
+        output_tensor=["pool_3:0", "logits:0"])
+
+
+def inception_transform_np(inputs, batch_size):
+    with tf.Session(graph=tf.Graph()) as sess:
+        inputs_placeholder = tf.placeholder(
+            dtype=tf.float32, shape=[None] + list(inputs[0].shape))
+        features_and_logits = inception_transform(inputs_placeholder)
+        features = []
+        logits = []
+        num_batches = int(np.ceil(inputs.shape[0] / batch_size))
+        for i in range(num_batches):
+            input_batch = inputs[i * batch_size:(i + 1) * batch_size]
+            x = sess.run(
+                features_and_logits, feed_dict={inputs_placeholder: input_batch})
+            features.append(x[0])
+            logits.append(x[1])
+        features = np.vstack(features)
+        logits = np.vstack(logits)
+        return features, logits
+
+def get_fid_compare_gan(sample, real):
+    """Returns the FID
+    
+    basically this function has same 
+    logical reesult with get_fid_google
+    this function is same with compare_gan
+    at https://github.com/google/compare_gan/blob/master/compare_gan/eval_utils.py
+
+    Returns:
+      A float, the Frechet Inception Distance.
+    """
+    tf.import_graph_def(graph_def, name='FID_Inception_Net')
+    with tf.Session() as sess:
+        (fake_activations,_) = inception_transform_np(sample, 50)
+        (real_activations,_) = inception_transform_np(real, 50)
+        fake_activations = tf.convert_to_tensor(fake_activations)
+        real_activations = tf.convert_to_tensor(real_activations)
+        fid = tfgan.eval.frechet_classifier_distance_from_activations(
+            real_activations=real_activations,
+            generated_activations=fake_activations)
+        fid = sess.run(fid)
+    return fid
+
 
 def get_mean_cov(ims, sess, batch_size=100):
     n, c, w, h = ims.shape
@@ -389,7 +445,11 @@ if __name__ == '__main__':
     google = get_fid_google(x1, x2)
     print(f"google fid's {google}")
 
-    print(f"compare\n google: {google}\n sngan: {sngan}\n ttur: {ttur}\n")
+    print("compare gan fid's calculating")
+    compare_gan = get_fid_compare_gan(x1, x2)
+    print(f"compare gan fid's {compare_gan}")
+
+    print(f"compare gan: {compare_gan}\n google: {google}\n sngan: {sngan}\n ttur: {ttur}\n")
 
 
     # print(get_inception_score_tf(test_x))
