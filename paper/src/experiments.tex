@@ -1,9 +1,9 @@
 \section{Experiments}
-We test VAEPP in vast common datasets including MNIST, Fashion-MNIST, CIFAR-10 and CELEBA. 
+We test VAEPP in vast common datasets including MNIST, Fashion-MNIST, CIFAR-10 and CelebA. 
 We will firstly use some experiments to show the selection of hyper-parameters in CIFAR-10. And then we will test the performance on other dataset without fine-turn hyper-parameters. In the 2nd subsection, we will show the quality of sampling. In the 3rd subsection, we will show how VAEPP solve the out-of-distribution problem. 
 \subsection{Log-likelihood}
 
-\begin{table}
+\begin{table}[tb]
 \centering
 \begin{tabular}{lrr}  
 \toprule
@@ -33,7 +33,7 @@ Improved VAEPP   &  TODO      \\
 \end{table}
 
 
-\begin{table}
+\begin{table}[tb]
 \centering
 \begin{tabular}{lrr}  
 \toprule
@@ -61,61 +61,45 @@ Improved VAEPP   &  TODO.     \\
 \caption{Test log-likelihood on CIFAR-10. Bits/dim means $-\log p_\theta(x|z) / (3072 * \ln(2))$.}
 \label{tab:cifar-nll}
 \end{table}
-
-\begin{table}
+\begin{table}[tb]
 \centering
 \begin{tabular}{lrr}  
 \toprule
 Model  &  bits/dim \\
 \midrule
-Results with autoregressive   \\
-CONVDRAW         &  3.58      \\
-IAFVAE           &  3.15      \\
-IAFVAE           &  3.11      \\
-GATEDPIXELCNN    &  3.03      \\
-PIXELRNN         &  3.00      \\
-VLAE             &  2.95      \\
-PIXELCNN++       &  2.92      \\
-\midrule
-Results without learnable prior   \\
-NICE             &  4.48      \\
-DEEPGMMS         &  4.00      \\
-REALNVP          &  3.49      \\
-DISCRETE VAE++   &  3.38      \\
-GLOW             &  3.35      \\
-VAEPP            &  TODO      \\
-Improved VAEPP   &  TODO      \\
+VAEPP           &  TODO.     \\
+Improved VAEPP   &  TODO.     \\
 \bottomrule
 \end{tabular}
-\caption{Test log-likelihood on CELEBA.  }
+\caption{Test log-likelihood on CelebA. }
 \label{tab:cifar-nll}
 \end{table}
 
-We evaluate and compare the performance of VAEPP after training by \cref{alg:vaepp} and \cref{alg:improved_vaepp} on CIFAR10 when the dimension of latent space is varied from 64 to 1024 and the garadient penalty algorithm is selected from 3 strategy: WGAN-GP, WGAN-div-1  (sampling the linear combination of two real or two fake data points), WGAN-div-2 (sampling both real or fake data points) as shown in \cref{tab:compre_nD_over_z_dim} and \cref{tab:compre_nD_over_R}. Our conclusion is that \cref{alg:improved_vaepp} outperforms \cref{alg:vaepp} under all of settings in CIFAR-10 dataset. We then evaluate them on other datasets, MNIST, CELEBA. This conclusion also holds for them. This validate our proposition in \cref{subsec:improve_of_vaepp}. 
+We evaluate and compare the performance of VAEPP after training by \cref{alg:vaepp} and \cref{alg:improved_vaepp} on CIFAR10 when the dimension of latent space is varied from 64 to 1024 and the garadient penalty algorithm is selected from 3 strategy: WGAN-GP, WGAN-div-1  (sampling the linear combination of two real or two fake data points), WGAN-div-2 (sampling both real or fake data points) as shown in \cref{tab:compare_nD_over_z_dim} and \cref{tab:compare_nD_over_R}. Our conclusion is that \cref{alg:improved_vaepp} outperforms \cref{alg:vaepp} under all of settings in CIFAR-10 dataset. We then evaluate them on other datasets, MNIST, CelebA. This conclusion also holds for them. This validate our proposition in \cref{subsec:improve_of_vaepp}. 
 
-\begin{table}
+\begin{table}[tb]
 \centering
-\begin{tabular}{lrr}  
+\begin{tabular}{lrrr}  
 \toprule
-Model  &  dim $\mathcal{Z}$  &  bits/dim \\
+Model  &  dim $\mathcal{Z}$  &  bits/dim  & FID \\
 \midrule
-VAEPP            &  64   & TODO      \\
-                 &  128  & TODO      \\
-                 &  256  & TODO      \\
-                 &  512  & TODO      \\
-                 &  1024 & TODO      \\
-Improved VAEPP   &  64   & TODO      \\
-                 &  128  & TODO      \\
-                 &  256  & TODO      \\
-                 &  512  & TODO      \\
-                 &  1024 & TODO      \\
+VAEPP            &  64   & TODO  & TODO      \\
+                 &  128  & TODO  & TODO     \\
+                 &  256  & TODO  & TODO     \\
+                 &  512  & TODO  & TODO     \\
+                 &  1024 & TODO  & TODO     \\
+Improved VAEPP   &  64   & TODO  & TODO     \\
+                 &  128  & TODO  & TODO     \\
+                 &  256  & TODO  & TODO     \\
+                 &  512  & TODO  & TODO     \\
+                 &  1024 & TODO  & TODO     \\
 \bottomrule
 \end{tabular}
 \caption{Comparation between VAEPP and Improved VAEPP when the dimension of latent space is varied on CIFAR-10}
-\label{tab:compre_nD_over_z_dim}
+\label{tab:compare_nD_over_z_dim}
 \end{table}
 
-\begin{table}
+\begin{table}[tb]
 \centering
 \begin{tabular}{lrr}  
 \toprule
@@ -129,17 +113,76 @@ Improved VAEPP   &  WGAN-GP   & TODO      \\
                  &  WGAN-div-2  & TODO      \\
 \bottomrule
 \end{tabular}
-\caption{Comparation between VAEPP and Improved VAEPP when gradient penalty strategy is varied on CIFAR-10 with dim $\mathcal{Z} = 1024$. }
-\label{tab:compre_nD_over_R}
+\caption{Comparation between VAEPP and Improved VAEPP when gradient penalty strategy varies on CIFAR-10 with dim $\mathcal{Z} = 1024$. }
+\label{tab:compare_nD_over_R}
 \end{table}
 
-We compare our algorithms with other log-likelihood based model on MNIST, CIFAR-10 and CELEBA. Because the improvement of auto-regressive components is significant, we separate models by whether use auto-regressive component as [] did. Improved VAEPP outperforms most of the models without autoregressive component and is competitive to the models with autoregressive. The reason of why VAEPP don't use auto-regressive component is that VAEPP is time-consuming in training,  evaluation and sampling due to the huge structure (need additional discriminator) and Langevin dynamics. It is not easy to apply auto-regressive component on VAEPP considering the cost of auto-regressive is also time-consuming. Concretely, a whole process including training, evaluation and sampling on CIFAR10 will cost roughly one week on single Nvidia 2080Ti GPU card. On the other hand, we expect that the pure improvement on learnable prior could improve the performance of VAE rather than the improvement on encoder or decoder, since it is clearer and easier to develop in theory. Therefore, how to apply autoregressive component on VAEPP is a valuable and challenging work. We leave it as a future work.
+We compare our algorithms with other log-likelihood based model on MNIST, CIFAR-10 and CelebA as shown in \cref{tab:mnist-nll}, \cref{tab:cifar-nll}. Because the improvement of auto-regressive components is significant, we separate models by whether use auto-regressive component as [] did. Improved VAEPP outperforms most of the models without autoregressive component and is competitive to the models with autoregressive. The reason of why VAEPP don't use auto-regressive component is that VAEPP is time-consuming in training,  evaluation and sampling due to the huge structure (need additional discriminator) and Langevin dynamics. It is not easy to apply auto-regressive component on VAEPP considering the cost of auto-regressive is also time-consuming. Concretely, a whole process including training, evaluation and sampling on CIFAR10 will cost roughly one week on single Nvidia 2080Ti GPU card. On the other hand, we expect that the pure improvement on learnable prior could improve the performance of VAE rather than the improvement on encoder or decoder, since it is clearer and easier to develop in theory. Therefore, how to apply autoregressive component on VAEPP is a valuable and challenging work. We leave it as a future work.
 
 We evaluate $Z$ by two ways mentioned in \cref{subsec:determine_z} and compare the variance of them in 10 times on CIFAR-10. The variance of estimation based on $q_\phi(z)$ (TODO), is much less than the variance of estimation based on $p_\mathcal{N}$ (TODO), which supports our proposition in \cref{subsec:determine_z}. Since the variance of $Z$ also influence the variance of log-likelihood, we also evaluate the variance of log-likelihood in 10 times on CIFAR-10 (TODO) to ensure the stability of evaluation. 
 
 \subsection{Quality of Sampling}
+The quality of samples of VAE is worse than GAN, and it is indeed a reason that we involve the techniques of GAN to improve the VAE model. We apply Wasserstein distance to infer Pull-back Prior and GAN to sample the initial $z_0$ for Langevin dynamics. These techniques will help VAEPP improve the quality of samples. The samples of VAEPP gets good FID and IS, competitive to GANs and 2-Stage VAE (which is the SOTA of VAE in FID). 
 
+\begin{table}[tb]
+\centering
+\begin{tabular}{lrrrrrrr}  
+\toprule
+Model & MNIST & Fashion & CIFAR & CelebA\\
+\midrule
+MMGAN & $9.8$ & $29.6$ & $72.7$ & $65.6$\\
+NSGAN & $6.8$ & $26.5$ & $58.5$ & $55.0$\\
+LSGAN & $7.8$ & $30.7$ & $87.1$ & $53.9$\\
+WGAN  & $6.7$ & $21.5$ & $55.2$ & $41.3$\\
+WGAN-GP & $20.3$ & $24.5$ & $55.8$ & $30.3$\\
+DRAGAN  & $7.6$ & $27.7$ & $69.8$ & $42.3$\\
+BEGAN  & $13.1$ & $22.9$ & $71.4$ & $38.9$\\
+\midrule
+Best GAN   & $\sim10$& $\sim32$&$\sim70$& $\sim49$\\
+VAE+Flow   & $54.8$. & $62.1$  & $81.2$ & $65.7$\\
+WAE-MMD    & $115.0$ & $101.7$ & $80.9$ & $62.9$\\
+2-StageVAE & $12.6$  & $29.3$  & $72.9$ & $44.4$\\
+VAEPP      & $12.6$  & $29.3$  & $72.9$ & $44.4$ \\
+\bottomrule
+\end{tabular}
+\caption{FID compared to GAN-based models and 2-Stage VAE. The data of GAN and other VAE is from () and () and we remove the variance due to the short length of row. }
+\label{tab:compare_FID}
+\end{table}
+
+However, as common sense, it is hard to achieve best performance in FID, IS and log-likelihood by same setting. We observe this fact that when dimension of latent space is increasing, the FID, IS become worse, as shown in (TODO). The trend of FID, IS is different to the trend of log-likelihood, which is increasing when dimension of latent space is increasing, as shown in \cref{tab:compare_nD_over_z_dim}. As diagnosis in (), the dimension of latent space should be selected as a number that little larger than the dimension of real data manifold, suggested by their experiment, dim $\mathcal{Z}$ = 64, same as our experimental result.  
 
 \subsection{Out-of-Distribution}
 
+We notice the OoD problem in (). We found that discriminator of WGAN performs normally while model assign higher density to the data from out-of-distribution (OoD), as shown in fig(). It is inspires us that VAEPP could use the exact information from discriminator to solve OoD problem. We design 3 indicators, log-likelihood $\log p_\theta(x)$, energy $D(x)$ and norm of gradient $\|\nabla_{x} D(x)\|$. From the likelihood, () showed that it is useful to assume the data is out-of-distribution if it have very high or very low density. For energy and norm of gradient, it performs normally, i.e., when energy is higher or norm of gradient is smaller, it more likely belongs to out-of-distribution. Hence, we evaluate the AUC and AP for them and combination of them in OoD problem on CIFAR and SVHN, as shown in \cref{tab:compare_ood}. The method to combine them is simple: normalize them into a standard normal in training set of CIFAR, and the score of this indicator contributed to combination score is the abs/normal/negative value for log-likelihood/energy/norm of gradient. We have tested all kinds of combination and the best one is $\log p_\theta(x)$ and $\|\nabla_x D(x)\|$. The performance of it on other datasets is shown in \cref{tab:compare_ood_other_datasets} which is competitive to other indicators ()() focusing on OoD problem. 
+\begin{table}[tb]
+\centering
+\begin{tabular}{lrr}  
+\toprule
+Indicator  & AUC/AP \\
+\midrule
+$\log p_\theta(x)$   &  1.00/1.00      \\
+$D(x)$               &  1.00/1.00      \\
+$\|\nabla_x D(x)\|$  &  1.00/1.00      \\
+$\log p_\theta(x)$ and $\|\nabla_x D(x)\|$ & 1.00/1.00 \\
+\bottomrule
+\end{tabular}
+\caption{Comparation between indicators and their combination.}
+\label{tab:compare_ood}
+\end{table}
+
+\begin{table}[tb]
+\centering
+\begin{tabular}{lrrrr}  
+\toprule
+Dataset  &  $T_{perm}$ & WAIC & VAEPP\\
+\midrule
+Fashion vs MNIST  & 0.78/0.71  & 0.24/0.38 & 1.00/1.00  \\
+CIFAR vs SVHN     & 0.86/0.82  & 0.16/0.55 & 1.00/1.00  \\
+CIFAR vs ImageNet & 0.50/0.51  & 0.58/0.59 & 1.00/1.00  \\
+CIFAR vs LSUN     & 0.58/0.56  & 0.60/0.28 & 1.00/1.00  \\
+\bottomrule
+\end{tabular}
+\caption{Comparation the performance of VAEPP with other models in OoD problem. }
+\label{tab:compare_ood_other_datasets}
+\end{table}
 
