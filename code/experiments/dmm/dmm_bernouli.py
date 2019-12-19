@@ -84,7 +84,7 @@ class ExpConfig(spt.Config):
 
     test_fid_n_pz = 5000
     test_x_samples = 8
-    log_Z_times = 1
+    log_Z_times = 100000
     log_Z_x_samples = 64
 
     len_train = 50000
@@ -1238,17 +1238,16 @@ def main():
                         # print('log_Z:{}'.format(log_Z))
 
                         log_Z_list = []
-                        for i in range(config.log_Z_times):
-                            for [x, origin_x] in train_flow:
-                                batch_x = [bernouli_sampler.sample(origin_x) for i in range(config.log_Z_x_samples)]
-                                batch_origin_x = [origin_x for i in range(config.log_Z_x_samples)]
-                                batch_x = np.stack(batch_x, axis=1)
-                                batch_origin_x = np.stack(batch_origin_x, axis=1)
-                                for i in range(len(x)):
-                                    log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                                        input_x: batch_x[i],
-                                        input_origin_x: batch_origin_x[i]
-                                    }))
+                        for [x, origin_x] in train_flow:
+                            batch_x = [bernouli_sampler.sample(origin_x) for i in range(config.log_Z_x_samples)]
+                            batch_origin_x = [origin_x for i in range(config.log_Z_x_samples)]
+                            batch_x = np.stack(batch_x, axis=1)
+                            batch_origin_x = np.stack(batch_origin_x, axis=1)
+                            for i in range(len(x)):
+                                log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
+                                    input_x: batch_x[i],
+                                    input_origin_x: batch_origin_x[i]
+                                }))
                         from scipy.misc import logsumexp
                         another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
                         # print('log_Z_list:{}'.format(log_Z_list))

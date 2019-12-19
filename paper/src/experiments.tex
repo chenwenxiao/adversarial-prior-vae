@@ -33,6 +33,35 @@ Improved VAEPP   &  TODO      \\
 \end{table}
 
 
+\begin{table}
+\centering
+\begin{tabular}{lrr}  
+\toprule
+Model  &  $-\log p_\theta(x) / (3072 * \ln 2)$ \\
+\midrule
+Results with autoregressive   \\
+CONVDRAW         &  3.58      \\
+IAFVAE           &  3.15      \\
+IAFVAE           &  3.11      \\
+GATEDPIXELCNN    &  3.03      \\
+PIXELRNN         &  3.00      \\
+VLAE             &  2.95      \\
+PIXELCNN++       &  2.92      \\
+\midrule
+Results without learnable prior   \\
+NICE             &  4.48      \\
+DEEPGMMS         &  4.00      \\
+REALNVP          &  3.49      \\
+DISCRETE VAE++   &  3.38      \\
+GLOW             &  3.35      \\
+VAEPP            &  TODO      \\
+Improved VAEPP   &  TODO.     \\
+\bottomrule
+\end{tabular}
+\caption{Test log-likelihood on CIFAR-10}
+\label{tab:cifar-nll}
+\end{table}
+
 \subsection{Quality of Sampling}
 
 
