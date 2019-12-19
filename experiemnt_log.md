@@ -31,9 +31,9 @@ s
 
 重复计算Z和NLL，统计方差，至少10次，每次1M的采样数：
 
-Cifar Z:[]
+Cifar Z:[418.03 $\pm$ 4.98](http://mlserver.ipwx.me:7897/5df8d816ceacfbad434dc062/)
 
-Cifar NLL:[]
+Cifar NLL:[6370.46$\pm$ 4.82](http://mlserver.ipwx.me:7897/5df8d816ceacfbad434dc062/)
 
 Mnist Z:[]
 
