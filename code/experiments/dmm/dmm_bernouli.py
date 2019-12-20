@@ -49,8 +49,8 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 800
-    warm_up_start = 400
+    max_epoch = 1600
+    warm_up_start = 800
     warm_up_epoch = 800
     beta = 1e-8
     initial_xi = 0.0
@@ -62,7 +62,7 @@ class ExpConfig(spt.Config):
     smallest_step = 5e-5
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [100, 200, 300, 400, 500, 600, 700, 800]
+    lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600]
     lr_anneal_step_freq = None
 
     use_dg = False
