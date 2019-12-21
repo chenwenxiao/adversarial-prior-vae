@@ -1172,6 +1172,7 @@ def main():
                 gan_img = np.asarray(gan_img)
                 mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
                 mala_img = np.asarray(mala_img)
+                np.savez('sample_store', gan_img=gan_img, ori_img=ori_img, mala_img=mala_img)
                 for i in range(config.fid_test_times):
                     FID = get_fid_google(gan_img, dataset_img)
                     IS_mean, IS_std = get_inception_score(gan_img)
@@ -1193,7 +1194,6 @@ def main():
                     loop.collect_metrics(lr=learning_rate.get())
                     loop.print_logs()
 
-                np.savez('sample_store', gan_img=gan_img, ori_img=ori_img, mala_img=mala_img)
 
 
     # print the final metrics and close the results object

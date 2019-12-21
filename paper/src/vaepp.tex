@@ -1,7 +1,7 @@
 \section{VAEPP}\label{sec:vaepp}
 
 
-In \cref{sec:pull_back_prior}, we focus on the 2nd optimization and propose the Pull-back Prior as the analytical solution of it. In this section, we will return to the original objective ELBO, and discuss how to use Pull-back Prior to optimize ELBO. Finally, we will show the architecture of VAE with Pull-back Prior. 
+In \cref{sec:pull_back_prior}, we focus on the 2nd optimization and propose the Pull-back Prior as the analytical solution of it. In this section, we will return to the original objective ELBO, and discuss how to use Pull-back Prior to optimize ELBO.
 
 \subsection{Determine $\beta$}
 
@@ -10,12 +10,12 @@ $\beta$ in \cref{eq:pull_back_prior} represents how far $p_\lambda$ is from $p_\
 	\beta = \arg \min_{\beta} \mathcal{L}(\theta, \phi, \lambda) = \arg \min_{\beta} \mathcal{L}(\theta, \phi, \beta, \omega) \tag{8}
 \end{equation}
 
-Afterwards, let we research the behavior of $\beta$ during training, i.e. the sign of $\partial \mathcal{L}/\partial \beta$.
+The optimization process of $\beta$ during training depends on $\partial \mathcal{L}/\partial \beta$.
 \begin{align*}\label{eq:behavior_of_beta}
 \frac{\partial \mathcal{L}}{\partial \beta} &= \E_{q_\phi(z)}[ -D(G(z))] - \frac{\partial Z}{\partial \beta} \\
 &= \E_{p_\lambda(z)}[ D(G(z))] - \E_{q_\phi(z)}[ D(G(z))]  \tag{9}
 \end{align*}
-The 1st term in \cref{eq:behavior_of_beta} is the mean of discriminator on data generated from $p_\lambda$. The 2nd term in \cref{eq:behavior_of_beta} is the mean of discriminator on reconstructed data which is near same as real data when reconstruction is well-trained. Hence, $\partial \mathcal{L}/\partial \beta = 0$ represents that the discriminator can't distinguish the reconstructed data (near same as real data) and generated data. It coincides the philosophy of GAN. 
+The 1st term in \cref{eq:behavior_of_beta} is the mean of discriminator on data generated from $p_\lambda$. The 2nd term in \cref{eq:behavior_of_beta} is the mean of discriminator on reconstructed data which is nearly same as real data when reconstruction is well-trained. Hence, $\partial \mathcal{L}/\partial \beta = 0$ represents that the discriminator can't distinguish the reconstructed data (nearly same as real data) and generated data. It coincides the philosophy of GAN. 
 
 \subsection{Determine $Z$}\label{subsec:determine_z}
 
