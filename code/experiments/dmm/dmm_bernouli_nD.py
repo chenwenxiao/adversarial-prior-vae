@@ -722,7 +722,7 @@ def get_all_loss(another_train_q_net, q_net, p_net, pn_omega, pn_theta, warm=1.0
         global train_recon_energy
         global train_kl
         global train_grad_penalty
-        tmp = another_train_q_net['z'].distribution.log_prob(q_net['z'])
+        tmp = another_train_q_net['z'].distribution.log_prob(q_net['z'], group_ndims=1)
         print(tmp)
         another_log_Z = spt.ops.log_mean_exp(
             -p_net['z'].log_prob().energy - tmp + np.log(config.len_train)
@@ -1188,7 +1188,7 @@ def main():
                              batch_train_recon_pure_energy, batch_VAE_D_real, batch_VAE_G_loss, batch_train_kl,
                              batch_train_grad_penalty] = session.run(
                                 [VAE_nD_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
-                                 train_recon_pure_energy,
+                                 train_recon_pure_energy, VAE_D_real, VAE_G_loss,
                                  train_kl, train_grad_penalty],
                                 feed_dict={
                                     input_x: x,
