@@ -92,7 +92,7 @@ class ExpConfig(spt.Config):
     fid_samples = 5000
 
     epsilon = -20.0
-    min_logstd_of_q = -3.0
+    min_logstd_of_q = -10.0
 
     @property
     def x_shape(self):
