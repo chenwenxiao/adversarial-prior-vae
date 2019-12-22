@@ -846,7 +846,7 @@ def main():
     input_x = tf.placeholder(
         dtype=tf.int32, shape=(None,) + config.x_shape, name='input_x')
     another_input_x = tf.placeholder(
-        dtype=tf.int32, shape=(None,) + config.x_shape, name='input_x')
+        dtype=tf.int32, shape=(None,) + config.x_shape, name='another_input_x')
     input_origin_x = tf.placeholder(
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_origin_x')
     warm = tf.placeholder(
@@ -1107,8 +1107,8 @@ def main():
     x_train = _x_train / 255.0
     x_test = _x_test / 255.0
     bernouli_sampler = BernoulliSampler()
-    train_flow = spt.DataFlow.arrays([x_train, x_train], config.batch_size, shuffle=True, skip_incomplete=True)
-    train_flow = train_flow.map(lambda x, y: [bernouli_sampler.sample(x), y])
+    train_flow = spt.DataFlow.arrays([x_train, x_train, x_train], config.batch_size, shuffle=True, skip_incomplete=True)
+    train_flow = train_flow.map(lambda x, y, z: [bernouli_sampler.sample(x), bernouli_sampler.sample(y), z])
     reconstruct_train_flow = spt.DataFlow.arrays(
         [x_train], 100, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(
@@ -1183,7 +1183,7 @@ def main():
                 if epoch <= config.warm_up_start:
                     step_iterator = MyIterator(train_flow)
                     while step_iterator.has_next:
-                        for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
+                        for step, [x, another_x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
                             # vae training
                             [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
                              batch_train_recon_pure_energy, batch_VAE_D_real, batch_VAE_G_loss, batch_train_kl,
@@ -1194,6 +1194,7 @@ def main():
                                 feed_dict={
                                     input_x: x,
                                     input_origin_x: origin_x,
+                                    another_input_x: another_x,
                                     warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
                                 })
                             loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
