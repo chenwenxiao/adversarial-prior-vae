@@ -709,7 +709,7 @@ def get_log_prob_of_bernouli(given, origin):
     return po.log_prob(given=given, group_ndims=3)
 
 
-def get_all_loss(another_train_q_net, q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None):
+def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None):
     with tf.name_scope('adv_prior_loss'):
         gp_omega = get_gradient_penalty(q_net['z'].distribution.mean, pn_omega['f_z'].distribution.mean, D=D_kappa,
                                         space='f_z')
