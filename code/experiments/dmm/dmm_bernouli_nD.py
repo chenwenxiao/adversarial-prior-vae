@@ -37,7 +37,7 @@ spt.Bernoulli.mean = property(_bernoulli_mean)
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 20
+    z_dim = 10
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -92,7 +92,7 @@ class ExpConfig(spt.Config):
     fid_samples = 5000
 
     epsilon = -20.0
-    min_logstd_of_q = -10.0
+    min_logstd_of_q = -3.0
 
     @property
     def x_shape(self):
@@ -733,7 +733,7 @@ def get_all_loss(another_train_q_net, q_net, p_net, pn_omega, pn_theta, warm=1.0
             )
         )
 
-        p_net['z'].distribution.set_log_Z(train_log_Z)
+        # p_net['z'].distribution.set_log_Z(train_log_Z)
         train_recon_pure_energy = tf.reduce_mean(D_psi(p_net['x'].distribution.mean, p_net['x']))
         train_recon_energy = p_net['z'].log_prob().energy
         train_kl = tf.reduce_mean(
@@ -1236,31 +1236,31 @@ def main():
 
                 if epoch % config.test_epoch_freq == 0:
                     with loop.timeit('compute_Z_time'):
-                        # log_Z_list = []
-                        # for i in range(config.log_Z_times):
-                        #     log_Z_list.append(session.run(log_Z_compute_op))
-                        # from scipy.misc import logsumexp
-                        # log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                        # print('log_Z_list:{}'.format(log_Z_list))
-                        # print('log_Z:{}'.format(log_Z))
-
                         log_Z_list = []
-                        for [x, origin_x] in train_flow:
-                            batch_x = [bernouli_sampler.sample(origin_x) for i in range(config.log_Z_x_samples)]
-                            batch_origin_x = [origin_x for i in range(config.log_Z_x_samples)]
-                            batch_x = np.stack(batch_x, axis=1)
-                            batch_origin_x = np.stack(batch_origin_x, axis=1)
-                            for i in range(len(x)):
-                                log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                                    input_x: batch_x[i],
-                                    input_origin_x: batch_origin_x[i]
-                                }))
+                        for i in range(config.log_Z_times):
+                            log_Z_list.append(session.run(log_Z_compute_op))
                         from scipy.misc import logsumexp
-                        another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
+                        log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
                         # print('log_Z_list:{}'.format(log_Z_list))
-                        print('another_log_Z:{}'.format(another_log_Z))
+                        print('log_Z:{}'.format(log_Z))
+
+                        # log_Z_list = []
+                        # for [x, origin_x] in train_flow:
+                        #     batch_x = [bernouli_sampler.sample(origin_x) for i in range(config.log_Z_x_samples)]
+                        #     batch_origin_x = [origin_x for i in range(config.log_Z_x_samples)]
+                        #     batch_x = np.stack(batch_x, axis=1)
+                        #     batch_origin_x = np.stack(batch_origin_x, axis=1)
+                        #     for i in range(len(x)):
+                        #         log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
+                        #             input_x: batch_x[i],
+                        #             input_origin_x: batch_origin_x[i]
+                        #         }))
+                        # from scipy.misc import logsumexp
+                        # another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
+                        # print('log_Z_list:{}'.format(log_Z_list))
+                        # print('another_log_Z:{}'.format(another_log_Z))
                         # final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
-                        final_log_Z = another_log_Z  # TODO
+                        final_log_Z = log_Z  # TODO
                         get_log_Z().set(final_log_Z)
 
                     with loop.timeit('eval_time'):
