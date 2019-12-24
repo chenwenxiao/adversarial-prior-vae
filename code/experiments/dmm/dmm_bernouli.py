@@ -861,7 +861,8 @@ def main():
         train_pn_omega = p_omega_net(n_z=config.train_n_pz, beta=beta)
         train_log_Z = spt.ops.log_mean_exp(-train_pn_theta['z'].log_prob().pure_energy)
         train_log_Z_penalty = tf.exp(spt.ops.log_mean_exp(
-            2 * (-train_pn_theta['z'].log_prob().energy - train_pn_theta['z'].log_prob())))
+            2 * (-train_pn_theta['z'].log_prob().energy - train_pn_theta['z'].log_prob())) - config.z_dim * np.log(
+            2 * np.pi))
         train_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']},
                             n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
@@ -919,9 +920,10 @@ def main():
                 test_pn_net['z'].log_prob().log_energy_prob - test_pn_net['z'].log_prob()))
         pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.mean))
         log_Z_compute_op = spt.ops.log_mean_exp(
-            (-test_pn_net['z'].log_prob().pure_energy))
+            -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
         log_Z_penalty_op = spt.ops.log_mean_exp(
-            2 * (-test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob()))
+            2 * (-test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob()) - config.z_dim * np.log(2 * np.pi)
+        )
         kl_adv_and_gaussian = tf.reduce_mean(
             test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob
         )
