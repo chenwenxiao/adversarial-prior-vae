@@ -14,7 +14,7 @@ Recently, some researchers realized that the simplistic prior could lead to poor
 \mathcal{L}(\theta, \phi, \lambda) = \E_{p^*(x)}\E_{q_\phi(z|x)} [ \ln p_\theta(x|z)] + \\ 
 \E_{p^*(x)}[\mathbb{H}[q_\phi(z|x)]] + \E_{q_\phi(z)} \ln p_\lambda(z) \tag{2}
 \end{align*}
-where $p_\lambda(z)$ only appears in the last term and the optimal solution of $p_\lambda(z)$ is $q_\phi(z)$. However, $q_\phi(z)$ is intractable and \cite{tomczak2018vae, takahashi2019variational} try to obtain an approximation of it as prior. 
+where $p_\lambda(z)$ only appears in the last term and the optimal solution of $p_\lambda(z)$ is $q_\phi(z)$. However, $q_\phi(z)$ is intractable and \cite{tomczak2018vae,takahashi2019variational} try to obtain an approximation of it as prior. 
 
 \subsection{GAN and Wasserstein distance}
 

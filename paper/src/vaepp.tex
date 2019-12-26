@@ -27,12 +27,13 @@ However, as we mentioned before, $q_\phi(z)$ is intractable to compute the exact
 \begin{equation*}
 	q_\phi(z) = \E_{p^*(x)} q_\phi(z|x) \approx \frac{1}{N}\sum_{i=1}^N q_\phi(z|x^{(i)}) \geq \frac{1}{N} q_\phi(z|x^{(j)})
 \end{equation*}
-where $x^{(j)}$ is one of real data, $N$ is the size of training set. To reduce the error, $q_\phi(z|x^{(j)})$ should be one of the largest in summation. Therefore, we firstly choose $x^{(j)}$, then sample $z$ from $q_\phi(z|x^{(j)})$ (by this way, $q_\phi(z|x^{(j)})$ will be large enough), and finally set $\frac{1}{N} q_\phi(z|x^{(j)})$ as a bias estimation for $q_\phi(z)$. When $p^*(x)$ consists of infinite data (\EG in MNIST the input of model is sampled from real images), $p^*(x)$ is sampled from a finite set $\{e^{(1)}, \ldots, e^{(N)}\}$. The estimation is:
-\begin{align*}
-	& q_\phi(z) \approx \frac{1}{N}\sum_{i=1}^N \E_{p^*(x|e^{(i)})} q_\phi(z|x) \geq \frac{1}{N} \E_{p^*(x|e^{(j)})} q_\phi(z|x) \\
-	&= \frac{1}{N} \sum_{x \in \mathcal{X}} P^*(x|e^{(j)}) q_\phi(z|x) \geq \frac{1}{N} P^*(x^{(k)}|e^{(j)}) q_\phi(z|x^{(k)})
+where $x^{(j)}$ is one of real data, $N$ is the size of training set. To reduce the error, $q_\phi(z|x^{(j)})$ should be one of the largest in summation. Therefore, we firstly choose $x^{(j)}$, then sample $z$ from $q_\phi(z|x^{(j)})$ (by this way, $q_\phi(z|x^{(j)})$ will be large enough), and finally set $\frac{1}{N} q_\phi(z|x^{(j)})$ as a bias estimation for $q_\phi(z)$. When $p^*(x)$ consists of numerous data (\EG in MNIST the input of model is sampled from real images), $p^*(x)$ is sampled from a finite set $\{e^{(1)}, \ldots, e^{(N)}\}$. We introduce another ELBO which use $q_\phi(z|e)$ instead of $q_\phi(z|x)$. By this way, $q_\phi(z)$ will be easily computed. The ELBO is:
+\begin{align*}~\label{eq:another_elbo}
+	&\E_{p^*(x)} \ln p_\theta(x) \geq \E_{p^*(e)} \E_{p^*(x|e)} \ln \E_{q_\phi(z|e)} \frac{p_\theta(x|z)p_\theta(z)}{q_\phi(z|e)} \\
+	 &= \E_{p^*(e)} \E_{p^*(x|e)} \E_{q_\phi(z|e)} \ln \frac{p_\theta(x|z)p_\theta(z)}{q_\phi(z|e)} \tag{10} \\
+	 &= \E_{p^*(x)} \ln p^*(x) - \E_{p^*(e)} \E_{p^*(x|e)} KL(q_\phi(z|e), p_\theta(z|x))
 \end{align*} 
-where $P^*(x|e)$ means the sampling process from $e$, usually Bernouli distribution. Similar to above, $z$ is sampled by $q_\phi(z|x^{(k)})$ and $x^{(k)}$ is sampled from $P^*(x|e)$. $\hat{q}_\phi(z)$ denotes the bias estimation of $q_\phi(z)$. Then, a bias estimation $\hat{Z}$ is given by:
+where $p^*(x|e)$ means the sampling process from $e$, usually Bernouli distribution. \cref{eq:another_elbo} is similar to the original ELBO~\cref{eq:ELBO}, but the $q_\phi(z)$ is feasible by above bias estimation since we have known $q_\phi(z|e)$. $\hat{q}_\phi(z)$ denotes the bias estimation of $q_\phi(z)$. Then, a bias estimation $\hat{Z}$ is given by:
 \begin{align*}\label{eq:Z_estimator}
 	Z = \E_{q_\phi(z)}\frac{f_\lambda(z)}{q_\phi(z)} \leq \E_{q_\phi(z)} \frac{f_\lambda(z)}{\hat{q}_\phi(z)} = \hat{Z} \tag{10}
 \end{align*}
