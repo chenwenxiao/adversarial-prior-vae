@@ -892,8 +892,8 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/93/0c/d434dabfcaecd3b5bed5/checkpoint/checkpoint/checkpoint.dat-195000'
-
+        # restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/93/0c/d434dabfcaecd3b5bed5/checkpoint/checkpoint/checkpoint.dat-195000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/24/29/6fc8930042bc9bab75d5/checkpoint/checkpoint/checkpoint.dat-195000'
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega',
@@ -947,8 +947,7 @@ def main():
                         for [batch_x] in flow:
                             pack = session.run(
                                 ops, feed_dict={
-                                    #input_x: batch_x
-                                    input_x: x[0]
+                                    input_x: batch_x
                                 })  # [3, batch_size]
                             pack = np.transpose(np.asarray(pack), (1, 0))  # [batch_size, 3]
                             packs.append(pack)
