@@ -225,9 +225,8 @@ def main():
     reconstruct_test_flow = spt.DataFlow.arrays(
         [x_test], 100, shuffle=True, skip_incomplete=False)
 
-    test_X = np.repeat(x_test, config.test_x_samples, axis=0)
     test_flow = spt.DataFlow.arrays(
-        [test_X, test_X],
+        [x_test, x_test],
         config.test_batch_size
     )
     test_flow = test_flow.map(lambda x, y: [bernouli_sampler.sample(x), y])
