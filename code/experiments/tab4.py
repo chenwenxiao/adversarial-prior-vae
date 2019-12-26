@@ -33,6 +33,7 @@ def makeFigure(name='Z dim',path='./'):
     ax = HostAxes(fig, [0.08, 0.08, 0.70, 0.8])
     ax.axis["right"].set_visible(False)
     ax.axis["top"].set_visible(False)
+    ax.set_xticks(Z_dim)
     ax.plot(Z_dim,FID,color=cname[0],label='FID')
     ax.set_ylabel('FID')
     ax.set_xlabel('Z dimension')
