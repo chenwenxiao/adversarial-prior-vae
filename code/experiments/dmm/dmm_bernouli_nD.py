@@ -53,11 +53,12 @@ class ExpConfig(spt.Config):
     warm_up_start = 1000
     warm_up_epoch = 1000
     beta = 1e-8
-    initial_xi = 0.0
+    initial_xi = -3.0
     pull_back_energy_weight = 10.0
+    log_Z_penalty_weight = 0.05
 
     max_step = None
-    batch_size = 128
+    batch_size = 1024
     noise_len = 8
     smallest_step = 5e-5
     initial_lr = 0.0001
@@ -73,7 +74,7 @@ class ExpConfig(spt.Config):
 
     n_critical = 5
     # evaluation parameters
-    train_n_pz = 128
+    train_n_pz = 1024
     train_n_qz = 1
     test_n_pz = 1000
     test_n_qz = 10
@@ -92,7 +93,7 @@ class ExpConfig(spt.Config):
     fid_samples = 5000
 
     epsilon = -20.0
-    min_logstd_of_q = -10.0
+    min_logstd_of_q = -3.0
 
     @property
     def x_shape(self):
@@ -183,6 +184,7 @@ class EnergyDistribution(spt.Distribution):
             log_px.log_energy_prob = -energy - self.log_Z
             log_px.energy = energy
             log_px.pure_energy = self.D(self.G(given))
+            log_px.penalty_term = config.pull_back_energy_weight * self.D(self.G(given)) * self.xi
 
         return log_px
 
@@ -702,7 +704,7 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
     return gradient_penalty
 
 
-def get_all_loss(another_train_q_net, q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None):
+def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm, input_origin_x, log_Z_penalty):
     with tf.name_scope('adv_prior_loss'):
         gp_omega = get_gradient_penalty(q_net['z'].distribution.mean, pn_omega['f_z'].distribution.mean, D=D_kappa,
                                         space='f_z')
@@ -722,18 +724,16 @@ def get_all_loss(another_train_q_net, q_net, p_net, pn_omega, pn_theta, warm=1.0
         global train_recon_energy
         global train_kl
         global train_grad_penalty
-        tmp = another_train_q_net['z'].distribution.log_prob(q_net['z'], group_ndims=1)
-        print(tmp)
-        another_log_Z = spt.ops.log_mean_exp(
-            -p_net['z'].log_prob().energy - tmp + np.log(config.len_train)
-        )
-        train_log_Z = spt.ops.log_mean_exp(
-            tf.stack(
-                [p_net['z'].distribution.log_Z, another_log_Z], axis=0
-            )
-        )
-
-        p_net['z'].distribution.set_log_Z(train_log_Z)
+        # another_log_Z = spt.ops.log_mean_exp(
+        #     -p_net['z'].log_prob().energy - q_net['z'].log_prob() + np.log(config.len_train)
+        # )
+        # train_log_Z = spt.ops.log_mean_exp(
+        #     tf.stack(
+        #         [p_net['z'].distribution.log_Z, another_log_Z], axis=0
+        #     )
+        # )
+        #
+        # p_net['z'].distribution.set_log_Z(train_log_Z)
         train_recon_pure_energy = tf.reduce_mean(D_psi(p_net['x'].distribution.mean, p_net['x']))
         train_recon_energy = p_net['z'].log_prob().energy
         train_kl = tf.reduce_mean(
@@ -742,7 +742,7 @@ def get_all_loss(another_train_q_net, q_net, p_net, pn_omega, pn_theta, warm=1.0
         )
         train_grad_penalty = config.pull_back_energy_weight * (gp_theta + gp_dg)  # + gp_omega
         train_kl = tf.maximum(train_kl, 0.0)  # TODO
-        VAE_nD_loss = -train_recon + train_kl
+        VAE_nD_loss = -train_recon + train_kl + log_Z_penalty * config.log_Z_penalty_weight
         VAE_loss = VAE_nD_loss + train_grad_penalty
         VAE_G_loss = tf.reduce_mean(D_psi(pn_theta['x'].distribution.mean))
         VAE_D_real = tf.reduce_mean(D_psi(input_origin_x))
@@ -845,8 +845,6 @@ def main():
     # input placeholders
     input_x = tf.placeholder(
         dtype=tf.int32, shape=(None,) + config.x_shape, name='input_x')
-    another_input_x = tf.placeholder(
-        dtype=tf.int32, shape=(None,) + config.x_shape, name='another_input_x')
     input_origin_x = tf.placeholder(
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_origin_x')
     warm = tf.placeholder(
@@ -862,14 +860,26 @@ def main():
          arg_scope([batch_norm], training=True):
         train_pn_theta = p_net(n_z=config.train_n_pz, beta=beta)
         train_pn_omega = p_omega_net(n_z=config.train_n_pz, beta=beta)
-        train_log_Z = spt.ops.log_mean_exp(-train_pn_theta['z'].log_prob().energy - train_pn_theta['z'].log_prob())
-        another_train_q_net = q_net(another_input_x, posterior_flow, n_z=config.train_n_qz)
+        train_log_Z = spt.ops.log_mean_exp(
+            -train_pn_theta['z'].log_prob().energy - train_pn_theta['z'].log_prob())
         train_q_net = q_net(input_x, posterior_flow, n_z=config.train_n_qz)
         train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']},
                             n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
 
+        x = train_p_net['z']
+        x_ = train_pn_theta['z']
+        alpha = tf.random_uniform((config.batch_size, 1), minval=0, maxval=1.0)
+        x = tf.reshape(x, (-1, config.z_dim))
+        x_ = tf.reshape(x_, (-1, config.z_dim))
+        differences = x - x_
+        interpolates = x_ + alpha * differences
+
+        train_log_Z_penalty = tf.reduce_mean(
+            train_p_net['z'].distribution.log_prob(interpolates, group_ndims=1).penalty_term ** 2
+        )
+
         VAE_nD_loss, VAE_loss, VAE_D_loss, VAE_G_loss, VAE_D_real, D_loss, G_loss, D_real = get_all_loss(
-            another_train_q_net, train_q_net, train_p_net, train_pn_omega, train_pn_theta, warm, input_origin_x)
+            train_q_net, train_p_net, train_pn_omega, train_pn_theta, warm, input_origin_x, train_log_Z_penalty)
         VAE_loss += tf.losses.get_regularization_loss()
         VAE_nD_loss += tf.losses.get_regularization_loss()
         D_loss += tf.losses.get_regularization_loss()
@@ -922,29 +932,13 @@ def main():
         pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.mean))
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
-        shift_z = test_q_net['z']
-        q_z_given_x = []
-        for i in range(config.log_Z_x_samples):
-            tmp = test_q_net['z'].distribution.log_prob(
-                shift_z, group_ndims=1
-            )
-            tmp = tf.roll(tmp, -i, axis=1)
-            q_z_given_x.append(tmp)
-            shift_z = tf.roll(shift_z, 1, axis=1)
-            print(tmp.shape)
-        q_z_given_x = q_z_given_x[1:]
-        # Important to remove the x which z is sampled from, since it will influence the expection of q_phi(z)
-        q_z_given_x = tf.stack(q_z_given_x, axis=0)
-        print(q_z_given_x.shape)
-        q_z_given_x = spt.ops.log_mean_exp(q_z_given_x, axis=0)
-        print(q_z_given_x.shape)
+        log_Z_variance_op = spt.ops.log_mean_exp(
+            2 * (-test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob()))
 
-        another_log_Z_compute_op = spt.ops.log_mean_exp(
-            -test_chain.model['z'].log_prob().energy - q_z_given_x + np.log(config.len_train)
-        )
         kl_adv_and_gaussian = tf.reduce_mean(
             test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob
         )
+        log_Z_penalty_op = kl_adv_and_gaussian
     xi_node = get_var('p_net/xi')
     # derive the optimizer
     with tf.name_scope('optimizing'):
@@ -1106,8 +1100,8 @@ def main():
     x_train = _x_train / 255.0
     x_test = _x_test / 255.0
     bernouli_sampler = BernoulliSampler()
-    train_flow = spt.DataFlow.arrays([x_train, x_train, x_train], config.batch_size, shuffle=True, skip_incomplete=True)
-    train_flow = train_flow.map(lambda x, y, z: [bernouli_sampler.sample(x), bernouli_sampler.sample(y), z])
+    train_flow = spt.DataFlow.arrays([x_train, x_train], config.batch_size, shuffle=True, skip_incomplete=True)
+    train_flow = train_flow.map(lambda x, y: [bernouli_sampler.sample(x), y])
     reconstruct_train_flow = spt.DataFlow.arrays(
         [x_train], 100, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(
@@ -1182,20 +1176,20 @@ def main():
                 if epoch <= config.warm_up_start:
                     step_iterator = MyIterator(train_flow)
                     while step_iterator.has_next:
-                        for step, [x, another_x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
+                        for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
                             # vae training
                             [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
                              batch_train_recon_pure_energy, batch_VAE_D_real, batch_VAE_G_loss, batch_train_kl,
-                             batch_train_grad_penalty] = session.run(
+                             batch_train_grad_penalty, batch_log_Z_penalty] = session.run(
                                 [VAE_nD_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
                                  train_recon_pure_energy, VAE_D_real, VAE_G_loss,
-                                 train_kl, train_grad_penalty],
+                                 train_kl, train_grad_penalty, train_log_Z_penalty],
                                 feed_dict={
                                     input_x: x,
                                     input_origin_x: origin_x,
-                                    another_input_x: another_x,
                                     warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
                                 })
+                            loop.collect_metrics(batch_log_Z_penalty=batch_log_Z_penalty)
                             loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
                             loop.collect_metrics(xi=xi_value)
                             loop.collect_metrics(beta=beta_value)
@@ -1206,6 +1200,12 @@ def main():
                             loop.collect_metrics(VAE_G_loss=batch_VAE_G_loss)
                             loop.collect_metrics(train_kl=batch_train_kl)
                             loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
+
+                            _ = session.run(VAE_D_train_op, feed_dict={
+                                input_x: x,
+                                input_origin_x: origin_x,
+                                warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
+                            })
                 else:
                     step_iterator = MyIterator(train_flow)
                     while step_iterator.has_next:
@@ -1236,31 +1236,36 @@ def main():
 
                 if epoch % config.test_epoch_freq == 0:
                     with loop.timeit('compute_Z_time'):
-                        # log_Z_list = []
-                        # for i in range(config.log_Z_times):
-                        #     log_Z_list.append(session.run(log_Z_compute_op))
-                        # from scipy.misc import logsumexp
-                        # log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                        # print('log_Z_list:{}'.format(log_Z_list))
-                        # print('log_Z:{}'.format(log_Z))
-
                         log_Z_list = []
-                        for [x, origin_x] in train_flow:
-                            batch_x = [bernouli_sampler.sample(origin_x) for i in range(config.log_Z_x_samples)]
-                            batch_origin_x = [origin_x for i in range(config.log_Z_x_samples)]
-                            batch_x = np.stack(batch_x, axis=1)
-                            batch_origin_x = np.stack(batch_origin_x, axis=1)
-                            for i in range(len(x)):
-                                log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                                    input_x: batch_x[i],
-                                    input_origin_x: batch_origin_x[i]
-                                }))
+                        log_Z_variance_list = []
+                        for i in range(config.log_Z_times):
+                            log_Z, log_Z_variance = session.run([log_Z_compute_op, log_Z_variance_op])
+                            log_Z_list.append(log_Z)
+                            log_Z_variance_list.append(log_Z_variance)
                         from scipy.misc import logsumexp
-                        another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
+                        log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
+                        log_Z_variance = logsumexp(np.asarray(log_Z_variance_list)) - np.log(len(log_Z_variance_list))
+                        print('log_Z_list:{}'.format(log_Z_list))
+                        print('log_Z:{}'.format(log_Z))
+                        print('log_Z_variance:{}'.format(log_Z_variance))
+
+                        # log_Z_list = []
+                        # for [x, origin_x] in train_flow:
+                        #     batch_x = [bernouli_sampler.sample(origin_x) for i in range(config.log_Z_x_samples)]
+                        #     batch_origin_x = [origin_x for i in range(config.log_Z_x_samples)]
+                        #     batch_x = np.stack(batch_x, axis=1)
+                        #     batch_origin_x = np.stack(batch_origin_x, axis=1)
+                        #     for i in range(len(x)):
+                        #         log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
+                        #             input_x: batch_x[i],
+                        #             input_origin_x: batch_origin_x[i]
+                        #         }))
+                        # from scipy.misc import logsumexp
+                        # another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
                         # print('log_Z_list:{}'.format(log_Z_list))
-                        print('another_log_Z:{}'.format(another_log_Z))
+                        # print('another_log_Z:{}'.format(another_log_Z))
                         # final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
-                        final_log_Z = another_log_Z  # TODO
+                        final_log_Z = log_Z  # TODO
                         get_log_Z().set(final_log_Z)
 
                     with loop.timeit('eval_time'):
