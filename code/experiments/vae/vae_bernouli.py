@@ -40,7 +40,7 @@ class ExpConfig(spt.Config):
     lr_anneal_step_freq = None
 
     # evaluation parameters
-    test_n_z = 500
+    test_n_z = 1000
     test_batch_size = 64
 
     @property
@@ -271,9 +271,9 @@ def main():
                 spt.EventKeys.AFTER_EXECUTION,
                 lambda e: results.update_metrics(evaluator.last_metrics_dict)
             )
-            trainer.evaluate_after_epochs(evaluator, freq=10)
+            trainer.evaluate_after_epochs(evaluator, freq=1000)
             trainer.evaluate_after_epochs(
-                functools.partial(plot_samples, loop), freq=10)
+                functools.partial(plot_samples, loop), freq=1000)
             trainer.log_after_epochs(freq=1)
             trainer.run()
 

@@ -37,7 +37,7 @@ VAEPP           &  TODO.     \\
 Improved VAEPP   &  TODO.     \\
 \bottomrule
 \end{tabular}
-\caption{Test log-likelihood on CelebA and Fashion-MNIST. }
+\caption{Test log-likelihood on CelebA, Fashion-MNIST and Omniglot. }
 \label{tab:cifar-nll}
 \end{table}
 We evaluate and compare the performance of VAEPP after training by \cref{alg:vaepp} and \cref{alg:improved_vaepp} on CIFAR10 when the dimension of latent space is varied from 64 to 1024 and the garadient penalty algorithm is selected from 3 strategy: WGAN-GP, WGAN-div-1  (sampling the linear combination of two real or two fake data points), WGAN-div-2 (sampling both real or fake data points) as shown in \cref{tab:compare_nD_over_z_dim} and \cref{tab:compare_nD_over_R}. Our conclusion is that \cref{alg:improved_vaepp} outperforms \cref{alg:vaepp} under all of settings in CIFAR-10 dataset. We then evaluate them on other datasets, MNIST, CelebA. This conclusion also holds for them. This validate our proposition in \cref{subsec:improve_of_vaepp}. 
