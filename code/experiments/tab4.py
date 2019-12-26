@@ -20,9 +20,9 @@ import numpy as np
 import os
 
 Z_dim = [64,128,256,512,1024]
-FID = [0,71.3,78.1806,81.7122,85.3522]
-IS = [0,5.12981,4.91918,4.54314,4.19091]
-nll = [0,13632,12106.1,10195.4,7528.38]
+FID = [78.6269,71.3,78.1806,81.7122,85.3522]
+IS = [4.95797,5.12981,4.91918,4.54314,4.19091]
+nll = [15063.1,13632,12106.1,10195.4,7528.38]
 
 cname = [ 
     '#000000', '#0000FF', 
@@ -63,7 +63,7 @@ def makeFigure(name='Z dim',path='./',dpi=100):
         ax_para.set_ylabel(name)
         ax_para.axis['right'] = ax_paraD(loc='right',  offset=(40*cnt, 0), axes=ax_para)
         ax_para.plot(x, y, label=name, color=cname[cnt+1])
-        plt.legend(loc=0)
+        plt.legend(loc=8, ncol=3)
 
     paraAxis(Z_dim, IS, "IS",0)
     paraAxis(Z_dim, nll, "nll",1)
