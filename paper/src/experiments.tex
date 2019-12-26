@@ -1,7 +1,6 @@
 \section{Experiments}
 We test VAEPP in vast common datasets including MNIST, Fashion-MNIST~\cite{xiao2017/online}, CIFAR-10~\cite{krizhevsky2009learning} and CelebA with metrics log-likelihood, FID~\cite{heusel2017gans} and IS~\cite{salimans2016improved} to show the performance of VAEPP. Moreover, we try to help VAE to solve OoD problem by the additional information of discriminator. 
 \subsection{Log-likelihood}
-
 \begin{table}[tb]
 \centering
 \begin{tabular}{lrr}  
@@ -28,12 +27,11 @@ Improved VAEPP   &  TODO      \\
 \caption{Test log-likelihood on MNIST and Bits/dim on CIFAR-10. Bits/dim means $-\log p_\theta(x|z) / (3072 * \ln(2))$.}
 \label{tab:mnist-nll}
 \end{table}
-
 \begin{table}[tb]
 \centering
-\begin{tabular}{lrr}  
+\begin{tabular}{lrrr}  
 \toprule
-Model  &  CelebA & Fashion \\
+Model  &  CelebA & Fashion & Omniglot \\
 \midrule
 VAEPP           &  TODO.     \\
 Improved VAEPP   &  TODO.     \\
@@ -42,27 +40,21 @@ Improved VAEPP   &  TODO.     \\
 \caption{Test log-likelihood on CelebA and Fashion-MNIST. }
 \label{tab:cifar-nll}
 \end{table}
-
 We evaluate and compare the performance of VAEPP after training by \cref{alg:vaepp} and \cref{alg:improved_vaepp} on CIFAR10 when the dimension of latent space is varied from 64 to 1024 and the garadient penalty algorithm is selected from 3 strategy: WGAN-GP, WGAN-div-1  (sampling the linear combination of two real or two fake data points), WGAN-div-2 (sampling both real or fake data points) as shown in \cref{tab:compare_nD_over_z_dim} and \cref{tab:compare_nD_over_R}. Our conclusion is that \cref{alg:improved_vaepp} outperforms \cref{alg:vaepp} under all of settings in CIFAR-10 dataset. We then evaluate them on other datasets, MNIST, CelebA. This conclusion also holds for them. This validate our proposition in \cref{subsec:improve_of_vaepp}. 
-
 \begin{table}[tb]
 \centering
 \begin{tabular}{lrr}  
 \toprule
-Model  &  GP Strategy  &  bits/dim \\
+GP Strategy  &  VAEPP  &  Improved VAEPP \\
 \midrule
-VAEPP            &  WGAN-GP   & TODO      \\
-                 &  WGAN-div-1  & TODO      \\
-                 &  WGAN-div-2  & TODO      \\
-Improved VAEPP   &  WGAN-GP   & TODO      \\
-                 &  WGAN-div-1  & TODO     \\
-                 &  WGAN-div-2  & TODO      \\
+WGAN-GP            &  TODO   & TODO      \\
+WGAN-div-1         &  TODO   & TODO      \\
+WGAN-div-2         &  TODO   & TODO      \\
 \bottomrule
 \end{tabular}
 \caption{Comparation between VAEPP and Improved VAEPP when gradient penalty strategy varies on CIFAR-10 with dim $\mathcal{Z} = 1024$. }
 \label{tab:compare_nD_over_R}
 \end{table}
-
 \begin{table}[tb]
 \centering
 \begin{tabular}{lrrr}  
@@ -79,14 +71,12 @@ Improved VAEPP   &  64   & TODO  & TODO     \\
 \caption{Comparation of VAEPP when the dimension of latent space is varied on CIFAR-10 with metrics log-likelihood, FID and IS}
 \label{tab:compare_nD_over_z_dim}
 \end{table}
-
 We compare our algorithms with other log-likelihood based model on MNIST, CIFAR-10 and CelebA as shown in \cref{tab:mnist-nll}, \cref{tab:cifar-nll}. Because the improvement of auto-regressive components is significant, we separate models by whether use auto-regressive component as \cite{maaloe2019biva} did. Improved VAEPP outperforms most of the models without autoregressive component and is competitive to the models with autoregressive component. The reason of why VAEPP don't use auto-regressive component is that VAEPP is time-consuming in training,  evaluation and sampling due to the huge structure (need additional discriminator) and Langevin dynamics. It is not easy to apply auto-regressive component on VAEPP considering auto-regressive component is also time-consuming. Concretely, a whole process including training, evaluation and sampling on CIFAR10 will cost roughly one week on single Nvidia 2080Ti GPU card. On the other hand, we expect that the pure improvement on learnable prior could improve the performance of VAE rather than the improvement on encoder or decoder, since it is clearer and easier to develop in theory. Therefore, how to apply autoregressive component on VAEPP is a valuable and challenging practical work. We leave it as a future work.
 
 We evaluate $Z$ by two ways mentioned in \cref{subsec:determine_z} and compare the variance of them in 10 times on CIFAR-10. The variance of estimation based on $q_\phi(z)$ (4.82), is much less than the variance of estimation based on $p_\mathcal{N}$ (TODO), which supports our proposition in \cref{subsec:determine_z}. Since the variance of $Z$ also influence the variance of log-likelihood, we also evaluate the variance of log-likelihood in 10 times on CIFAR-10 (4.82) to ensure the stability of evaluation. 
 
 \subsection{Quality of Sampling}
 The quality of samples of VAE is worse than GAN, and it is indeed a reason that we involve the techniques of GAN to improve the VAE model. We apply Wasserstein distance to infer Pull-back Prior and GAN to sample the initial $z_0$ for Langevin dynamics. These techniques will help VAEPP improve the quality of samples. The samples of VAEPP gets good FID and IS, competitive to GANs and 2-Stage VAE (which is the SOTA of VAE in FID). 
-
 \begin{table}[tb]
 \centering
 \begin{tabular}{lrrrrrrr}  
@@ -103,7 +93,6 @@ VAEPP      & $12.6$  & $29.3$  & $71.3$ & $44.4$ \\
 \caption{FID compared to GAN-based models and 2-Stage VAE. The data of GAN and other VAE is from \protect\cite{dai2019diagnosing}. }
 \label{tab:compare_FID}
 \end{table}
-
 However, as common sense, it is hard to achieve best performance in FID, IS and log-likelihood by same setting. We observe this fact that when dimension of latent space is increasing, the FID, IS become worse, as shown in (TODO). The trend of FID, IS is different to the trend of log-likelihood, which is increasing when dimension of latent space is increasing, as shown in \cref{tab:compare_nD_over_z_dim}. As diagnosis in \cite{dai2019diagnosing}, the dimension of latent space should be selected as a number that little larger than the dimension of real data manifold, suggested by their experiment, dim $\mathcal{Z}$ = 64, same as our experimental result.  
 
 \subsection{Out-of-Distribution}
@@ -124,7 +113,6 @@ $\log p_\theta(x)$ and $\|\nabla_x D(x)\|$ & 1.00/1.00 \\
 \caption{Comparation between indicators and their combination.}
 \label{tab:compare_ood}
 \end{table}
-
 \begin{table}[tb]
 \centering
 \begin{tabular}{lrrrr}  

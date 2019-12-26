@@ -236,9 +236,9 @@ def main():
         spt.utils.ensure_variables_initialized()
 
         # initialize the network
-        for [x] in train_flow:
+        for [x, ox] in train_flow:
             print('Network initialized, first-batch loss is {:.6g}.\n'.
-                  format(session.run(init_loss, feed_dict={input_x: x})))
+                  format(session.run(init_loss, feed_dict={input_x: x, input_origin_x: ox})))
             break
 
         # train the network
@@ -251,7 +251,7 @@ def main():
                            summary_graph=tf.get_default_graph(),
                            early_stopping=False) as loop:
             trainer = spt.Trainer(
-                loop, train_op, [input_x], train_flow,
+                loop, train_op, [input_x, input_origin_x], train_flow,
                 metrics={'loss': train_loss},
                 summaries=tf.summary.merge_all(spt.GraphKeys.AUTO_HISTOGRAM)
             )
