@@ -37,9 +37,9 @@ def _fetch_array_x(path):
         im = Image.open(os.path.join(path,name))
         im = im.crop((15,40,163,188))
         img = np.asarray(im)
-        img.setflags(write=True)
-        for dim in range(img.shape[2]):
-            img[...,dim] = filters.gaussian_filter(img[...,dim], sigma=(sigma,sigma))
+        # img.setflags(write=True)
+        # for dim in range(img.shape[2]):
+        #     img[...,dim] = filters.gaussian_filter(img[...,dim], sigma=(sigma,sigma))
         img = imresize(img,(64,64,3))
         imgs.append(img)
         
