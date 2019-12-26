@@ -1,3 +1,18 @@
+'''
+makeing figure for FID,IS,nll ~ z dim
+
+use like:
+    makeFigure(name,path,dpi)
+    # figure while save at path/z_dim.png
+
+adding new data:
+    add directly into lists of Z_dim,FID,IS,nll below
+
+adding new axis & curve:
+    1) add a new list with same length with z dim
+    2) plot it using paraAxis(), like line 68,69
+
+'''
 import matplotlib.pyplot as plt
 import matplotlib
 from mpl_toolkits.axisartist.parasite_axes import HostAxes, ParasiteAxes
@@ -27,7 +42,7 @@ cname = [
     '#FFFFE0', '#00FF00', '#32CD32', '#FAF0E6', '#9370DB',
 ]
 
-def makeFigure(name='Z dim',path='./'):
+def makeFigure(name='Z dim',path='./',dpi=100):
     fig = plt.figure()
     fig.suptitle(name)
     ax = HostAxes(fig, [0.08, 0.08, 0.70, 0.8])
@@ -52,6 +67,6 @@ def makeFigure(name='Z dim',path='./'):
 
     paraAxis(Z_dim, IS, "IS",0)
     paraAxis(Z_dim, nll, "nll",1)
-    plt.savefig(os.path.join(path,'z_dim.png'),dpi=100)
+    plt.savefig(os.path.join(path,'z_dim.png'),dpi=dpi)
 
 makeFigure()
