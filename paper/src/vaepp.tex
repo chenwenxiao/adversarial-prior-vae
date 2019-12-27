@@ -45,7 +45,7 @@ which means $\hat{p}_\theta(x)$ is a lower bound of model density $p_\theta(x)$.
 
 Thanks to the stable and efficient gradient penalty regularizer term provided by WGAN-GP and WGAN-div, we enjoy stable and efficient training process. Training algorithm for VAEPP based on WGAN-GP is provided as \cref{alg:vaepp}. We remove $n_{critic}$, number of critic iterations per generator iteration, from WGAN-GP framework since there is no significant difference when $n_{critic}$ varies in VAEPP.
 \begin{algorithm}[tb]
-\caption{VAEPP training algorithm}
+\caption{Naive VAEPP training algorithm}
 \label{alg:vaepp}
 \textbf{Require}: The gradient penalty algorithm $R$, the batch size $b$, the parameters for Adam Optimizers, $\tau$. 
 
@@ -68,7 +68,7 @@ Thanks to the stable and efficient gradient penalty regularizer term provided by
 \end{algorithmic}
 \end{algorithm}
 \subsection{Improvement of VAEPP} \label{subsec:improve_of_vaepp}
-We have introduced the architecture and training algorithm for VAEPP, whose performance is better than vanilla VAE and some variants of VAE with learnable prior. However, we notice that in the training process, the optimization of $\omega$ may influence the optimization of $\theta, \phi, \beta$, \EG the optimization for $\omega$ significantly worsen the loss function which have been optimized well. The reason is that the optimization for $\omega$ is independent to the optimization of $\theta, \phi, \beta$ in \cref{alg:vaepp}. This independence is from the philosophy of GAN but it may suffer the performance of VAEPP (log-likelihood). Hence, is it possible to combine this two optimization into one to improve the performance and stability of VAEPP? Our answer is positive and our goal is to use SGVB with gradient penalty regularizer to train VAEPP. 
+We have introduced the architecture and training algorithm for VAEPP, whose performance is better than vanilla VAE and some variants of VAE with learnable prior. However, we notice that in the training process, the optimization of $\omega$ may influence the optimization of $\theta, \phi, \beta$, \EG the optimization for $\omega$ significantly worsen the loss function which have been optimized well. The reason is that the optimization for $\omega$ is independent to the optimization of $\theta, \phi, \beta$ in \cref{alg:vaepp}. This independence is from the philosophy of GAN but it may suffer the performance of VAEPP (log-likelihood). Hence, it is necessary to combine this two optimization into one to improve the performance and stability of VAEPP. Our solution is to use SGVB with gradient penalty regularizer to train VAEPP, \IE $\max_{\theta, \phi, \beta} \max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$. 
 
 What will happen if $\mathcal{L}(\theta, \phi, \beta, \omega)$ is directly trained by SGVB? The behavior of $\theta, \phi, \beta$ is same as \cref{alg:vaepp} since the optimization for them is not changed. We only need to show the optimization $\max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$. We firstly show an inequality of $\ln Z$:
 \begin{equation*}
@@ -84,7 +84,7 @@ where $p_r$ denotes $p_r(x) = \E_{q_\phi(z)} p_\theta(x|z)$, consisting of recon
 
 \cref{eq:improve_vaepp} indicates that it is possible to obtain a suboptimal solution for $D$ by directly optimizing $\mathcal{L}$, and the gradient penalty term should be multiplied by $\beta$. By this way, the optimizations for $\omega$ and $\theta, \phi, \beta$ is combined into one, which is provides as \cref{alg:improved_vaepp}. 
 \begin{algorithm}[tb]
-\caption{Improved VAEPP training algorithm}
+\caption{VAEPP training algorithm}
 \label{alg:improved_vaepp}
 \textbf{Require}: The gradient penalty algorithm $R$, the batch size $b$, the parameters for Adam Optimizers, $\tau$. 
 

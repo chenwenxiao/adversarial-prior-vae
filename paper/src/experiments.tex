@@ -20,8 +20,9 @@ Without autoregressive   \\
 DISCRETE VAE     &  81.01      \\
 LARS             &  80.30     \\
 VampPrior        &  79.75      \\
+Naive VAEPP      &  TODO      \\
 VAEPP            &  TODO      \\
-Improved VAEPP   &  TODO      \\
+VAEPP+Flow       &  TODO      \\
 \bottomrule
 \end{tabular}
 \caption{Test log-likelihood on MNIST and Bits/dim on CIFAR-10. Bits/dim means $-\log p_\theta(x|z) / (3072 * \ln(2))$.}
@@ -33,14 +34,15 @@ Improved VAEPP   &  TODO      \\
 \toprule
 Model  &  CelebA & Fashion & Omniglot \\
 \midrule
-VAEPP           &  TODO.     \\
-Improved VAEPP   &  TODO.     \\
+Naive VAEPP           &  TODO.     \\
+VAEPP                 &  TODO.     \\
+VAEPP+Flow            &  TODO.     \\
 \bottomrule
 \end{tabular}
 \caption{Test log-likelihood on Fashion-MNIST and Omniglot and Bits/dim on CelebA. }
 \label{tab:cifar-nll}
 \end{table}
-We evaluate and compare the performance of VAEPP after training by \cref{alg:vaepp} and \cref{alg:improved_vaepp} on CIFAR10 when the dimension of latent space is varied from 64 to 1024 and the garadient penalty algorithm is selected from 3 strategy: WGAN-GP, WGAN-div-1  (sampling the linear combination of two real or two fake data points), WGAN-div-2 (sampling both real or fake data points) as shown in \cref{tab:compare_nD_over_z_dim} and \cref{tab:compare_nD_over_R}. Our conclusion is that \cref{alg:improved_vaepp} outperforms \cref{alg:vaepp} under all of settings in CIFAR-10 dataset. We then evaluate them on other datasets, MNIST, CelebA. This conclusion also holds for them. This validate our proposition in \cref{subsec:improve_of_vaepp}. 
+We evaluate and compare the performance of VAEPP after training by \cref{alg:vaepp} and \cref{alg:improved_vaepp} on CIFAR10 when the garadient penalty algorithm is selected from 3 strategy: WGAN-GP, WGAN-div-1  (sampling the linear combination of two real or two fake data points), WGAN-div-2 (sampling both real or fake data points) as shown in \cref{tab:compare_nD_over_R}. Our conclusion is that \cref{alg:improved_vaepp} outperforms \cref{alg:vaepp} under all of settings in CIFAR-10 dataset. We then evaluate them on other datasets, MNIST, CelebA. This conclusion also holds for them. This validate our proposition in \cref{subsec:improve_of_vaepp}. 
 \begin{table}[tb]
 \centering
 \begin{tabular}{lrr}  
@@ -82,6 +84,8 @@ VAE+Flow   & $54.8$. & $62.1$  & $81.2$ & $65.7$\\
 WAE-MMD    & $115.0$ & $101.7$ & $80.9$ & $62.9$\\
 2-StageVAE & $12.6$  & $29.3$  & $72.9$ & $44.4$\\
 VAEPP      & $12.6$  & $29.3$  & $71.3$ & $44.4$ \\
+\quad +Flow      & $12.6$  & $29.3$  & $71.3$ & $44.4$ \\
+\quad +learned$\gamma$  & $12.6$  & $29.3$  & $71.3$ & $44.4$ \\
 \bottomrule
 \end{tabular}
 \caption{FID compared to GAN-based models and 2-Stage VAE. The data of GAN and other VAE is from \protect\cite{dai2019diagnosing}. }
@@ -91,7 +95,7 @@ However, as common sense, it is hard to achieve best performance in FID, IS and 
 
 \subsection{Out-of-Distribution}
 
-We found that discriminator of WGAN performs normally while model assign higher density to the data from out-of-distribution, as shown in fig(). It inspires us that VAEPP could use the exact information from discriminator to solve OoD problem, as shown in fig(). We design 3 indicators, log-likelihood $\log p_\theta(x)$, energy $D(x)$ and norm of gradient $\|\nabla_{x} D(x)\|$. From the likelihood, () showed that it is useful to assume the data is out-of-distribution if it have very high or very low density. For energy and norm of gradient, it performs normally, i.e., when energy is higher or norm of gradient is smaller, it more likely belongs to out-of-distribution. Hence, we evaluate the AUC and AP for them and combination of them in OoD problem on CIFAR and SVHN, as shown in \cref{tab:compare_ood}. The method to combine them is simple: normalize them into a standard normal in training set of CIFAR, and the score of this indicator contributed to combination score is the abs/normal/negative value for log-likelihood/energy/norm of gradient. We have tested all kinds of combination and the best one is $\log p_\theta(x)$ and $\|\nabla_x D(x)\|$. The performance of it on other datasets is shown in \cref{tab:compare_ood_other_datasets} which is competitive to other indicators $T_{perm}$~\cite{song2017pixeldefend} and WAIC~\cite{choi2018waic}. 
+We found that discriminator of VAEPP performs normally while model assign higher density to the data from out-of-distribution, as shown in fig(). It inspires us to use the exact information from discriminator to design 3 indicators, log-likelihood $\log p_\theta(x)$, energy $D(x)$ and norm of gradient $\|\nabla_{x} D(x)\|$ to solve OoD problem, as shown in fig(). From the likelihood, \cite{song2017pixeldefend} showed that it is useful to assume the data is out-of-distribution if it have very high or very low density. For energy and norm of gradient, it performs normally, i.e., when energy is higher or norm of gradient is smaller, it more likely belongs to out-of-distribution. Hence, we evaluate the AUC and AP for them and combination of them in OoD problem on CIFAR and SVHN, as shown in \cref{tab:compare_ood}. The method to combine them is simple: normalize them into a standard Gaussian in training set of CIFAR, and the score of this indicator contributing to combination score is the absolute/original/negative value of it. We have tested all kinds of combination and the best one is $|\log p_\theta(x)| - \|\nabla_x D(x)\|$. The performance of it on other datasets is shown in \cref{tab:compare_ood_other_datasets} which is competitive to other indicators $T_{perm}$~\cite{song2017pixeldefend} and WAIC~\cite{choi2018waic}. 
 \begin{table}[tb]
 \centering
 \begin{tabular}{lrr}  
@@ -119,7 +123,7 @@ CIFAR vs ImageNet & 0.50/0.51  & 0.58/0.59 & 1.00/1.00  \\
 CIFAR vs LSUN     & 0.58/0.56  & 0.60/0.28 & 1.00/1.00  \\
 \bottomrule
 \end{tabular}
-\caption{Comparation the performance of VAEPP with other models in OoD problem. The data of $T_{perm}$ and WAIC is from \protect \cite{song2019unsupervised}. The reason that we can't compare VAEPP with \protect\cite{song2019unsupervised} is that it assumes a batch of out-of-distribution data can be obtained but we don't have this assumption. In fast, many online anomaly detection system must deal the online data on time when the number of out-of-distribution data is unknown. }
+\caption{Comparation the performance of VAEPP with other models in OoD problem. The data of $T_{perm}$ and WAIC is from \protect \cite{song2019unsupervised}. The reason that we can't compare VAEPP with \protect\cite{song2019unsupervised} is that it assumes a batch of OoD data can be obtained but we don't have this assumption. In fast, many online anomaly detection system must deal the online data on time when the number of OoD data in a batch is unknown. }
 \label{tab:compare_ood_other_datasets}
 \end{table}
 
