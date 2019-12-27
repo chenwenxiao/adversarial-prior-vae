@@ -41,7 +41,7 @@ class ExpConfig(spt.Config):
 
     # evaluation parameters
     test_n_z = 1000
-    test_batch_size = 64
+    test_batch_size = 1
 
     @property
     def x_shape(self):
