@@ -163,14 +163,14 @@ def main():
     with tf.name_scope('initialization'), \
             arg_scope([p_net, q_net], is_initializing=True), \
             spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
-        init_q_net = q_net(input_origin_x)
+        init_q_net = q_net(input_x)
         init_chain = init_q_net.chain(p_net, observed={'x': input_x})
         init_loss = tf.reduce_mean(init_chain.vi.training.sgvb())
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
             arg_scope([p_net, q_net], is_training=True):
-        train_q_net = q_net(input_origin_x)
+        train_q_net = q_net(input_x)
         train_chain = train_q_net.chain(p_net, observed={'x': input_x})
         train_loss = (
             tf.reduce_mean(train_chain.vi.training.sgvb()) +
@@ -179,7 +179,7 @@ def main():
 
     # derive the nll and logits output for testing
     with tf.name_scope('testing'):
-        test_q_net = q_net(input_origin_x, n_z=config.test_n_z)
+        test_q_net = q_net(input_x, n_z=config.test_n_z)
         test_chain = test_q_net.chain(
             p_net, latent_axis=0, observed={'x': input_x})
         test_nll = -tf.reduce_mean(test_chain.vi.evaluation.is_loglikelihood())
