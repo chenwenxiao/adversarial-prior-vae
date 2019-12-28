@@ -84,7 +84,7 @@ class ExpConfig(spt.Config):
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
-    test_x_samples = 8
+    test_x_samples = 1
     log_Z_times = 100000
     log_Z_x_samples = 64
 
