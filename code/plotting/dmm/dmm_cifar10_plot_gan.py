@@ -55,6 +55,7 @@ class ExpConfig(spt.Config):
     lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600]
     lr_anneal_step_freq = None
 
+    use_flow = False
     use_dg = False
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
     gradient_penalty_weight = 2
@@ -447,13 +448,16 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
         z_logstd = spt.ops.reshape_tail(z_logstd, ndims=3, shape=[-1])
 
     # sample z ~ q(z|x)
-    # z_distribution = spt.FlowDistribution(
-    #     spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
-    #     posterior_flow
-    # )
-    # z = net.add('z', z_distribution, n_samples=n_z)
-    z = net.add('z', spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q)),
-                n_samples=n_z, group_ndims=1)
+    z_distribution = spt.FlowDistribution(
+        spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
+        posterior_flow
+    )
+    if config.use_flow:
+        z = net.add('z', z_distribution, n_samples=n_z)
+    else:
+        z = net.add('z', spt.Normal(mean=z_mean,
+                                    logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q)),
+                    n_samples=n_z, group_ndims=1)
 
     return net
 

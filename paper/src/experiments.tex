@@ -59,15 +59,6 @@ WGAN-div-2         &  4.47   & 2.99      \\
 \label{tab:compare_nD_over_R}
 \end{table}
 
-\begin{figure}
-	\centering
-	\includegraphics[width=\columnwidth]{../figures/fid_is_nll_on_different_dim}
-	\caption{
-	Comparation of VAEPP when the dimension of latent space varies on CIFAR-10 with metrics log-likelihood, FID and IS.
-	}
-	\label{fig:compare_nD_over_z_dim}
-\end{figure}
-
 We compare our algorithms with other log-likelihood based model on MNIST, CIFAR-10 and CelebA as shown in \cref{tab:mnist-nll}, \cref{tab:cifar-nll}. Because the improvement of auto-regressive components is significant, we separate models by whether use auto-regressive component as \cite{maaloe2019biva} did. Improved VAEPP outperforms most of the models without autoregressive component and is competitive to the models with autoregressive component. The reason of why VAEPP don't use auto-regressive component is that VAEPP is time-consuming in training,  evaluation and sampling due to the huge structure (need additional discriminator) and Langevin dynamics. It is not easy to apply auto-regressive component on VAEPP considering auto-regressive component is also time-consuming. Concretely, a whole process including training, evaluation and sampling on CIFAR10 will cost roughly one week on single Nvidia 2080Ti GPU card. On the other hand, we expect that the pure improvement on learnable prior could improve the performance of VAE rather than the improvement on encoder or decoder, since it is clearer and easier to develop in theory. Therefore, how to apply autoregressive component on VAEPP is a valuable and challenging practical work. We leave it as a future work.
 
 %We evaluate $Z$ by two ways mentioned in \cref{subsec:determine_z} and compare the variance of them in 10 times on CIFAR-10. The variance of estimation based on $q_\phi(z)$ (4.82), is much less than the variance of estimation based on $p_\mathcal{N}$ (TODO), which supports our proposition in \cref{subsec:determine_z}. Since the variance of $Z$ also influence the variance of log-likelihood, we also evaluate the variance of log-likelihood in 10 times on CIFAR-10 (4.82) to ensure the stability of evaluation. 
@@ -92,6 +83,15 @@ VAEPP      & $12.6$  & $29.3$  & $71.3$ & $44.4$ \\
 \caption{FID comparasons to GAN-based models and other VAEs. Best GAN indicates the best FID on each dataset across all GAN models when trained using settings suggested by original authors. The data of Best GAN and other VAEs is from \protect\cite{dai2019diagnosing}. }
 \label{tab:compare_FID}
 \end{table}
+\begin{figure}
+	\centering
+	\includegraphics[width=\columnwidth]{../figures/fid_is_nll_on_different_dim}
+	\caption{
+	Comparation of VAEPP when the dimension of latent space varies on CIFAR-10 with metrics log-likelihood, FID and IS.
+	}
+	\label{fig:compare_nD_over_z_dim}
+\end{figure}
+
 However, as common sense, it is hard to achieve best performance in FID, IS and log-likelihood by same setting. We observe this fact that when dimension of latent space is increasing, the FID, IS become worse, as shown in (TODO). The trend of FID, IS is different to the trend of log-likelihood, which is increasing when dimension of latent space is increasing, as shown in \cref{fig:compare_nD_over_z_dim}. As diagnosis in \cite{dai2019diagnosing}, the dimension of latent space should be selected as a number that little larger than the dimension of real data manifold, suggested by their experiment, dim $\mathcal{Z}$ = 64, same as our experimental result.  
 
 \subsection{Out-of-Distribution}
