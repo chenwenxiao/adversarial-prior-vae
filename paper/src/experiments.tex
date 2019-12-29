@@ -23,7 +23,7 @@ LARS             &  80.30     \\
 VampPrior        &  79.75     \\
 Naive VAEPP      &  TODO  & 3.15    \\
 VAEPP            &  77.46 & 2.94     \\
-VAEPP+Flow       &  TODO      \\
+VAEPP+Flow       &  75.85 &       \\
 \bottomrule
 \end{tabular}
 \caption{Test log-likelihood on MNIST and Bits/dim on CIFAR-10. Bits/dim means $-\log p_\theta(x|z) / (3072 * \ln(2))$. Most of VAEs based on learnable prior focus on MNIST and don't try CIFAR-10. The learnable prior is indeed more useful on MNIST since the reconstruction loss is not hard to optimize on MNIST and the improvement by autoregressive component is limited. On CIFAR-10, the image is more complex and reconstruction loss is hard to optimize. Therefore, autoregressive component improve the VAEPP significantly and the improvement of learnable prior is limited. VAEPP achieves the state of art on MNIST, and is competitive to the models with autoregressive component. }
@@ -35,9 +35,9 @@ VAEPP+Flow       &  TODO      \\
 \toprule
 Model  &  CelebA & Fashion & Omniglot \\
 \midrule
-Naive VAEPP           &  TODO.     \\
-VAEPP                 &  TODO.     \\
-VAEPP+Flow            &  TODO.     \\
+Naive VAEPP           &  TODO.  &    &    \\
+VAEPP                 &  TODO.  &    &  86.73   \\
+VAEPP+Flow            &  TODO.  &    &     \\
 \bottomrule
 \end{tabular}
 \caption{Test log-likelihood on Fashion-MNIST and Omniglot and Bits/dim on CelebA. }
