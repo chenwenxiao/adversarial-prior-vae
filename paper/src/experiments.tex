@@ -21,8 +21,8 @@ VAE based on $q_\phi(z|e)$   &  81.01 \\
 Discrete VAE     &  81.01     \\
 LARS             &  80.30     \\
 VampPrior        &  79.75     \\
-Naive VAEPP      &  TODO  & 3.15    \\
-VAEPP            &  77.46 & 2.94     \\
+Naive VAEPP      &  79.18 & 3.15    \\
+VAEPP            &  77.46 & 2.91     \\
 VAEPP+Flow       &  75.85 &       \\
 \bottomrule
 \end{tabular}
@@ -33,11 +33,11 @@ VAEPP+Flow       &  75.85 &       \\
 \centering
 \begin{tabular}{lrrr}  
 \toprule
-Model  &  CelebA & Fashion & Omniglot \\
+Model   & Static MNIST & Fashion & Omniglot \\
 \midrule
-Naive VAEPP           &  TODO.  &    &  96.86  \\
-VAEPP                 &  TODO.  &    &  86.73   \\
-VAEPP+Flow            &  TODO.  &    &     \\
+Naive VAEPP    &      &    &  96.86  \\
+VAEPP          &      &    &  88.85   \\
+VAEPP+Flow     &      &    &  88.83   \\
 \bottomrule
 \end{tabular}
 \caption{Test log-likelihood on Fashion-MNIST and Omniglot and Bits/dim on CelebA. }
@@ -51,7 +51,7 @@ We evaluate and compare the performance of VAEPP after training by \cref{alg:vae
 GP Strategy  &  Naive VAEPP  & VAEPP \\
 \midrule
 WGAN-GP            &  3.15   & 2.95      \\
-WGAN-div-1         &  3.20   & 2.94      \\
+WGAN-div-1         &  3.20   & 2.91      \\
 WGAN-div-2         &  4.47   & 2.99      \\
 \bottomrule
 \end{tabular}
@@ -76,11 +76,9 @@ VAE+Flow   & $54.8$. & $62.1$  & $81.2$ & $65.7$\\
 WAE-MMD    & $115.0$ & $101.7$ & $80.9$ & $62.9$\\
 2-StageVAE & $12.6$  & $29.3$  & $72.9$ & $44.4$\\
 VAEPP      & $12.6$  & $29.3$  & $71.3$ & $44.4$ \\
-\quad +Flow      & $12.6$  & $29.3$  & $71.3$ & $44.4$ \\
-\quad +learned$\gamma$  & $12.6$  & $29.3$  & $71.3$ & $44.4$ \\
 \bottomrule
 \end{tabular}
-\caption{FID comparasons to GAN-based models and other VAEs. Best GAN indicates the best FID on each dataset across all GAN models when trained using settings suggested by original authors. The data of Best GAN and other VAEs is from \protect\cite{dai2019diagnosing}. }
+\caption{FID comparasons to GAN-based models and other VAEs. Best GAN indicates the best FID on each dataset across all GAN models when trained using settings suggested by original authors. The data of Best GAN and other VAEs is from \protect\cite{dai2019diagnosing}. As suggested by \protect\cite{dai2019diagnosing}, the variance of $p_\theta(x|z)$ of VAEPP is independent on $z$ and the dimension of latent space is small (128), where the setting is different to the experiments for NLL. }
 \label{tab:compare_FID}
 \end{table}
 \begin{figure}
