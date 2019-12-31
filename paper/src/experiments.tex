@@ -22,8 +22,8 @@ Discrete VAE     &  81.01     \\
 LARS             &  80.30     \\
 VampPrior        &  79.75     \\
 Naive VAEPP      &  79.18 & 3.15    \\
-VAEPP            &  77.46 & 2.91     \\
-VAEPP+Flow       &  75.85 &       \\
+VAEPP            &  77.46 & 2.91	     \\
+VAEPP+Flow       &  77.11 &       \\
 \bottomrule
 \end{tabular}
 \caption{Test log-likelihood on MNIST and Bits/dim on CIFAR-10. Bits/dim means $-\log p_\theta(x|z) / (3072 * \ln(2))$. Most of VAEs based on learnable prior focus on MNIST and don't try CIFAR-10. The learnable prior is indeed more useful on MNIST since the reconstruction loss is not hard to optimize on MNIST and the improvement by autoregressive component is limited. On CIFAR-10, the image is more complex and reconstruction loss is hard to optimize. Therefore, autoregressive component improve the VAEPP significantly and the improvement of learnable prior is limited. VAEPP achieves the state of art on MNIST, and is competitive to the models with autoregressive component. }

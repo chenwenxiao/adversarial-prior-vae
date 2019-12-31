@@ -38,7 +38,7 @@ spt.Bernoulli.mean = property(_bernoulli_mean)
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 32
+    z_dim = 12
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -94,7 +94,7 @@ class ExpConfig(spt.Config):
     fid_samples = 5000
 
     epsilon = -20.0
-    min_logstd_of_q = -5.0
+    min_logstd_of_q = -3.0
 
     @property
     def x_shape(self):
@@ -1090,6 +1090,7 @@ def main():
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
     x_train = _x_train / 255.0
     x_test = _x_test / 255.0
+    x_valid = _x_valid / 255.0
     train_flow = spt.DataFlow.arrays([x_train, x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     train_flow = train_flow.map(lambda x, y: [x, y])
     reconstruct_train_flow = spt.DataFlow.arrays(
@@ -1097,7 +1098,7 @@ def main():
     reconstruct_test_flow = spt.DataFlow.arrays(
         [x_test], 100, shuffle=True, skip_incomplete=False)
     valid_flow = spt.DataFlow.arrays(
-        [_x_valid, _x_valid],
+        [x_valid, x_valid],
         config.test_batch_size
     )
 
