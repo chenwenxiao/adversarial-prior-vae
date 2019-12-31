@@ -725,6 +725,9 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None
         train_recon = -tf.nn.sigmoid_cross_entropy_with_logits(
             labels=labels, logits=p_net['x'].distribution.logits
         )
+        print(train_recon)
+        train_recon = tf.reduce_sum(train_recon, axis=[-1, -2, -3])
+        train_recon = tf.reduce_mean(train_recon)
         # train_recon = tf.reduce_mean(log_px_z)
         global train_recon_pure_energy
         global train_recon_energy
