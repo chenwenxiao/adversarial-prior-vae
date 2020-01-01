@@ -43,20 +43,15 @@ Because $\beta$ is optimized from small to large during training, we use both es
 \end{equation*}
 which means $\hat{p}_\theta(x)$ is a lower bound of model density $p_\theta(x)$. 
 
-Thanks to the stable and efficient gradient penalty regularizer term provided by WGAN-GP and WGAN-div, we enjoy stable and efficient training process. Training algorithm for VAEPP based on WGAN-GP is provided as \cref{alg:vaepp}. We remove $n_{critic}$, number of critic iterations per generator iteration, from WGAN-GP framework since there is no significant difference when $n_{critic}$ varies in VAEPP.
+Thanks to the stable and efficient gradient penalty regularizer term provided by WGAN-GP and WGAN-div, we enjoy stable and efficient training process. Training algorithm for VAEPP based on WGAN-GP is provided as \cref{alg:vaepp}. 
 \begin{algorithm}[tb]
 \caption{Naive VAEPP training algorithm}
 \label{alg:vaepp}
-\textbf{Require}: The gradient penalty algorithm $R$, the batch size $b$, the parameters for Adam Optimizers, $\tau$. 
+\textbf{Require}: The gradient penalty algorithm $R$, the batch size $b$, the number of critic iterations per generator iteration $n_c$, the parameters for Adam Optimizers, $\tau$. 
 
 \begin{algorithmic}[1] %[1] enables line numbers
 \WHILE{$\theta, \phi, \beta, \omega$ have not converged}
-\FOR {$i = 1, \ldots, b$}
-\STATE Sample real data $e, x \sim p^*$, latent variable $z \sim p_\mathcal{N}$
-\STATE	$\hat{x} = \E_{p_\theta(x|z)}[x]$, get gradient penalty $\zeta \gets R(x, \hat{x})$
-\STATE $L^{(i)} \gets D(\hat{x}) - D(x) + \zeta$
-\ENDFOR
-\STATE $\omega \gets $ Adam $(\nabla_{\omega} \frac{1}{b}\sum_{i}^b L^{(i)}, \omega, \tau)$
+\FOR {$k = 1, \ldots n_c$}
 \FOR {$i = 1, \ldots, b$}
 \STATE Sample real data $x \sim p^*$, $z \sim q_\phi(z|e)$, $\epsilon \sim p_\mathcal{N}$
 \STATE $Z^{(i)} \gets \frac{1}{2}(\exp\{-\beta * D(G(\epsilon))\} + \frac{f_\lambda(z)}{\hat{q}_\phi(z)})$
@@ -64,6 +59,13 @@ Thanks to the stable and efficient gradient penalty regularizer term provided by
 \ENDFOR
 \STATE $\mathcal{L} \gets \frac{1}{b}\sum_{i}^b \mathcal{L}^{(i)} - \ln (\frac{1}{b}\sum_{i}^b Z^{(i)})$
 \STATE $\theta, \phi, \beta \gets $ Adam $(\nabla_{\theta, \phi, \beta} \mathcal{L}, \{\theta, \phi, \beta\}, \tau)$
+\ENDFOR
+\FOR {$i = 1, \ldots, b$}
+\STATE Sample real data $e, x \sim p^*$, latent variable $z \sim p_\mathcal{N}$
+\STATE	$\hat{x} = \E_{p_\theta(x|z)}[x]$, get gradient penalty $\zeta \gets R(x, \hat{x})$
+\STATE $L^{(i)} \gets D(\hat{x}) - D(x) + \zeta$
+\ENDFOR
+\STATE $\omega \gets $ Adam $(\nabla_{\omega} \frac{1}{b}\sum_{i}^b L^{(i)}, \omega, \tau)$
 \ENDWHILE
 \end{algorithmic}
 \end{algorithm}
