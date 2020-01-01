@@ -10,7 +10,6 @@ from matplotlib import pyplot
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
-from code.experiments.datasets.static_mnist import load_static_mnist
 from tfsnippet import DiscretizedLogistic
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
@@ -38,14 +37,14 @@ spt.Bernoulli.mean = property(_bernoulli_mean)
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 13
+    z_dim = 32
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
     kernel_size = 3
     shortcut_kernel_size = 1
     batch_norm = True
-    nf_layers = 5
+    nf_layers = 20
 
     # training parameters
     result_dir = None
@@ -80,7 +79,7 @@ class ExpConfig(spt.Config):
     test_n_pz = 1000
     test_n_qz = 10
     test_batch_size = 64
-    test_epoch_freq = 100
+    test_epoch_freq = 1000
     plot_epoch_freq = 20
     grad_epoch_freq = 10
 
@@ -94,7 +93,7 @@ class ExpConfig(spt.Config):
     fid_samples = 5000
 
     epsilon = -20.0
-    min_logstd_of_q = -3.0
+    min_logstd_of_q = -5.0
 
     @property
     def x_shape(self):
@@ -463,9 +462,8 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
     if config.use_flow:
         z = net.add('z', z_distribution, n_samples=n_z)
     else:
-        z = net.add('z',
-                    spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q)),
-                    n_samples=n_z, group_ndims=1)
+        z = net.add('z', spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q)),
+                n_samples=n_z, group_ndims=1)
 
     return net
 
@@ -709,8 +707,8 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
 
 def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None):
     with tf.name_scope('adv_prior_loss'):
-        gp_omega = get_gradient_penalty(q_net['z'] if config.use_flow else q_net['z'].distribution.mean,
-                                        pn_omega['f_z'].distribution.mean, D=D_kappa, space='f_z')
+        gp_omega = get_gradient_penalty(q_net['z'] if config.use_flow else q_net['z'].distribution.mean, pn_omega['f_z'].distribution.mean, D=D_kappa,
+                                        space='f_z')
         gp_theta = get_gradient_penalty(input_origin_x, pn_theta['x'].distribution.mean)
         if config.use_dg:
             gp_dg = get_gradient_penalty(q_net['z'], pn_theta['z'], space='z')
@@ -938,29 +936,28 @@ def main():
             'p_net/xi') + tf.trainable_variables('D_psi')
         VAE_nD_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
             'beta') + tf.trainable_variables('posterior_flow') + tf.trainable_variables('p_net/xi')
-        D_params = tf.trainable_variables('D_kappa')
+        D_psi_params = tf.trainable_variables('D_psi')
+        D_kappa_params = tf.trainable_variables('D_kappa')
         G_params = tf.trainable_variables('G_omega')
-        print("========VAE_params=========")
-        print(VAE_params)
-        print("========D_params=========")
-        print(D_params)
-        print("========G_params=========")
-        print(G_params)
         with tf.variable_scope('VAE_optimizer'):
             VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
             VAE_grads = VAE_optimizer.compute_gradients(VAE_loss, VAE_params)
         with tf.variable_scope('VAE_nD_optimizer'):
             VAE_nD_optimizer = tf.train.AdamOptimizer(learning_rate)
             VAE_nD_grads = VAE_nD_optimizer.compute_gradients(VAE_nD_loss, VAE_nD_params)
-        with tf.variable_scope('D_optimizer'):
+        with tf.variable_scope('D_psi_optimizer'):
+            VAE_D_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
+            VAE_D_grads = VAE_D_optimizer.compute_gradients(VAE_D_loss, D_psi_params)
+        with tf.variable_scope('D_kappa_optimizer'):
             D_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
-            D_grads = D_optimizer.compute_gradients(D_loss, D_params)
+            D_grads = D_optimizer.compute_gradients(D_loss, D_kappa_params)
         with tf.variable_scope('G_optimizer'):
             G_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
             G_grads = G_optimizer.compute_gradients(G_loss, G_params)
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             VAE_train_op = VAE_optimizer.apply_gradients(VAE_grads)
             VAE_nD_train_op = VAE_optimizer.apply_gradients(VAE_nD_grads)
+            VAE_D_train_op = VAE_D_optimizer.apply_gradients(VAE_D_grads)
             G_train_op = G_optimizer.apply_gradients(G_grads)
             D_train_op = D_optimizer.apply_gradients(D_grads)
 
@@ -1003,7 +1000,7 @@ def main():
             with loop.timeit('plot_time'):
                 # plot reconstructs
                 for [x] in reconstruct_test_flow:
-                    x_samples = x
+                    x_samples = bernouli_sampler.sample(x)
                     images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
                     images[::3, ...] = np.round(255.0 * x)
                     images[1::3, ...] = np.round(255.0 * x_samples)
@@ -1020,7 +1017,7 @@ def main():
                     break
 
                 for [x] in reconstruct_train_flow:
-                    x_samples = x
+                    x_samples = bernouli_sampler.sample(x)
                     images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
                     images[::3, ...] = np.round(255.0 * x)
                     images[1::3, ...] = np.round(255.0 * x_samples)
@@ -1085,28 +1082,25 @@ def main():
                     return mala_images
 
     # prepare for training and testing data
-    _x_train, _x_valid, _x_test = load_static_mnist(x_shape=config.x_shape)
+    (_x_train, _y_train), (_x_test, _y_test) = \
+        spt.datasets.load_mnist(x_shape=config.x_shape)
     # train_flow = bernoulli_flow(
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
     x_train = _x_train / 255.0
     x_test = _x_test / 255.0
-    x_valid = _x_valid / 255.0
+    bernouli_sampler = BernoulliSampler()
     train_flow = spt.DataFlow.arrays([x_train, x_train], config.batch_size, shuffle=True, skip_incomplete=True)
-    train_flow = train_flow.map(lambda x, y: [x, y])
+    train_flow = train_flow.map(lambda x, y: [bernouli_sampler.sample(x), y])
     reconstruct_train_flow = spt.DataFlow.arrays(
         [x_train], 100, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(
         [x_test], 100, shuffle=True, skip_incomplete=False)
-    valid_flow = spt.DataFlow.arrays(
-        [x_valid, x_valid],
-        config.test_batch_size
-    )
 
     test_flow = spt.DataFlow.arrays(
         [x_test, x_test],
         config.test_batch_size
     )
-    test_flow = test_flow.map(lambda x, y: [x, y])
+    test_flow = test_flow.map(lambda x, y: [bernouli_sampler.sample(x), y])
     # mapped_test_flow = test_flow.to_arrays_flow(config.test_batch_size).map(bernouli_sampler)
     # gathered_flow = spt.DataFlow.gather([test_flow, mapped_test_flow])
 
@@ -1158,16 +1152,6 @@ def main():
                 time_metric_name='test_time'
             )
 
-            valid_evaluator = spt.Evaluator(
-                loop,
-                metrics={'valid_nll': test_nll, 'valid_lb': test_lb,
-                         'adv_valid_nll': adv_test_nll, 'adv_valid_lb': adv_test_lb,
-                         'valid_recon': test_recon},
-                inputs=[input_x, input_origin_x],
-                data_flow=valid_flow,
-                time_metric_name='valid_time'
-            )
-
             loop.print_training_summary()
             spt.utils.ensure_variables_initialized()
 
@@ -1185,7 +1169,7 @@ def main():
                             [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
                              batch_train_recon_pure_energy, batch_VAE_D_real, batch_VAE_G_loss, batch_train_kl,
                              batch_train_grad_penalty] = session.run(
-                                [VAE_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
+                                [VAE_nD_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
                                  train_recon_pure_energy, VAE_D_real, VAE_G_loss,
                                  train_kl, train_grad_penalty],
                                 feed_dict={
@@ -1203,6 +1187,12 @@ def main():
                             loop.collect_metrics(VAE_G_loss=batch_VAE_G_loss)
                             loop.collect_metrics(train_kl=batch_train_kl)
                             loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
+
+                            _ = session.run(VAE_D_train_op, feed_dict={
+                                input_x: x,
+                                input_origin_x: origin_x,
+                                warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
+                            })
                 else:
                     step_iterator = MyIterator(train_flow)
                     while step_iterator.has_next:
@@ -1257,7 +1247,6 @@ def main():
 
                     with loop.timeit('eval_time'):
                         evaluator.run()
-                        valid_evaluator.run()
 
                 if epoch == config.max_epoch:
                     dataset_img = np.tile(_x_train, (1, 1, 1, 3))
