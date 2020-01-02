@@ -38,6 +38,7 @@ class ExpConfig(spt.Config):
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = 300
     lr_anneal_step_freq = None
+    use_q_z_given_e = False
 
     # evaluation parameters
     test_n_z = 1000
@@ -129,7 +130,7 @@ def p_net(observed=None, n_z=None, is_training=False, is_initializing=False):
         h_z, 1, (1, 1), padding='same', name='feature_map_to_pixel',
         channels_last=config.channels_last
     )  # output: (1, 28, 28)
-    x = net.add('x', spt.Bernoulli(logits=x_logits), group_ndims=3)
+    x = net.add('x', spt.Bernoulli(logits=x_logits, dtype=tf.float32 if config.use_q_z_given_e else tf.int32), group_ndims=3)
 
     return net
 
@@ -163,15 +164,15 @@ def main():
     with tf.name_scope('initialization'), \
             arg_scope([p_net, q_net], is_initializing=True), \
             spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
-        init_q_net = q_net(input_x)
-        init_chain = init_q_net.chain(p_net, observed={'x': input_x})
+        init_q_net = q_net(input_origin_x if config.use_q_z_given_e else input_x)
+        init_chain = init_q_net.chain(p_net, observed={'x': input_origin_x if config.use_q_z_given_e else input_x})
         init_loss = tf.reduce_mean(init_chain.vi.training.sgvb())
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
             arg_scope([p_net, q_net], is_training=True):
-        train_q_net = q_net(input_x)
-        train_chain = train_q_net.chain(p_net, observed={'x': input_x})
+        train_q_net = q_net(input_origin_x if config.use_q_z_given_e else input_x)
+        train_chain = train_q_net.chain(p_net, observed={'x': input_origin_x if config.use_q_z_given_e else input_x})
         train_loss = (
             tf.reduce_mean(train_chain.vi.training.sgvb()) +
             tf.losses.get_regularization_loss()
@@ -179,9 +180,9 @@ def main():
 
     # derive the nll and logits output for testing
     with tf.name_scope('testing'):
-        test_q_net = q_net(input_x, n_z=config.test_n_z)
+        test_q_net = q_net(input_origin_x if config.use_q_z_given_e else input_x, n_z=config.test_n_z)
         test_chain = test_q_net.chain(
-            p_net, latent_axis=0, observed={'x': input_x})
+            p_net, latent_axis=0, observed={'x': input_origin_x if config.use_q_z_given_e else input_x})
         test_nll = -tf.reduce_mean(test_chain.vi.evaluation.is_loglikelihood())
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
 

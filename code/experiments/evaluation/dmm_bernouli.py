@@ -77,7 +77,7 @@ class ExpConfig(spt.Config):
     train_n_pz = 128
     train_n_qz = 1
     test_n_pz = 1000
-    test_n_qz = 1000
+    test_n_qz = 100
     test_batch_size = 1
     test_epoch_freq = 1000
     plot_epoch_freq = 20
@@ -85,7 +85,7 @@ class ExpConfig(spt.Config):
 
     test_fid_n_pz = 5000
     test_x_samples = 1
-    log_Z_times = 100000
+    log_Z_times = 10
     log_Z_x_samples = 64
 
     len_train = 50000
@@ -611,7 +611,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
     x_mean = tf.clip_by_value(x_mean, 1e-7, 1 - 1e-7)
     logits = tf.log(x_mean) - tf.log1p(-x_mean)
     bernouli = spt.Bernoulli(
-        logits=logits
+        logits=logits, dtype=tf.float32
     )
     # bernouli.mean = x_mean
     x = net.add('x', bernouli, group_ndims=3)
@@ -864,7 +864,7 @@ def main():
         train_pn_omega = p_omega_net(n_z=config.train_n_pz, beta=beta)
         train_log_Z = spt.ops.log_mean_exp(-train_pn_theta['z'].log_prob().energy - train_pn_theta['z'].log_prob())
         train_q_net = q_net(input_origin_x, posterior_flow, n_z=config.train_n_qz)
-        train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']},
+        train_p_net = p_net(observed={'x': input_origin_x, 'z': train_q_net['z']},
                             n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
 
         VAE_nD_loss, VAE_loss, VAE_D_loss, VAE_G_loss, VAE_D_real, D_loss, G_loss, D_real = get_all_loss(
@@ -879,7 +879,7 @@ def main():
         test_q_net = q_net(input_origin_x, posterior_flow, n_z=config.test_n_qz)
         # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
-        test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
+        test_chain = test_q_net.chain(p_net, observed={'x': input_origin_x}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta, log_Z=get_log_Z())
         test_recon = tf.reduce_mean(
             test_chain.model['x'].log_prob()
@@ -1132,7 +1132,7 @@ def main():
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega', 'D_kappa'],
-                           max_epoch=config.max_epoch + 1,
+                           max_epoch=config.max_epoch + 10,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
@@ -1175,11 +1175,12 @@ def main():
                     # print('log_Z:{}'.format(log_Z))
 
                     log_Z_list = []
-                    for [batch_x, batch_origin_x] in Z_compute_flow:
-                        log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                            input_x: batch_x,
-                            input_origin_x: batch_origin_x
-                        }))
+                    for i in range(config.log_Z_times):
+                        for [batch_x, batch_origin_x] in Z_compute_flow:
+                            log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
+                                input_x: batch_x,
+                                input_origin_x: batch_origin_x
+                            }))
                     from scipy.misc import logsumexp
                     another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
                     # print('log_Z_list:{}'.format(log_Z_list))
