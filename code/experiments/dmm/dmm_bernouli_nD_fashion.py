@@ -77,8 +77,8 @@ class ExpConfig(spt.Config):
     train_n_pz = 128
     train_n_qz = 1
     test_n_pz = 1000
-    test_n_qz = 10
-    test_batch_size = 64
+    test_n_qz = 100
+    test_batch_size = 8
     test_epoch_freq = 1000
     plot_epoch_freq = 20
     grad_epoch_freq = 10
@@ -722,16 +722,15 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None
         global train_recon
         # Another computing method for reconstruction by caluclate the cross entroy of e, z
         # It is obtained by the analytical solution of $\E_{p^*(x|z)} p_\theta(x|z)$.
-        # However, to compare VAE models fairly, we will not use this for training, leave it to future work.
 
-        # labels = tf.expand_dims(input_origin_x, axis=0)
-        # train_recon = -tf.nn.sigmoid_cross_entropy_with_logits(
-        #     labels=labels, logits=p_net['x'].distribution.logits
-        # )
-        # print(train_recon)
-        # train_recon = tf.reduce_sum(train_recon, axis=[-1, -2, -3])
-        # train_recon = tf.reduce_mean(train_recon)
-        train_recon = tf.reduce_mean(log_px_z)
+        labels = tf.expand_dims(input_origin_x, axis=0)
+        train_recon = -tf.nn.sigmoid_cross_entropy_with_logits(
+            labels=labels, logits=p_net['x'].distribution.logits
+        )
+        print(train_recon)
+        train_recon = tf.reduce_sum(train_recon, axis=[-1, -2, -3])
+        train_recon = tf.reduce_mean(train_recon)
+        # train_recon = tf.reduce_mean(log_px_z)
         global train_recon_pure_energy
         global train_recon_energy
         global train_kl
