@@ -112,8 +112,8 @@ def tw():
     host.set_ylabel("FID")
     par1.set_ylabel("IS")
     par1.yaxis.set_label_coords(0.95,0.5)
-    par2.set_ylabel("nll")
-    par2.yaxis.set_label_coords(1.15,0.5)
+    par2.set_ylabel("bpd")
+    par2.yaxis.set_label_coords(1.15,0.49)
 
     # host.yaxis.label.set_color(p1.get_color())
     # par1.yaxis.label.set_color(p2.get_color())
