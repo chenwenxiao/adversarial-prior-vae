@@ -84,14 +84,14 @@ def tw():
 
 
     fig, host = plt.subplots(figsize=(5,4))
-    fig.subplots_adjust(left=0.1,right=0.79)
+    fig.subplots_adjust(left=0.1,right=0.85)
 
     par1 = host.twinx()
     par2 = host.twinx()
     
     # Offset the right spine of par2.  The ticks and label have already been
     # placed on the right by twinx above.
-    par2.spines["right"].set_position(("axes", 1.2))
+    par2.spines["right"].set_position(("axes", 1.1))
     # Having been created by twinx, par2 has its frame off, so the line of its
     # detached spine is invisible.  First, activate the frame but make the patch
     # and spines invisible.
@@ -118,12 +118,13 @@ def tw():
     # host.yaxis.label.set_color(p1.get_color())
     # par1.yaxis.label.set_color(p2.get_color())
     # par2.yaxis.label.set_color(p3.get_color())
-
+    xtkw = dict(size=4, width=1)
     tkw = dict(size=4, width=0.5)
     host.tick_params(axis='y', **tkw)
+    host.set_xticks(Z_dim)
     par1.tick_params(axis='y', **tkw)
     par2.tick_params(axis='y', **tkw)
-    host.tick_params(axis='x', **tkw)
+    host.tick_params(axis='x', **xtkw)
 
     lines = [p1, p2, p3]
 
