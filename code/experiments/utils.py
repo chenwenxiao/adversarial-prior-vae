@@ -365,7 +365,7 @@ def inception_transform_np(inputs, batch_size):
         features = np.vstack(features)
         logits = np.vstack(logits)
         return features, logits
-
+ 
 def get_fid_compare_gan(sample, real):
     """Returns the FID
     
