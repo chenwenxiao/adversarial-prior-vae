@@ -18,11 +18,14 @@ import matplotlib
 from mpl_toolkits.axisartist.parasite_axes import HostAxes, ParasiteAxes
 import numpy as np
 import os
+import math
 
 Z_dim = [6,7,8,9,10]
 FID = [78.6269,71.3,78.1806,81.7122,85.3522]
 IS = [4.95797,5.12981,4.91918,4.54314,4.19091]
 nll = [15063.1,13632,12106.1,10195.4,7528.38]
+for i in range(len(nll)):
+    nll[i]/=(3072*math.log(2))
 
 cname = [ 
     '#000000', '#0000FF', 
@@ -80,12 +83,12 @@ def tw():
             sp.set_visible(False)
 
 
-    fig, host = plt.subplots()
-    fig.subplots_adjust(right=0.75)
+    fig, host = plt.subplots(figsize=(5,4))
+    fig.subplots_adjust(left=0.1,right=0.79)
 
     par1 = host.twinx()
     par2 = host.twinx()
-
+    
     # Offset the right spine of par2.  The ticks and label have already been
     # placed on the right by twinx above.
     par2.spines["right"].set_position(("axes", 1.2))
@@ -95,7 +98,7 @@ def tw():
     make_patch_spines_invisible(par2)
     # Second, show the right spine.
     par2.spines["right"].set_visible(True)
-
+    host
     p1, = host.plot(Z_dim, FID, "b-", label="FID")
     p2, = par1.plot(Z_dim, IS, "r-", label="IS")
     p3, = par2.plot(Z_dim, nll, "g-", label="nll")
@@ -126,6 +129,6 @@ def tw():
 
     host.legend(lines, [l.get_label() for l in lines],loc='upper center',bbox_to_anchor=(0.4,-0.05), ncol=3)
 
-    plt.show()
+    plt.savefig(os.path.join('.','z_dim.png'),dpi=100)
 
 tw()
