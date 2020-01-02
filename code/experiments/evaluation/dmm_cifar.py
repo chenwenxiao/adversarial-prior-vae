@@ -17,7 +17,7 @@ from tfsnippet.examples.utils import (MLResults,
                                       bernoulli_flow,
                                       bernoulli_flow,
                                       print_with_title)
-from code.experiments.utils import get_inception_score, get_fid_google
+from code.experiments.utils import get_inception_score, get_fid
 from code.experiments.datasets.svhn import load_svhn
 import numpy as np
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score

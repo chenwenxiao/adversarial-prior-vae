@@ -18,7 +18,7 @@ from tfsnippet.examples.utils import (MLResults,
                                       bernoulli_flow,
                                       bernoulli_flow,
                                       print_with_title)
-from code.experiments.utils import get_inception_score, get_fid_google
+from code.experiments.utils import get_inception_score, get_fid
 import numpy as np
 from scipy.misc import logsumexp
 
@@ -1235,7 +1235,7 @@ def main():
                         # print('log_Z:{}'.format(log_Z))
 
                         log_Z_list = []
-                        for [batch_x, batch_origin_x] in train_flow:
+                        for [batch_x, batch_origin_x] in Z_compute_flow:
                             log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
                                 input_x: batch_x,
                                 input_origin_x: batch_origin_x
@@ -1262,7 +1262,7 @@ def main():
                     mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
                     mala_img = np.asarray(mala_img)
                     mala_img = np.tile(mala_img, (1, 1, 1, 3))
-                    FID = get_fid_google(mala_img, dataset_img)
+                    FID = get_fid(mala_img, dataset_img)
                     IS_mean, IS_std = get_inception_score(mala_img)
                     loop.collect_metrics(FID=FID)
                     loop.collect_metrics(IS=IS_mean)

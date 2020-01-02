@@ -17,7 +17,7 @@ from tfsnippet.examples.utils import (MLResults,
                                       bernoulli_flow,
                                       bernoulli_flow,
                                       print_with_title)
-from code.experiments.utils import get_inception_score, get_fid_google
+from code.experiments.utils import get_inception_score, get_fid
 import numpy as np
 from scipy.misc import logsumexp
 
@@ -1178,19 +1178,19 @@ def main():
                 mala_img = np.asarray(mala_img)
                 np.savez('sample_store', gan_img=gan_img, ori_img=ori_img, mala_img=mala_img)
                 for i in range(config.fid_test_times):
-                    FID = get_fid_google(gan_img, dataset_img)
+                    FID = get_fid(gan_img, dataset_img)
                     IS_mean, IS_std = get_inception_score(gan_img)
                     loop.collect_metrics(FID_gan=FID)
                     loop.collect_metrics(IS_gan=IS_mean)
 
-                    FID = get_fid_google(mala_img, dataset_img)
+                    FID = get_fid(mala_img, dataset_img)
                     IS_mean, IS_std = get_inception_score(mala_img)
                     loop.collect_metrics(FID=FID)
                     loop.collect_metrics(IS=IS_mean)
 
                     # ori_img = np.concatenate(ori_img, axis=0).astype('uint8')
                     # ori_img = np.asarray(ori_img)
-                    # FID = get_fid_google(ori_img, dataset_img)
+                    # FID = get_fid(ori_img, dataset_img)
                     # IS_mean, IS_std = get_inception_score(ori_img)
                     # loop.collect_metrics(FID_ori=FID)
                     # loop.collect_metrics(IS_ori=IS_mean)

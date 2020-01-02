@@ -1,6 +1,6 @@
 import sys,os
 sys.path.append("..")
-from utils import get_fid_google,graph_def
+from utils import get_fid,graph_def
 import numpy as np
 from PIL import Image
 import tfsnippet as spt
@@ -100,8 +100,8 @@ if __name__ == "__main__":
     fid1 = get_fid_test(ori_images,cifar_train)
     fid3 = get_fid_test(cifar_test,cifar_train)
 
-    fid0 = get_fid_google(ori_images,cifar_train)
-    fid2 = get_fid_google(cifar_test,cifar_train)
+    fid0 = get_fid(ori_images,cifar_train)
+    fid2 = get_fid(cifar_test,cifar_train)
 
     print(f"FID google/test: {fid0}/{fid1}")
     print(f"FID google/test: {fid2}/{fid3}")
