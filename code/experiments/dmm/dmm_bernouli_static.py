@@ -1093,6 +1093,7 @@ def main():
     x_valid = _x_valid / 255.0
     train_flow = spt.DataFlow.arrays([x_train, x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     train_flow = train_flow.map(lambda x, y: [x, y])
+    Z_compute_flow = spt.DataFlow.arrays([x_train, x_train], config.test_batch_size, shuffle=True, skip_incomplete=True)
     reconstruct_train_flow = spt.DataFlow.arrays(
         [x_train], 100, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(

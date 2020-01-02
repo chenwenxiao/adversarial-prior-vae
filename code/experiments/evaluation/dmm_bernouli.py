@@ -1093,6 +1093,8 @@ def main():
     bernouli_sampler = BernoulliSampler()
     train_flow = spt.DataFlow.arrays([x_train, x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     train_flow = train_flow.map(lambda x, y: [bernouli_sampler.sample(x), y])
+    Z_compute_flow = spt.DataFlow.arrays([x_train, x_train], config.test_batch_size, shuffle=True, skip_incomplete=True)
+    Z_compute_flow = Z_compute_flow.map(lambda x, y: [bernouli_sampler.sample(x), y])
     reconstruct_train_flow = spt.DataFlow.arrays(
         [x_train], 100, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(
@@ -1173,7 +1175,7 @@ def main():
                     # print('log_Z:{}'.format(log_Z))
 
                     log_Z_list = []
-                    for [batch_x, batch_origin_x] in train_flow:
+                    for [batch_x, batch_origin_x] in Z_compute_flow:
                         log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
                             input_x: batch_x,
                             input_origin_x: batch_origin_x
