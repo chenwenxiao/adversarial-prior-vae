@@ -1235,7 +1235,7 @@ def main():
                         # print('log_Z:{}'.format(log_Z))
 
                         log_Z_list = []
-                        for [batch_x, batch_origin_x] in train_flow:
+                        for [batch_x, batch_origin_x] in Z_compute_flow:
                             log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
                                 input_x: batch_x,
                                 input_origin_x: batch_origin_x
