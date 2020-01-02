@@ -806,7 +806,7 @@ def main():
         adv_test_lb = tf.reduce_mean(ele_adv_test_lb)
 
         ele_real_energy = D_psi(test_chain.model['x'])
-        real_energy = tf.reduce_mean(D_psi(test_chain.model['x']))
+        real_energy = tf.reduce_mean(D_psi(input_origin_x))
         reconstruct_energy = tf.reduce_mean(D_psi(test_chain.model['x'].distribution.mean))
         pd_energy = tf.reduce_mean(
             D_psi(test_pn_net['x'].distribution.mean) * tf.exp(
