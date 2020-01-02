@@ -75,7 +75,7 @@ class ExpConfig(spt.Config):
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
-    test_x_samples = 8
+    test_x_samples = 1
     log_Z_times = 100000
     log_Z_x_samples = 8
 
@@ -754,11 +754,11 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
 
 def get_all_loss(q_net, p_net, pn_omega, pn_theta, input_origin_x=None):
     with tf.name_scope('adv_prior_loss'):
-        gp_omega = get_gradient_penalty(q_net['z'].distribution.mean, pn_omega['f_z'].distribution.mean, D=D_kappa,
+        gp_omega = get_gradient_penalty(q_net['z'] if config.use_flow else q_net['z'].distribution.mean, pn_omega['f_z'].distribution.mean, D=D_kappa,
                                         space='f_z')
         gp_theta = get_gradient_penalty(input_origin_x, pn_theta['x'].distribution.mean)
         if config.use_dg:
-            gp_dg = get_gradient_penalty(q_net['z'].distribution.mean, pn_theta['z'], space='z')
+            gp_dg = get_gradient_penalty(q_net['z'], pn_theta['z'], space='z')
         else:
             gp_dg = 0.0
 
@@ -797,7 +797,7 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, input_origin_x=None):
         VAE_D_loss = -VAE_G_loss + VAE_D_real + train_grad_penalty
 
         energy_fake = D_kappa(pn_omega['f_z'].distribution.mean)
-        energy_real = D_kappa(q_net['z'].distribution.mean)
+        energy_real = D_kappa(q_net['z'] if config.use_flow else q_net['z'].distribution.mean)
 
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gp_omega
@@ -968,7 +968,7 @@ def main():
 
         ele_real_energy = tf.reduce_mean(
             D_psi(test_chain.model['x'].distribution.mean), axis=0)
-        real_energy = tf.reduce_mean(D_psi(test_chain.model['x']))
+        real_energy = tf.reduce_mean(D_psi(input_origin_x))
         reconstruct_energy = tf.reduce_mean(
             D_psi(test_chain.model['x'].distribution.mean))
         pd_energy = tf.reduce_mean(
