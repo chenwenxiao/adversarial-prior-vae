@@ -323,7 +323,7 @@ def get_fid_google(sample, real):
     """
     tf.import_graph_def(graph_def, name='FID_Inception_Net')
     with tf.Session() as sess:
-        fake_activations = get_activations(sample, sess)
+        fake_activations = get_activations(batchsize= sample, sess)
         real_activations = get_activations(real, sess)
         fake_activations = tf.convert_to_tensor(fake_activations)
         real_activations = tf.convert_to_tensor(real_activations)
@@ -419,13 +419,15 @@ def get_fid_sngan(sample, real, batchsize=100):
     return fid
 
 
-get_fid = get_fid_google
+get_fid = get_fid_compare_gan
 
 if __name__ == '__main__':
 
     (train_x, train_y), (test_x, test_y) = spt.datasets.load_cifar10(channels_last=True)
+    from code.experiments.datasets import celeba
+    train_x, validate_x, test_x = load_celeba()
 
-    x1 = test_x
+    x1 = train_x
     x2 = train_x
 
     if len(x1) > len(x2):
