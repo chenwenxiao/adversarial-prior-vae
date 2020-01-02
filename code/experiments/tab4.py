@@ -19,7 +19,7 @@ from mpl_toolkits.axisartist.parasite_axes import HostAxes, ParasiteAxes
 import numpy as np
 import os
 
-Z_dim = [64,128,256,512,1024]
+Z_dim = [6,7,8,9,10]
 FID = [78.6269,71.3,78.1806,81.7122,85.3522]
 IS = [4.95797,5.12981,4.91918,4.54314,4.19091]
 nll = [15063.1,13632,12106.1,10195.4,7528.38]
@@ -44,14 +44,14 @@ cname = [
 
 def makeFigure(name='Z dim',path='./',dpi=100):
     fig = plt.figure()
-    fig.suptitle(name)
+    # fig.suptitle(name)
     ax = HostAxes(fig, [0.08, 0.08, 0.70, 0.8])
     ax.axis["right"].set_visible(False)
     ax.axis["top"].set_visible(False)
     ax.set_xticks(Z_dim)
     ax.plot(Z_dim,FID,color=cname[0],label='FID')
     ax.set_ylabel('FID')
-    ax.set_xlabel('Z dimension')
+    ax.set_xlabel('log_2(Z dimension)')
     ax.legend()
     fig.add_axes(ax)
 
@@ -61,6 +61,7 @@ def makeFigure(name='Z dim',path='./',dpi=100):
         ax_para.axis['right'].set_visible(True)
         ax_paraD = ax_para.get_grid_helper().new_fixed_axis
         ax_para.set_ylabel(name)
+        ax_para.yaxis.set_label_coords(-1,-0.5)
         ax_para.axis['right'] = ax_paraD(loc='right',  offset=(40*cnt, 0), axes=ax_para)
         ax_para.plot(x, y, label=name, color=cname[cnt+1])
         plt.legend(loc=8, ncol=3)
@@ -69,4 +70,62 @@ def makeFigure(name='Z dim',path='./',dpi=100):
     paraAxis(Z_dim, nll, "nll",1)
     plt.savefig(os.path.join(path,'z_dim.png'),dpi=dpi)
 
-makeFigure()
+# makeFigure()
+
+def tw():
+    def make_patch_spines_invisible(ax):
+        ax.set_frame_on(True)
+        ax.patch.set_visible(False)
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+
+
+    fig, host = plt.subplots()
+    fig.subplots_adjust(right=0.75)
+
+    par1 = host.twinx()
+    par2 = host.twinx()
+
+    # Offset the right spine of par2.  The ticks and label have already been
+    # placed on the right by twinx above.
+    par2.spines["right"].set_position(("axes", 1.2))
+    # Having been created by twinx, par2 has its frame off, so the line of its
+    # detached spine is invisible.  First, activate the frame but make the patch
+    # and spines invisible.
+    make_patch_spines_invisible(par2)
+    # Second, show the right spine.
+    par2.spines["right"].set_visible(True)
+
+    p1, = host.plot(Z_dim, FID, "b-", label="FID")
+    p2, = par1.plot(Z_dim, IS, "r-", label="IS")
+    p3, = par2.plot(Z_dim, nll, "g-", label="nll")
+
+    # host.set_xlim(0, 2)
+    # host.set_ylim(0, 2)
+    # par1.set_ylim(0, 4)
+    # par2.set_ylim(1, 65)
+    host.set_xlabel("log(Z dim)")
+    host.xaxis.set_label_coords(0.95,-0.1)
+    host.set_ylabel("FID")
+    par1.set_ylabel("IS")
+    par1.yaxis.set_label_coords(0.95,0.5)
+    par2.set_ylabel("nll")
+    par2.yaxis.set_label_coords(1.15,0.5)
+
+    # host.yaxis.label.set_color(p1.get_color())
+    # par1.yaxis.label.set_color(p2.get_color())
+    # par2.yaxis.label.set_color(p3.get_color())
+
+    tkw = dict(size=4, width=0.5)
+    host.tick_params(axis='y', **tkw)
+    par1.tick_params(axis='y', **tkw)
+    par2.tick_params(axis='y', **tkw)
+    host.tick_params(axis='x', **tkw)
+
+    lines = [p1, p2, p3]
+
+    host.legend(lines, [l.get_label() for l in lines],loc='upper center',bbox_to_anchor=(0.4,-0.05), ncol=3)
+
+    plt.show()
+
+tw()
