@@ -323,7 +323,7 @@ def get_fid_google(sample, real):
     """
     tf.import_graph_def(graph_def, name='FID_Inception_Net')
     with tf.Session() as sess:
-        fake_activations = get_activations(batchsize= sample, sess)
+        fake_activations = get_activations(sample, sess)
         real_activations = get_activations(real, sess)
         fake_activations = tf.convert_to_tensor(fake_activations)
         real_activations = tf.convert_to_tensor(real_activations)
