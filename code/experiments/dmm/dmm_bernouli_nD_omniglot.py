@@ -864,7 +864,7 @@ def main():
         train_pn_omega = p_omega_net(n_z=config.train_n_pz, beta=beta)
         train_log_Z = spt.ops.log_mean_exp(-train_pn_theta['z'].log_prob().energy - train_pn_theta['z'].log_prob())
         train_q_net = q_net(input_origin_x, posterior_flow, n_z=config.train_n_qz)
-        train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']},
+        train_p_net = p_net(observed={'x': input_origin_x, 'z': train_q_net['z']},
                             n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
 
         VAE_nD_loss, VAE_loss, VAE_D_loss, VAE_G_loss, VAE_D_real, D_loss, G_loss, D_real = get_all_loss(
@@ -879,7 +879,7 @@ def main():
         test_q_net = q_net(input_origin_x, posterior_flow, n_z=config.test_n_qz)
         # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
-        test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
+        test_chain = test_q_net.chain(p_net, observed={'x': input_origin_x}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta, log_Z=get_log_Z())
         test_recon = tf.reduce_mean(
             test_chain.model['x'].log_prob()
