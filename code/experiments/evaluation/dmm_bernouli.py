@@ -44,7 +44,7 @@ class ExpConfig(spt.Config):
     kernel_size = 3
     shortcut_kernel_size = 1
     batch_norm = True
-    nf_layers = 20
+    nf_layers = 5
 
     # training parameters
     result_dir = None
@@ -77,7 +77,7 @@ class ExpConfig(spt.Config):
     train_n_pz = 128
     train_n_qz = 1
     test_n_pz = 1000
-    test_n_qz = 100
+    test_n_qz = 1000
     test_batch_size = 1
     test_epoch_freq = 1000
     plot_epoch_freq = 20
@@ -85,7 +85,7 @@ class ExpConfig(spt.Config):
 
     test_fid_n_pz = 5000
     test_x_samples = 1
-    log_Z_times = 10
+    log_Z_times = 20
     log_Z_x_samples = 64
 
     len_train = 50000
@@ -1183,7 +1183,7 @@ def main():
                             }))
                     from scipy.misc import logsumexp
                     another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                    # print('log_Z_list:{}'.format(log_Z_list))
+                    print('log_Z_list:{}'.format(log_Z_list))
                     print('another_log_Z:{}'.format(another_log_Z))
                     # final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
                     final_log_Z = another_log_Z  # TODO
