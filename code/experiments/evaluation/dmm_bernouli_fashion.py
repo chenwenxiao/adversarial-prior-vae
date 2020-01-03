@@ -44,7 +44,7 @@ class ExpConfig(spt.Config):
     kernel_size = 3
     shortcut_kernel_size = 1
     batch_norm = True
-    nf_layers = 5
+    nf_layers = 20
 
     # training parameters
     result_dir = None
@@ -856,23 +856,6 @@ def main():
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
     beta = tf.Variable(initial_value=0.0, dtype=tf.float32, name='beta', trainable=True)
 
-    # derive the loss and lower-bound for training
-    with tf.name_scope('training'), \
-         arg_scope([batch_norm], training=True):
-        train_pn_theta = p_net(n_z=config.train_n_pz, beta=beta)
-        train_pn_omega = p_omega_net(n_z=config.train_n_pz, beta=beta)
-        train_log_Z = spt.ops.log_mean_exp(-train_pn_theta['z'].log_prob().energy - train_pn_theta['z'].log_prob())
-        train_q_net = q_net(input_origin_x, posterior_flow, n_z=config.train_n_qz)
-        train_p_net = p_net(observed={'x': input_origin_x, 'z': train_q_net['z']},
-                            n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
-
-        VAE_nD_loss, VAE_loss, VAE_D_loss, VAE_G_loss, VAE_D_real, D_loss, G_loss, D_real = get_all_loss(
-            train_q_net, train_p_net, train_pn_omega, train_pn_theta, warm, input_origin_x)
-        VAE_loss += tf.losses.get_regularization_loss()
-        VAE_nD_loss += tf.losses.get_regularization_loss()
-        D_loss += tf.losses.get_regularization_loss()
-        G_loss += tf.losses.get_regularization_loss()
-
     # derive the nll and logits output for testing
     with tf.name_scope('testing'):
         test_q_net = q_net(input_origin_x, posterior_flow, n_z=config.test_n_qz)
@@ -930,157 +913,6 @@ def main():
         )
     xi_node = get_var('p_net/xi')
     # derive the optimizer
-    with tf.name_scope('optimizing'):
-        VAE_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
-            'beta') + tf.trainable_variables('posterior_flow') + tf.trainable_variables(
-            'p_net/xi') + tf.trainable_variables('D_psi')
-        VAE_nD_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
-            'beta') + tf.trainable_variables('posterior_flow') + tf.trainable_variables('p_net/xi')
-        D_params = tf.trainable_variables('D_kappa')
-        G_params = tf.trainable_variables('G_omega')
-        print("========VAE_params=========")
-        print(VAE_params)
-        print("========D_params=========")
-        print(D_params)
-        print("========G_params=========")
-        print(G_params)
-        with tf.variable_scope('VAE_optimizer'):
-            VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
-            VAE_grads = VAE_optimizer.compute_gradients(VAE_loss, VAE_params)
-        with tf.variable_scope('VAE_nD_optimizer'):
-            VAE_nD_optimizer = tf.train.AdamOptimizer(learning_rate)
-            VAE_nD_grads = VAE_nD_optimizer.compute_gradients(VAE_nD_loss, VAE_nD_params)
-        with tf.variable_scope('D_optimizer'):
-            D_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
-            D_grads = D_optimizer.compute_gradients(D_loss, D_params)
-        with tf.variable_scope('G_optimizer'):
-            G_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
-            G_grads = G_optimizer.compute_gradients(G_loss, G_params)
-        with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
-            VAE_train_op = VAE_optimizer.apply_gradients(VAE_grads)
-            VAE_nD_train_op = VAE_optimizer.apply_gradients(VAE_nD_grads)
-            G_train_op = G_optimizer.apply_gradients(G_grads)
-            D_train_op = D_optimizer.apply_gradients(D_grads)
-
-        # derive the plotting function
-        with tf.name_scope('plotting'):
-            sample_n_z = config.sample_n_z
-            gan_net = p_omega_net(n_z=sample_n_z, beta=beta)
-            gan_plots = tf.reshape(gan_net['x'].distribution.mean, (-1,) + config.x_shape)
-            gan_z = gan_net['f_z'].distribution.mean
-            initial_z = tf.placeholder(
-                dtype=tf.float32, shape=(sample_n_z, 1, config.z_dim), name='initial_z')
-            gan_plots = 255.0 * gan_plots
-            plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z, mcmc_alpha=mcmc_alpha)
-            plot_origin_net = p_net(n_z=sample_n_z, mcmc_iterator=0, beta=beta, initial_z=initial_z)
-            plot_history_e_z = plot_net['z'].history_e_z
-            plot_history_z = plot_net['z'].history_z
-            plot_history_pure_e_z = plot_net['z'].history_pure_e_z
-            plot_history_ratio = plot_net['z'].history_ratio
-            x_plots = 255.0 * tf.reshape(
-                plot_net['x'].distribution.mean, (-1,) + config.x_shape)
-            x_origin_plots = 255.0 * tf.reshape(
-                plot_origin_net['x'].distribution.mean, (-1,) + config.x_shape)
-            reconstruct_q_net = q_net(input_origin_x, posterior_flow)
-            reconstruct_z = reconstruct_q_net['z']
-            reconstruct_plots = 255.0 * tf.reshape(
-                p_net(observed={'z': reconstruct_z}, beta=beta)['x'].distribution.mean,
-                (-1,) + config.x_shape
-            )
-            plot_reconstruct_energy = D_psi(reconstruct_plots)
-            gan_z_pure_energy = plot_net['z'].distribution.log_prob(gan_z).pure_energy
-            gan_z_energy = plot_net['z'].distribution.log_prob(gan_z).energy
-            gan_plots = tf.clip_by_value(gan_plots, 0, 255)
-            x_plots = tf.clip_by_value(x_plots, 0, 255)
-            x_origin_plots = tf.clip_by_value(x_origin_plots, 0, 255)
-            reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
-
-        def plot_samples(loop, extra_index=None):
-            if extra_index is None:
-                extra_index = loop.epoch
-            with loop.timeit('plot_time'):
-                # plot reconstructs
-                for [x] in reconstruct_test_flow:
-                    x_samples = bernouli_sampler.sample(x)
-                    images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
-                    images[::3, ...] = np.round(255.0 * x)
-                    images[1::3, ...] = np.round(255.0 * x_samples)
-                    batch_reconstruct_plots, batch_reconstruct_z = session.run(
-                        [reconstruct_plots, reconstruct_z], feed_dict={input_x: x_samples, input_origin_x: x})
-                    images[2::3, ...] = np.round(batch_reconstruct_plots)
-                    # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
-                    save_images_collection(
-                        images=images,
-                        filename='plotting/test.reconstruct/{}.png'.format(extra_index),
-                        grid_size=(20, 15),
-                        results=results,
-                    )
-                    break
-
-                for [x] in reconstruct_train_flow:
-                    x_samples = bernouli_sampler.sample(x)
-                    images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
-                    images[::3, ...] = np.round(255.0 * x)
-                    images[1::3, ...] = np.round(255.0 * x_samples)
-                    batch_reconstruct_plots, batch_reconstruct_z = session.run(
-                        [reconstruct_plots, reconstruct_z], feed_dict={input_x: x_samples, input_origin_x: x})
-                    images[2::3, ...] = np.round(batch_reconstruct_plots)
-                    # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
-                    save_images_collection(
-                        images=images,
-                        filename='plotting/train.reconstruct/{}.png'.format(extra_index),
-                        grid_size=(20, 15),
-                        results=results,
-                    )
-                    break
-
-                if loop.epoch > config.warm_up_start:
-                    # plot samples
-                    with loop.timeit('gan_sample_time'):
-                        gan_images, batch_z, batch_z_energy, batch_z_pure_energy = session.run(
-                            [gan_plots, gan_z, gan_z_energy, gan_z_pure_energy])
-
-                    try:
-                        save_images_collection(
-                            images=np.round(gan_images),
-                            filename='plotting/sample/gan-{}.png'.format(extra_index),
-                            grid_size=(10, 10),
-                            results=results,
-                        )
-                    except Exception as e:
-                        print(e)
-
-                    mala_images = None
-                    if loop.epoch >= config.max_epoch:
-
-                        step_length = config.smallest_step
-                        with loop.timeit('mala_sample_time'):
-                            for i in range(0, 101):
-                                [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
-                                 batch_history_ratio] = session.run(
-                                    [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z,
-                                     plot_history_ratio],
-                                    feed_dict={
-                                        initial_z: batch_z,
-                                        mcmc_alpha: np.asarray([step_length])
-                                    })
-                                batch_z = batch_history_z[-1]
-
-                                if i % 100 == 0:
-                                    print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
-                                    try:
-                                        save_images_collection(
-                                            images=np.round(images),
-                                            filename='plotting/sample/{}-MALA-{}.png'.format(extra_index, i),
-                                            grid_size=(10, 10),
-                                            results=results,
-                                        )
-                                    except Exception as e:
-                                        print(e)
-
-                        mala_images = images
-
-                    return mala_images
 
     # prepare for training and testing data
     (_x_train, _y_train), (_x_test, _y_test) = \
@@ -1126,11 +958,11 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/b9/1c/d445f4f80a9f8ab3c0e5/checkpoint/checkpoint/checkpoint.dat-936000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/19/0c/d4e63c432be9da0ec0e5/checkpoint/checkpoint/checkpoint.dat-936000'
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega', 'D_kappa'],
-                           max_epoch=config.max_epoch + 10,
+                           max_epoch=config.max_epoch + 100,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
@@ -1160,6 +992,8 @@ def main():
             epoch_iterator = loop.iter_epochs()
 
             n_critical = config.n_critical
+            all_nll_list = []
+            all_log_Z_list = []
             # adversarial training
             for epoch in epoch_iterator:
                 with loop.timeit('compute_Z_time'):
@@ -1188,8 +1022,16 @@ def main():
                 with loop.timeit('eval_time'):
                     evaluator.run()
 
+                all_nll_list.append(loop._epoch_metrics.metrics['adv_test_nll'])
+                all_log_Z_list.append(final_log_Z)
+
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
+
+            all_nll_list = np.asarray(all_nll_list)
+            all_log_Z_list = np.asarray(all_log_Z_list)
+            print('NLL: {} ± {}'.format(np.mean(all_nll_list), np.std(all_nll_list)))
+            print('log_Z: {} ± {}'.format(np.mean(all_log_Z_list), np.std(all_log_Z_list)))
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')
