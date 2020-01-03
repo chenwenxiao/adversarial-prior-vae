@@ -109,7 +109,7 @@ It is not easy to sample $z$ from $p_\lambda(z)$ since the formula of $p_\lambda
 
 Langevin dynamics may be a useful sampling method because it only requires that $\nabla_z \log p_\lambda(z)$ is computable and the initial $z_0$ has an enough high density. Moreover, MEG~\cite{kumar2019maximum} have implemented a Metropolis-Adjusted Langevin Algorithm (MALA) for sampling where the formula of density is similar to $p_\lambda$ and also contains a discriminator term. But the selection of initial $z_0$ whose density is high enough is still a problem. 
 
-VAEPP indeed combine the theory of VAE and GAN, hence, it could be seen as a VAE-GAN model, therefore, following this philosophy, it is natural to use GAN for helping the sampling of VAEPP. We try to use GAN to model the distribution $q_\phi(z)$, which has high enough density in $p_\lambda(z)$. The sampling of VAEPP consists of 3 part: generate initial $z_0$ by a GAN, then generate $z \sim p_\lambda(z)$ by Langevin dynamics, and finally generate $x$ by decoder. 
+Following the philosophy of VAEPP, \IE using the technique of GAN to assist VAE, it is natural to use GAN to model the distribution $q_\phi(z)$, and use samples of GAN as the initial point of MALA, which has high enough density in $p_\lambda(z)$. The sampling of VAEPP consists of 3 part: generate initial $z_0$ by a GAN, then generate $z \sim p_\lambda(z)$ by Langevin dynamics, and finally generate $x$ by decoder. 
 
 
  
