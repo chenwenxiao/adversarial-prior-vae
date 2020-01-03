@@ -37,7 +37,7 @@ spt.Bernoulli.mean = property(_bernoulli_mean)
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 32
+    z_dim = 16
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -1127,12 +1127,12 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/35/1c/d4747dc47d24e39370e5/checkpoint/checkpoint/checkpoint.dat-936000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/89/0c/d4e63c432be92e5ce0e5/checkpoint/checkpoint/checkpoint.dat-468000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega', 'D_kappa'],
-                           max_epoch=config.max_epoch + 10,
+                           max_epoch=1100,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
@@ -1162,9 +1162,10 @@ def main():
             epoch_iterator = loop.iter_epochs()
 
             n_critical = config.n_critical
+            all_nll_list = []
+            all_log_Z_list = []
             # adversarial training
             for epoch in epoch_iterator:
-
                 with loop.timeit('compute_Z_time'):
                     # log_Z_list = []
                     # for i in range(config.log_Z_times):
@@ -1175,15 +1176,14 @@ def main():
                     # print('log_Z:{}'.format(log_Z))
 
                     log_Z_list = []
-                    for i in range(config.log_Z_times):
-                        for [batch_x, batch_origin_x] in Z_compute_flow:
-                            log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                                input_x: batch_x,
-                                input_origin_x: batch_origin_x
-                            }))
+                    for [batch_x, batch_origin_x] in Z_compute_flow:
+                        log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
+                            input_x: batch_x,
+                            input_origin_x: batch_origin_x
+                        }))
                     from scipy.misc import logsumexp
                     another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                    print('log_Z_list:{}'.format(log_Z_list))
+                    # print('log_Z_list:{}'.format(log_Z_list))
                     print('another_log_Z:{}'.format(another_log_Z))
                     # final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
                     final_log_Z = another_log_Z  # TODO
@@ -1192,8 +1192,16 @@ def main():
                 with loop.timeit('eval_time'):
                     evaluator.run()
 
+                all_nll_list.append(loop._epoch_metrics.metrics['adv_test_nll'])
+                all_log_Z_list.append(final_log_Z)
+
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
+
+            all_nll_list = np.asarray(all_nll_list)
+            all_log_Z_list = np.asarray(all_log_Z_list)
+            print('NLL: {} ± {}'.format(np.mean(all_nll_list), np.std(all_nll_list)))
+            print('log_Z: {} ± {}'.format(np.mean(all_log_Z_list), np.std(all_log_Z_list)))
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')
