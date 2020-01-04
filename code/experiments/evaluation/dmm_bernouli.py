@@ -85,7 +85,7 @@ class ExpConfig(spt.Config):
 
     test_fid_n_pz = 5000
     test_x_samples = 1
-    log_Z_times = 20
+    log_Z_times = 10
     log_Z_x_samples = 64
 
     len_train = 50000
@@ -1176,11 +1176,12 @@ def main():
                     # print('log_Z:{}'.format(log_Z))
 
                     log_Z_list = []
-                    for [batch_x, batch_origin_x] in Z_compute_flow:
-                        log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                            input_x: batch_x,
-                            input_origin_x: batch_origin_x
-                        }))
+                    for i in range(config.log_Z_times):
+                        for [batch_x, batch_origin_x] in Z_compute_flow:
+                            log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
+                                input_x: batch_x,
+                                input_origin_x: batch_origin_x
+                            }))
                     from scipy.misc import logsumexp
                     another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
                     # print('log_Z_list:{}'.format(log_Z_list))
