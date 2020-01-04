@@ -879,7 +879,7 @@ def main():
         test_q_net = q_net(input_origin_x, posterior_flow, n_z=config.test_n_qz)
         # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
-        test_chain = test_q_net.chain(p_net, observed={'x': input_origin_x}, n_z=config.test_n_qz, latent_axis=0,
+        test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta, log_Z=get_log_Z())
         test_recon = tf.reduce_mean(
             test_chain.model['x'].log_prob()
@@ -1195,8 +1195,6 @@ def main():
 
                 all_nll_list.append(loop._epoch_metrics.metrics['adv_test_nll'].mean)
                 all_log_Z_list.append(final_log_Z)
-
-                print(all_nll_list)
 
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()

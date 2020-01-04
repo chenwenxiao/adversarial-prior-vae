@@ -131,7 +131,7 @@ def p_net(observed=None, n_z=None, is_training=False, is_initializing=False):
         h_z, 1, (1, 1), padding='same', name='feature_map_to_pixel',
         channels_last=config.channels_last
     )  # output: (1, 28, 28)
-    x = net.add('x', spt.Bernoulli(logits=x_logits, dtype=tf.float32 if config.use_q_z_given_e else tf.int32), group_ndims=3)
+    x = net.add('x', spt.Bernoulli(logits=x_logits, dtype=tf.float32), group_ndims=3)
 
     return net
 
