@@ -1125,6 +1125,7 @@ def main():
                         mala_images = gan_images
 
                     return mala_images
+                return images
 
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:

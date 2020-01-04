@@ -21,8 +21,8 @@ Discrete VAE     &  81.01     \\
 LARS             &  80.30     \\
 VampPrior        &  79.75     \\
 Naive VAEPP      &  79.18 & 3.15    \\
-VAEPP            &  77.46 & 2.91	     \\
-VAEPP+Flow       &  77.11 &       \\
+VAEPP            &  77.46 & 2.91	    \\
+VAEPP+Flow       &  77.11 & 2.84    \\
 \bottomrule
 \end{tabular}
 \caption{Test log-likelihood on MNIST and Bits/dim on CIFAR-10. Bits/dim means $-\log p_\theta(x|z) / (3072 * \ln(2))$. Most of VAEs based on learnable prior focus on MNIST and don't try CIFAR-10. 
@@ -37,11 +37,14 @@ Additional, we compare VAE based on $q_\phi(z|x)$ and $q_\phi(z|e)$ on MNIST, wh
 \toprule
 Model   & Static MNIST & Fashion & Omniglot \\
 \midrule
-Naive VAEPP    &  81.16    &  225.659  &  96.86  \\
-VAEPP          &  79.85    &  224.719  &  88.85   \\
-VAEPP+Flow     &  80.77    &  222.984  &  88.83   \\
+Naive VAEPP    &  81.16    &  225.08  &  96.86  \\
+VAEPP          &  79.85    &  222.42  &  88.85   \\
+VAEPP+Flow     &  80.77    &  222.23  &  88.83   \\
 \bottomrule
 \end{tabular}
+%Naive VAEPP    &  81.16$\pm$    &  225.08$\pm$1.18  &  96.86$\pm$  \\
+%VAEPP          &  79.85$\pm$    &  222.42$\pm$1.57  &  88.85$\pm$   \\
+%VAEPP+Flow     &  80.77$\pm$    &  222.23$\pm$1.39  &  88.83$\pm$   \\
 \caption{Test log-likelihood on Static MNIST, Fashion-MNIST and Omniglot. VAEPP+Flow get better loss in Static MNIST than VAEPP but it suffers from overfitting, which leads to worse test log-likelihood. }
 \label{tab:cifar-nll}
 \end{table}

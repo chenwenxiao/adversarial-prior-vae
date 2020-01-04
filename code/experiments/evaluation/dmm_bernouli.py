@@ -1127,7 +1127,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/89/0c/d4e63c432be92e5ce0e5/checkpoint/checkpoint/checkpoint.dat-468000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/ca/1c/d445f4f80a9ffa19f0e5/checkpoint/checkpoint/checkpoint.dat-468000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1192,8 +1192,10 @@ def main():
                 with loop.timeit('eval_time'):
                     evaluator.run()
 
-                all_nll_list.append(loop._epoch_metrics.metrics['adv_test_nll'])
+                all_nll_list.append(loop._epoch_metrics.metrics['adv_test_nll'].mean)
                 all_log_Z_list.append(final_log_Z)
+
+                print(all_nll_list)
 
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
