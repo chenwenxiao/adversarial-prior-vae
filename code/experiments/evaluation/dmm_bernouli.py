@@ -37,7 +37,7 @@ spt.Bernoulli.mean = property(_bernoulli_mean)
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 16
+    z_dim = 24
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -94,6 +94,8 @@ class ExpConfig(spt.Config):
 
     epsilon = -20.0
     min_logstd_of_q = -5.0
+
+    tri_sigma = 0.99730020
 
     @property
     def x_shape(self):
@@ -879,11 +881,8 @@ def main():
         test_q_net = q_net(input_origin_x, posterior_flow, n_z=config.test_n_qz)
         # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
-        test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
+        test_chain = test_q_net.chain(p_net, observed={'x': tf.to_float(input_x)}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta, log_Z=get_log_Z())
-        test_recon = tf.reduce_mean(
-            test_chain.model['x'].log_prob()
-        )
         test_mse = tf.reduce_sum(
             (tf.round(test_chain.model['x'].distribution.mean * 255.0) - tf.round(
                 tf.to_float(test_chain.model['x']) * 255.0)) ** 2,
@@ -898,12 +897,24 @@ def main():
             )
         )
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
+        test_recon = test_chain.model['x'].log_prob()
+        p_z = test_chain.model['z'].distribution.log_prob(
+            test_chain.model['z'], group_ndims=1, y=test_chain.model['x']
+        ).log_energy_prob
+        q_z_given_x = test_q_net['z'].log_prob()
+
+        truncated_threshold = -tf.square(3.0) - 0.5 * tf.log(2 * np.pi) - test_q_net['z'].distribution.logstd
+        is_truncated = tf.min(test_q_net['z'].log_prob(group_ndims=0), -1)
+        is_truncated = is_truncated > truncated_threshold
+        is_truncated = tf.squeeze(is_truncated)
+        p_z = p_z[is_truncated]
+        q_z_given_x = q_z_given_x[is_truncated]
+        q_z_given_x = q_z_given_x - np.log(config.tri_sigma)
+        test_recon = test_recon[is_truncated]
 
         vi = spt.VariationalInference(
-            log_joint=test_chain.model['x'].log_prob() + test_chain.model['z'].distribution.log_prob(
-                test_chain.model['z'], group_ndims=1, y=test_chain.model['x']
-            ).log_energy_prob,
-            latent_log_probs=[test_q_net['z'].log_prob()],
+            log_joint=test_recon + p_z,
+            latent_log_probs=[q_z_given_x],
             axis=0
         )
         adv_test_nll = -tf.reduce_mean(
@@ -921,10 +932,12 @@ def main():
         pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.mean))
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
-        q_z_given_x = test_q_net['z'].log_prob()
+
+        p_z_energy = test_chain.model['z'].log_prob().energy
+        p_z_energy = p_z_energy[is_truncated]
 
         another_log_Z_compute_op = spt.ops.log_mean_exp(
-            -test_chain.model['z'].log_prob().energy - q_z_given_x + np.log(config.len_train)
+            -p_z_energy - q_z_given_x + np.log(config.len_train)
         )
         kl_adv_and_gaussian = tf.reduce_mean(
             test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob
@@ -1127,7 +1140,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/ca/1c/d445f4f80a9ffa19f0e5/checkpoint/checkpoint/checkpoint.dat-468000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/6a/1c/d445f4f80a9fcd5ce0e5/checkpoint/checkpoint/checkpoint.dat-468000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),

@@ -37,7 +37,7 @@ spt.Bernoulli.mean = property(_bernoulli_mean)
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 64
+    z_dim = 128
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -878,7 +878,7 @@ def main():
         test_q_net = q_net(input_origin_x, posterior_flow, n_z=config.test_n_qz)
         # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
-        test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
+        test_chain = test_q_net.chain(p_net, observed={'x': tf.to_float(input_x)}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta, log_Z=get_log_Z())
         test_recon = tf.reduce_mean(
             test_chain.model['x'].log_prob()
