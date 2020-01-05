@@ -85,7 +85,7 @@ class ExpConfig(spt.Config):
 
     test_fid_n_pz = 5000
     test_x_samples = 1
-    log_Z_times = 10
+    log_Z_times = 1
     log_Z_x_samples = 64
 
     len_train = 50000
@@ -903,14 +903,27 @@ def main():
         ).log_energy_prob
         q_z_given_x = test_q_net['z'].log_prob()
 
-        truncated_threshold = -tf.square(3.0) - 0.5 * tf.log(2 * np.pi) - test_q_net['z'].distribution.logstd
-        is_truncated = tf.min(test_q_net['z'].log_prob(group_ndims=0), -1)
-        is_truncated = is_truncated > truncated_threshold
-        is_truncated = tf.squeeze(is_truncated)
-        p_z = p_z[is_truncated]
-        q_z_given_x = q_z_given_x[is_truncated]
-        q_z_given_x = q_z_given_x - np.log(config.tri_sigma)
-        test_recon = test_recon[is_truncated]
+        if config.use_flow:
+            q_variable = test_q_net['z'].flow_origin
+        else:
+            q_variable = test_q_net['z']
+
+        truncated_threshold = -tf.square(3.0) - 0.5 * tf.log(2 * np.pi) - q_variable.distribution.logstd
+        is_truncated = q_variable.log_prob(group_ndims=0)
+        print(is_truncated)
+        is_truncated = tf.to_float(is_truncated > truncated_threshold)
+        print(is_truncated)
+        is_truncated = tf.reduce_sum(is_truncated, axis=[-1, -2])
+        print(is_truncated)
+        is_truncated = tf.equal(is_truncated, 0.0)
+        print(is_truncated)
+
+        p_z = tf.boolean_mask(p_z, is_truncated)
+        q_z_given_x = tf.boolean_mask(q_z_given_x, is_truncated)
+        q_z_given_x = q_z_given_x - np.log(config.tri_sigma) * config.z_dim
+        test_recon = tf.boolean_mask(test_recon, is_truncated)
+        test_recon = tf.reduce_mean(test_recon)
+        print(q_z_given_x)
 
         vi = spt.VariationalInference(
             log_joint=test_recon + p_z,
@@ -934,7 +947,7 @@ def main():
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
 
         p_z_energy = test_chain.model['z'].log_prob().energy
-        p_z_energy = p_z_energy[is_truncated]
+        p_z_energy = tf.boolean_mask(p_z_energy, is_truncated)
 
         another_log_Z_compute_op = spt.ops.log_mean_exp(
             -p_z_energy - q_z_given_x + np.log(config.len_train)
