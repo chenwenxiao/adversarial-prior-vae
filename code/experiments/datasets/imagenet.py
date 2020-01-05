@@ -31,16 +31,21 @@ def _fetch_array_x(path):
     file_names = os.listdir(path)
     file_names.sort()
     imgs = []
-    scale = 148 / float(64)
-    sigma = np.sqrt(scale) / 2.0
+    # scale = 148 / float(64)
+    # sigma = np.sqrt(scale) / 2.0
+    cnt = 0
+
     for name in file_names:
         im = Image.open(os.path.join(path,name))
-        im = im.crop((15,40,163,188))
         img = np.asarray(im)
-        # img.setflags(write=True)
-        # for dim in range(img.shape[2]):
-        #     img[...,dim] = filters.gaussian_filter(img[...,dim], sigma=(sigma,sigma))
-        img = imresize(img,(64,64,3))
+        # print(img.shape)
+        if img.shape[0] != 32:
+            print('err')
+        # im = im.crop((15,40,163,188))
+        # # img.setflags(write=True)
+        # # for dim in range(img.shape[2]):
+        # #     img[...,dim] = filters.gaussian_filter(img[...,dim], sigma=(sigma,sigma))
+        # img = imresize(img,(32,32,3))
         imgs.append(img)
         
     return np.array(imgs)
@@ -81,15 +86,15 @@ def load_imagenet_test(x_shape=(32, 32), x_dtype=np.float32, y_dtype=np.int32,
 
 
 if __name__ == '__main__':
+    print('pre load')
     (_x_test, _y_test) = load_imagenet_test()
     print(_x_test.shape)
 
     im = np.array(_x_test[19])
-    im /= np.asarray(255., dtype=np.int32)
+    print(im)
+
 
     # import matplotlib.pyplot as plt
     # fig = plt.figure()
     # plotwindow = fig.add_subplot(111)
-    print(im)
-    # plt.imshow(im)
     # plt.show()
