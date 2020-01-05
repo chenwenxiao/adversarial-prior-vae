@@ -33,8 +33,6 @@ def _fetch_array_x(path):
     imgs = []
     # scale = 148 / float(64)
     # sigma = np.sqrt(scale) / 2.0
-    cnt = 0
-
     for name in file_names:
         im = Image.open(os.path.join(path,name))
         img = np.asarray(im)
@@ -92,9 +90,3 @@ if __name__ == '__main__':
 
     im = np.array(_x_test[19])
     print(im)
-
-
-    # import matplotlib.pyplot as plt
-    # fig = plt.figure()
-    # plotwindow = fig.add_subplot(111)
-    # plt.show()
