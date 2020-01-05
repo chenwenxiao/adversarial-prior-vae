@@ -35,7 +35,7 @@ class ExpConfig(spt.Config):
     kernel_size = 3
     shortcut_kernel_size = 1
     batch_norm = False
-    nf_layers = 20
+    nf_layers = 5
 
     # training parameters
     result_dir = None

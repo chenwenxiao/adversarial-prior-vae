@@ -21,8 +21,8 @@ Discrete VAE     &  81.01     \\
 LARS             &  80.30     \\
 VampPrior        &  79.75     \\
 Naive VAEPP      &  79.18 & 3.15    \\
-VAEPP            &  77.46 & 2.91	     \\
-VAEPP+Flow       &  77.11 &       \\
+VAEPP            &  77.46 & 2.91	    \\
+VAEPP+Flow       &  77.11 & 2.84    \\
 \bottomrule
 \end{tabular}
 \caption{Test log-likelihood on MNIST and Bits/dim on CIFAR-10. Bits/dim means $-\log p_\theta(x|z) / (3072 * \ln(2))$. Most of VAEs based on learnable prior focus on MNIST and don't try CIFAR-10. 
@@ -37,11 +37,14 @@ Additional, we compare VAE based on $q_\phi(z|x)$ and $q_\phi(z|e)$ on MNIST, wh
 \toprule
 Model   & Static MNIST & Fashion & Omniglot \\
 \midrule
-Naive VAEPP    &  81.16    &    &  96.86  \\
-VAEPP          &  79.85    &  224.719  &  88.85   \\
-VAEPP+Flow     &  80.77    &  222.984  &  88.83   \\
+Naive VAEPP    &  81.16    &  225.08  &  96.86  \\
+VAEPP          &  79.85    &  222.42  &  88.85   \\
+VAEPP+Flow     &  80.77    &  222.23  &  88.83   \\
 \bottomrule
 \end{tabular}
+%Naive VAEPP    &  81.16$\pm$    &  225.08$\pm$1.18  &  96.86$\pm$  \\
+%VAEPP          &  79.85$\pm$    &  222.42$\pm$1.57  &  88.85$\pm$   \\
+%VAEPP+Flow     &  80.77$\pm$    &  222.23$\pm$1.39  &  88.83$\pm$   \\
 \caption{Test log-likelihood on Static MNIST, Fashion-MNIST and Omniglot. VAEPP+Flow get better loss in Static MNIST than VAEPP but it suffers from overfitting, which leads to worse test log-likelihood. }
 \label{tab:cifar-nll}
 \end{table}
@@ -65,7 +68,9 @@ We compare our algorithms with other log-likelihood based model on MNIST, CIFAR-
 % Concretely, a whole process including training, evaluation and sampling on CIFAR10 will cost roughly one week on single Nvidia 2080Ti GPU card. 
 On the other hand, we expect that the pure improvement on learnable prior could improve the performance of VAE rather than the careful design on encoder or decoder, since it is clearer and easier to develop in theory. Therefore, how to apply autoregressive component on VAEPP is a valuable and challenging practical work. We leave it as a future work.
 
-To valid the proposition that it is better to use $q_\phi(z)$ to evaluate $Z$ than $p_\mathcal{N}(z)$ in ~\cref{subsec:determine_z}, we calculate the $KL(q_\phi(z)||p_\lambda(z))$ and $KL(p_\mathcal{N}(z)||p_\lambda(z))$ on CIFAR-10 and MNIST. The former is less than the difference (4.71 on MNIST and 47.48 on CIFAR-10) between log-likelihood and ELBO and the latter one can be evaluated directly (	22.27 on MNIST and 1011.30 on CIFAR-10). Consequently, $q_\phi(z)$ is closer to $p_\lambda(z)$ than $p_\mathcal{N}$. 
+To valid that it is better to use $q_\phi(z)$ to evaluate $Z$ than $p_\mathcal{N}(z)$ in ~\cref{subsec:determine_z}, we calculate the $KL(q_\phi(z)||p_\lambda(z))$ and $KL(p_\mathcal{N}(z)||p_\lambda(z))$ on CIFAR-10 and MNIST. The former is less than the difference (180.3 on CIFAR-10) between reconstruction loss and ELBO and the latter one can be evaluated directly (1011.30 on CIFAR-10). Consequently, $q_\phi(z)$ is closer to $p_\lambda(z)$ than $p_\mathcal{N}(z)$. 
+
+To valid that VAEPP is more stable and efficient than Naive VAEPP in \cref{subsec:improve_of_vaepp}, we draw the training loss of VAEPP and Naive VAEPP on CIFAR-10, shown in fig (TODO).
 %We evaluate $Z$ by two ways mentioned in \cref{subsec:determine_z} and compare the variance of them in 10 times on CIFAR-10. The variance of estimation based on $q_\phi(z)$ (4.82), is much less than the variance of estimation based on $p_\mathcal{N}$ (TODO), which supports our proposition in \cref{subsec:determine_z}. Since the variance of $Z$ also influence the variance of log-likelihood, we also evaluate the variance of log-likelihood in 10 times on CIFAR-10 (4.82) to ensure the stability of evaluation. 
 
 \subsection{Quality of Sampling}
@@ -97,7 +102,7 @@ VAEPP      & $12.6$  & $29.3$  & $71.3$ & $44.4$ \\
 
 However, as common sense, it is hard to achieve best performance in FID, IS and log-likelihood by same setting. We observe this fact that when dimension of latent space is increasing, the FID, IS become worse, as shown in \cref{fig:compare_nD_over_z_dim}. The trend of FID, IS is different to the trend of log-likelihood, which is increasing when dimension of latent space is increasing, as shown in \cref{fig:compare_nD_over_z_dim}. As diagnosis in \cite{dai2019diagnosing}, the dimension of latent space should be selected as a number that little larger than the dimension of real data manifold, suggested by their experiment, dim $\mathcal{Z}$ = 64, same as our experimental result.  
 
-To valid the \cref{eq:behavior_of_beta}, we calculate the $\E_{p_\lambda(z)}[ D(G(z))]$ (discriminator on generated samples) and $\E_{q_\phi(z)}[ D(G(z))]$ (discriminator on reconstructed samples). They are (-12.3467) and (-12.2947) on MNIST, (-12.3467) and (-12.2947) on CIFAR-10 respectively. The discriminator on real samples are (-12.2962) and (-12.2962) on MNIST and CIFAR-10 respectively, which is near same as discriminator on reconstructed samples. 
+To valid the \cref{eq:behavior_of_beta}, we calculate the $\E_{p_\lambda(z)}[ D(G(z))]$ (discriminator on generated samples) and $\E_{q_\phi(z)}[ D(G(z))]$ (discriminator on reconstructed samples). They are -12.3467 and -12.2947 respectively on CIFAR-10. The discriminator on real samples are -12.2962, which is near same as discriminator on reconstructed samples. 
 
 % CIFAR [-12.352115, -12.347757, -12.345433, -12.345455, -12.3524475, 
 % -12.345604, -12.345031, -12.348698, -12.346703, -12.350895, -12.353839,

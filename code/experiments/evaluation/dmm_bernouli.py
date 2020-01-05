@@ -37,14 +37,14 @@ spt.Bernoulli.mean = property(_bernoulli_mean)
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 32
+    z_dim = 16
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
     kernel_size = 3
     shortcut_kernel_size = 1
     batch_norm = True
-    nf_layers = 20
+    nf_layers = 5
 
     # training parameters
     result_dir = None
@@ -77,7 +77,7 @@ class ExpConfig(spt.Config):
     train_n_pz = 128
     train_n_qz = 1
     test_n_pz = 1000
-    test_n_qz = 100
+    test_n_qz = 1000
     test_batch_size = 1
     test_epoch_freq = 1000
     plot_epoch_freq = 20
@@ -879,7 +879,7 @@ def main():
         test_q_net = q_net(input_origin_x, posterior_flow, n_z=config.test_n_qz)
         # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
-        test_chain = test_q_net.chain(p_net, observed={'x': input_origin_x}, n_z=config.test_n_qz, latent_axis=0,
+        test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta, log_Z=get_log_Z())
         test_recon = tf.reduce_mean(
             test_chain.model['x'].log_prob()
@@ -1127,12 +1127,12 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/35/1c/d4747dc47d24e39370e5/checkpoint/checkpoint/checkpoint.dat-936000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/ca/1c/d445f4f80a9ffa19f0e5/checkpoint/checkpoint/checkpoint.dat-468000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega', 'D_kappa'],
-                           max_epoch=config.max_epoch + 10,
+                           max_epoch=1100,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
@@ -1162,9 +1162,10 @@ def main():
             epoch_iterator = loop.iter_epochs()
 
             n_critical = config.n_critical
+            all_nll_list = []
+            all_log_Z_list = []
             # adversarial training
             for epoch in epoch_iterator:
-
                 with loop.timeit('compute_Z_time'):
                     # log_Z_list = []
                     # for i in range(config.log_Z_times):
@@ -1192,8 +1193,16 @@ def main():
                 with loop.timeit('eval_time'):
                     evaluator.run()
 
+                all_nll_list.append(loop._epoch_metrics.metrics['adv_test_nll'].mean)
+                all_log_Z_list.append(final_log_Z)
+
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
+
+            all_nll_list = np.asarray(all_nll_list)
+            all_log_Z_list = np.asarray(all_log_Z_list)
+            print('NLL: {} ± {}'.format(np.mean(all_nll_list), np.std(all_nll_list)))
+            print('log_Z: {} ± {}'.format(np.mean(all_log_Z_list), np.std(all_log_Z_list)))
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')

@@ -34,14 +34,14 @@ class ExpConfig(spt.Config):
     kernel_size = 3
     shortcut_kernel_size = 1
     batch_norm = False
-    nf_layers = 20
+    nf_layers = 5
 
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 1200
+    max_epoch = 2000
     warm_up_start = 400
-    warm_up_epoch = 800
+    warm_up_epoch = 1600
     beta = 1e-8
     initial_xi = 0.0
     pull_back_energy_weight = 1000.0
@@ -53,7 +53,7 @@ class ExpConfig(spt.Config):
     smallest_step = 5e-5
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [100, 200, 300, 400, 600, 800, 1000, 1200]
+    lr_anneal_epoch_freq = [100, 200, 300, 400, 800, 1200, 1600, 2000]
     lr_anneal_step_freq = None
 
     use_flow = False
@@ -1121,8 +1121,11 @@ def main():
                                         print(e)
 
                         mala_images = images
+                    else:
+                        mala_images = gan_images
 
                     return mala_images
+                return images
 
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
@@ -1137,7 +1140,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = None
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/9a/0c/d434dabfcaec0ad890e5/checkpoint/checkpoint/checkpoint.dat-508400'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1256,7 +1259,7 @@ def main():
                     with loop.timeit('eval_time'):
                         evaluator.run()
 
-                if epoch == config.max_epoch:
+                # if epoch == config.max_epoch:
                     dataset_img = _x_train
                     mala_img = []
                     for i in range(config.fid_samples // config.sample_n_z):

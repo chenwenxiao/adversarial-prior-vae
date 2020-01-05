@@ -32,7 +32,7 @@ where $x^{(j)}$ is one of real data, $N$ is the size of training set. To reduce 
 	 &= \E_{p^*(e)} \E_{p^*(x|e)} \E_{q_\phi(z|e)} \ln \frac{p_\theta(x|z)p_\theta(z)}{q_\phi(z|e)} \tag{10} \\
 	 &= \E_{p^*(x)} \ln p^*(x) - \E_{p^*(e)} \E_{p^*(x|e)} KL(q_\phi(z|e), p_\theta(z|x))
 \end{align*} 
-where $p^*(x|e)$ means the sampling process from $e$, usually Bernouli distribution. \cref{eq:another_elbo} is similar to the original ELBO~\cref{eq:ELBO}, and the above conclusion about learnable prior holds for \cref{eq:another_elbo} by repeating above inference. Since $q_\phi(z|e)$ is known, above bias estimation of $q_\phi(z)$ is feasible by $\frac{1}{N} q_\phi(z|e^{(j)})$. The estimation using $q_\phi(z|x)$ is a special case that $p^*(x|e) = \delta(x - e)$, therefore, we will use $\frac{1}{N} q_\phi(z|e^{(j)})$ on all dataset. $\hat{q}_\phi(z)$ denotes the bias estimation of $q_\phi(z)$. Then, a bias estimation $\hat{Z}$ is given by:
+where $p^*(x|e)$ means the sampling process from $e$, usually Bernouli distribution. \cref{eq:another_elbo} is similar to the original ELBO~\cref{eq:ELBO}, and the above conclusion about learnable prior holds for \cref{eq:another_elbo} by repeating above inference. Additionally, when $p_\theta(x|z)$ and $p^*(x|e)$ is both Bernouli, term $\E_{p^*(x|e)} \ln p_\theta(x|z)$ has analytical solution $x\log e+(1-x)\log(1-e)$, which could make the training and evaluation more stable (don't need sample $x$). Since $q_\phi(z|e)$ is known, above bias estimation of $q_\phi(z)$ is feasible by $\frac{1}{N} q_\phi(z|e^{(j)})$. The estimation using $q_\phi(z|x)$ is a special case that $p^*(x|e) = \delta(x - e)$, therefore, we will use $\frac{1}{N} q_\phi(z|e^{(j)})$ on all dataset. $\hat{q}_\phi(z)$ denotes the bias estimation of $q_\phi(z)$. Then, a bias estimation $\hat{Z}$ is given by:
 \begin{align*}\label{eq:Z_estimator}
 	Z = \E_{q_\phi(z)}\frac{f_\lambda(z)}{q_\phi(z)} \leq \E_{q_\phi(z)} \frac{f_\lambda(z)}{\hat{q}_\phi(z)} = \hat{Z} \tag{10}
 \end{align*}
@@ -109,7 +109,7 @@ It is not easy to sample $z$ from $p_\lambda(z)$ since the formula of $p_\lambda
 
 Langevin dynamics may be a useful sampling method because it only requires that $\nabla_z \log p_\lambda(z)$ is computable and the initial $z_0$ has an enough high density. Moreover, MEG~\cite{kumar2019maximum} have implemented a Metropolis-Adjusted Langevin Algorithm (MALA) for sampling where the formula of density is similar to $p_\lambda$ and also contains a discriminator term. But the selection of initial $z_0$ whose density is high enough is still a problem. 
 
-VAEPP indeed combine the theory of VAE and GAN, hence, it could be seen as a VAE-GAN model, therefore, following this philosophy, it is natural to use GAN for helping the sampling of VAEPP. We try to use GAN to model the distribution $q_\phi(z)$, which has high enough density in $p_\lambda(z)$. The sampling of VAEPP consists of 3 part: generate initial $z_0$ by a GAN, then generate $z \sim p_\lambda(z)$ by Langevin dynamics, and finally generate $x$ by decoder. 
+Following the philosophy of VAEPP, \IE using the technique of GAN to assist VAE, it is natural to use GAN to model the distribution $q_\phi(z)$, and use samples of GAN as the initial point of MALA, which has high enough density in $p_\lambda(z)$. The sampling of VAEPP consists of 3 part: generate initial $z_0$ by a GAN, then generate $z \sim p_\lambda(z)$ by Langevin dynamics, and finally generate $x$ by decoder. 
 
 
  

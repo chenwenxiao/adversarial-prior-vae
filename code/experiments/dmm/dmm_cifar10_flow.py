@@ -38,9 +38,9 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = True
-    max_epoch = 1600
-    warm_up_start = 800
-    warm_up_epoch = 800
+    max_epoch = 1200
+    warm_up_start = 600
+    warm_up_epoch = 600
     beta = 1e-8
     initial_xi = 0.0
     pull_back_energy_weight = 1000.0
@@ -52,17 +52,17 @@ class ExpConfig(spt.Config):
     smallest_step = 5e-5
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600]
+    lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200]
     lr_anneal_step_freq = None
 
-    use_flow = False
+    use_flow = True
     use_dg = False
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
     gradient_penalty_weight = 2
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
 
-    n_critical = 1
+    n_critical = 5
     # evaluation parameters
     train_n_pz = 128
     train_n_qz = 1
@@ -471,7 +471,6 @@ def get_log_Z():
     return __log_Z
 
 
-
 @add_arg_scope
 @spt.global_reuse
 def G_theta(z, return_std=False):
@@ -592,8 +591,8 @@ def D_kappa(x, y=None):
         h_x = spt.layers.resnet_conv2d_block(h_x, 32, scope='level_1')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 64, scope='level_2')  # output: (14, 14, 32)
         h_x = spt.layers.resnet_conv2d_block(h_x, 128, strides=2, scope='level_3')  # output: (14, 14, 32)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 256, scope='level_4')  # output: (7, 7, 64)
-        h_x = spt.layers.resnet_conv2d_block(h_x, 256, scope='level_5')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_4')  # output: (7, 7, 64)
+        h_x = spt.layers.resnet_conv2d_block(h_x, 256, strides=2, scope='level_5')  # output: (7, 7, 64)
 
         h_x = spt.ops.reshape_tail(h_x, ndims=3, shape=[-1])
         h_x = spt.layers.dense(h_x, 64, scope='level_-2')
@@ -641,6 +640,7 @@ def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, i
     z_channel = 16 * config.z_dim // config.x_shape[0] // config.x_shape[1]
     x_mean = G_omega(z, z_channel)
     x_mean = spt.ops.reshape_tail(x_mean, ndims=3, shape=(-1,))
+    print(x_mean.shape)
     f_z = net.add('f_z', spt.Normal(mean=x_mean, std=1.0), group_ndims=1)
     x_mean = G_theta(x_mean)
     x = net.add('x', spt.Normal(mean=x_mean, std=1.0), group_ndims=3)
@@ -756,7 +756,7 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, input_origin_x=None):
             -p_net['z'].distribution.log_prob(p_net['z'], group_ndims=1, y=p_net['x']).log_energy_prob +
             q_net['z'].log_prob()
         )
-        train_grad_penalty = (gp_theta + gp_dg)  # + gp_omega
+        train_grad_penalty = config.pull_back_energy_weight * (gp_theta + gp_dg)  # + gp_omega
         train_kl = tf.maximum(train_kl, 0.0)  # TODO
         VAE_nD_loss = -train_recon + train_kl
         VAE_loss = VAE_nD_loss + train_grad_penalty
@@ -1162,10 +1162,11 @@ def main():
                             # vae training
                             [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
                              batch_train_recon_pure_energy, batch_train_kl,
-                             batch_train_grad_penalty] = session.run(
-                                [VAE_nD_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
+                             batch_train_grad_penalty, batch_D_loss, batch_D_real, batch_G_loss] = session.run(
+                                [VAE_train_op, VAE_loss,
+                                 beta, xi_node, train_recon, train_recon_energy,
                                  train_recon_pure_energy,
-                                 train_kl, train_grad_penalty],
+                                 train_kl, train_grad_penalty, VAE_D_loss, VAE_D_real, VAE_G_loss],
                                 feed_dict={
                                     input_x: x,
                                     input_origin_x: origin_x
@@ -1178,15 +1179,9 @@ def main():
                             loop.collect_metrics(train_recon_energy=batch_train_recon_energy)
                             loop.collect_metrics(train_kl=batch_train_kl)
                             loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
-
-                        [_, batch_D_loss, batch_D_real, batch_G_loss] = session.run(
-                            [VAE_D_train_op, VAE_D_loss, VAE_D_real, VAE_G_loss], feed_dict={
-                                input_x: x,
-                                input_origin_x: origin_x,
-                            })
-                        loop.collect_metrics(VAE_D_loss=batch_D_loss)
-                        loop.collect_metrics(VAE_D_real=batch_D_real)
-                        loop.collect_metrics(VAE_G_loss=batch_G_loss)
+                            loop.collect_metrics(VAE_D_loss=batch_D_loss)
+                            loop.collect_metrics(VAE_D_real=batch_D_real)
+                            loop.collect_metrics(VAE_G_loss=batch_G_loss)
                 else:
                     step_iterator = MyIterator(train_flow)
                     while step_iterator.has_next:
@@ -1241,7 +1236,6 @@ def main():
 
                     with loop.timeit('eval_time'):
                         evaluator.run()
-
 
                 if epoch == config.max_epoch:
                     dataset_img = _x_train
