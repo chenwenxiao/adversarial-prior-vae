@@ -37,7 +37,7 @@ spt.Bernoulli.mean = property(_bernoulli_mean)
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 24
+    z_dim = 16
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -908,10 +908,11 @@ def main():
         else:
             q_variable = test_q_net['z']
 
-        truncated_threshold = -tf.square(3.0) - 0.5 * tf.log(2 * np.pi) - q_variable.distribution.logstd
+        truncated_threshold = -tf.square(3.0) / 2.0 - 0.5 * tf.log(2 * np.pi) - q_variable.distribution.logstd
         is_truncated = q_variable.log_prob(group_ndims=0)
+        origin_q = q_variable.log_prob(group_ndims=0)
         print(is_truncated)
-        is_truncated = tf.to_float(is_truncated > truncated_threshold)
+        is_truncated = tf.to_float(is_truncated < truncated_threshold)
         print(is_truncated)
         is_truncated = tf.reduce_sum(is_truncated, axis=[-1, -2])
         print(is_truncated)
@@ -1153,7 +1154,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/6a/1c/d445f4f80a9fcd5ce0e5/checkpoint/checkpoint/checkpoint.dat-468000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/89/0c/d4e63c432be92e5ce0e5/checkpoint/checkpoint/checkpoint.dat-468000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1204,10 +1205,13 @@ def main():
                     log_Z_list = []
                     for i in range(config.log_Z_times):
                         for [batch_x, batch_origin_x] in Z_compute_flow:
-                            log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                                input_x: batch_x,
-                                input_origin_x: batch_origin_x
-                            }))
+                            batch_log_Z = session.run([another_log_Z_compute_op],
+                                                      feed_dict={
+                                                          input_x: batch_x,
+                                                          input_origin_x: batch_origin_x
+                                                      })
+                            log_Z_list.append(batch_log_Z)
+                            # print(log_Z_list)
                     from scipy.misc import logsumexp
                     another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
                     # print('log_Z_list:{}'.format(log_Z_list))
