@@ -96,7 +96,7 @@ class ExpConfig(spt.Config):
     min_logstd_of_q = -5.0
 
     use_truncated = True
-    truncated_weiht = 3.0
+    truncated_weight = 3.0
     truncated_area = 0.99730020
 
     @property
@@ -954,7 +954,8 @@ def main():
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
 
         p_z_energy = test_chain.model['z'].log_prob().energy
-        p_z_energy = tf.boolean_mask(p_z_energy, is_truncated)
+        if config.use_truncated:
+            p_z_energy = tf.boolean_mask(p_z_energy, is_truncated)
 
         another_log_Z_compute_op = spt.ops.log_mean_exp(
             -p_z_energy - q_z_given_x + np.log(config.len_train)
