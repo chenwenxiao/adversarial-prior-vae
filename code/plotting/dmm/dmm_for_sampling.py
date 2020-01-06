@@ -81,7 +81,8 @@ class ExpConfig(spt.Config):
 
     len_train = 162770
     sample_n_z = 100
-    fid_samples = 5000
+    fid_samples = 50000
+    fid_test_times = 10
 
     epsilon = -20.0
     min_logstd_of_q = -3.0
@@ -1078,6 +1079,53 @@ def main():
                     )
                     break
 
+                if loop.epoch > config.warm_up_start:
+                    # plot samples
+                    with loop.timeit('gan_sample_time'):
+                        gan_images, batch_z = session.run([gan_plots, gan_z])
+
+                    try:
+                        save_images_collection(
+                            images=np.round(gan_images),
+                            filename='plotting/sample/gan-{}.png'.format(extra_index),
+                            grid_size=(10, 10),
+                            results=results,
+                        )
+                    except Exception as e:
+                        print(e)
+
+                    mala_images = None
+                    if loop.epoch >= config.max_epoch:
+
+                        step_length = config.smallest_step
+                        with loop.timeit('mala_sample_time'):
+                            for i in range(0, 11):
+                                [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
+                                 batch_history_ratio] = session.run(
+                                    [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z,
+                                     plot_history_ratio],
+                                    feed_dict={
+                                        initial_z: batch_z,
+                                    })
+                                batch_z = batch_history_z[-1]
+
+                                if i % 10 == 0:
+                                    print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
+                                    try:
+                                        save_images_collection(
+                                            images=np.round(images),
+                                            filename='plotting/sample/{}-MALA-{}.png'.format(extra_index, i),
+                                            grid_size=(10, 10),
+                                            results=results,
+                                        )
+                                    except Exception as e:
+                                        print(e)
+
+                        mala_images = images
+                    else:
+                        mala_images = gan_images
+
+                    return mala_images
                 return images
 
     with spt.utils.create_session().as_default() as session, \
@@ -1098,7 +1146,7 @@ def main():
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega', 'D_kappa'],
-                           max_epoch=config.max_epoch,
+                           max_epoch=config.max_epoch + 1,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
@@ -1130,49 +1178,42 @@ def main():
             n_critical = config.n_critical
             # adversarial training
             for epoch in epoch_iterator:
-                with loop.timeit('compute_Z_time'):
-                    # log_Z_list = []
-                    # for i in range(config.log_Z_times):
-                    #     log_Z_list.append(session.run(log_Z_compute_op))
-                    # from scipy.misc import logsumexp
-                    # log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                    # print('log_Z_list:{}'.format(log_Z_list))
-                    # print('log_Z:{}'.format(log_Z))
-
-                    log_Z_list = []
-                    for [batch_x, batch_origin_x] in train_flow:
-                        log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
-                            input_x: batch_x,
-                            input_origin_x: batch_origin_x
-                        }))
-                    from scipy.misc import logsumexp
-                    another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
-                    # print('log_Z_list:{}'.format(log_Z_list))
-                    print('another_log_Z:{}'.format(another_log_Z))
-                    # final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
-                    final_log_Z = another_log_Z  # TODO
-                    get_log_Z().set(final_log_Z)
-
-                with loop.timeit('eval_time'):
-                    evaluator.run()
-
-            # if epoch == config.max_epoch:
                 dataset_img = _x_train
+                gan_img = []
                 mala_img = []
+                ori_img = []
                 for i in range(config.fid_samples // config.sample_n_z):
-                    mala_images = plot_samples(loop, 10000 + i)
+                    gan_images, mala_images, ori_images = plot_samples(loop, 10000 + i)
+                    gan_img.append(gan_images)
                     mala_img.append(mala_images)
+                    ori_img.append(ori_images)
                     print('{}-th sample finished...'.format(i))
 
+                gan_img = np.concatenate(gan_img, axis=0).astype('uint8')
+                gan_img = np.asarray(gan_img)
                 mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
                 mala_img = np.asarray(mala_img)
-                FID = get_fid(mala_img, dataset_img)
-                IS_mean, IS_std = get_inception_score(mala_img)
-                loop.collect_metrics(FID=FID)
-                loop.collect_metrics(IS=IS_mean)
+                np.savez('sample_store', gan_img=gan_img, ori_img=ori_img, mala_img=mala_img)
+                for i in range(config.fid_test_times):
+                    FID = get_fid(gan_img, dataset_img)
+                    IS_mean, IS_std = get_inception_score(gan_img)
+                    loop.collect_metrics(FID_gan=FID)
+                    loop.collect_metrics(IS_gan=IS_mean)
 
-                loop.collect_metrics(lr=learning_rate.get())
-                loop.print_logs()
+                    FID = get_fid(mala_img, dataset_img)
+                    IS_mean, IS_std = get_inception_score(mala_img)
+                    loop.collect_metrics(FID=FID)
+                    loop.collect_metrics(IS=IS_mean)
+
+                    # ori_img = np.concatenate(ori_img, axis=0).astype('uint8')
+                    # ori_img = np.asarray(ori_img)
+                    # FID = get_fid(ori_img, dataset_img)
+                    # IS_mean, IS_std = get_inception_score(ori_img)
+                    # loop.collect_metrics(FID_ori=FID)
+                    # loop.collect_metrics(IS_ori=IS_mean)
+
+                    loop.collect_metrics(lr=learning_rate.get())
+                    loop.print_logs()
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')
