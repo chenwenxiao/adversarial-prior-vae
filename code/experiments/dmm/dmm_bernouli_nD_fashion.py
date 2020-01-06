@@ -92,6 +92,10 @@ class ExpConfig(spt.Config):
     sample_n_z = 100
     fid_samples = 5000
 
+    use_truncated = True
+    truncated_weight = 2.0
+    truncated_area = 0.95449974
+
     epsilon = -20.0
     min_logstd_of_q = -5.0
 
@@ -883,9 +887,6 @@ def main():
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
         test_chain = test_q_net.chain(p_net, observed={'x': tf.to_float(input_x)}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta, log_Z=get_log_Z())
-        test_recon = tf.reduce_mean(
-            test_chain.model['x'].log_prob()
-        )
         test_mse = tf.reduce_sum(
             (tf.round(test_chain.model['x'].distribution.mean * 255.0) - tf.round(
                 tf.to_float(test_chain.model['x']) * 255.0)) ** 2,
@@ -900,14 +901,40 @@ def main():
             )
         )
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
+        test_recon = test_chain.model['x'].log_prob()
+        p_z = test_chain.model['z'].distribution.log_prob(
+            test_chain.model['z'], group_ndims=1, y=test_chain.model['x']
+        ).log_energy_prob
+        q_z_given_x = test_q_net['z'].log_prob()
+
+        if config.use_flow:
+            q_variable = test_q_net['z'].flow_origin
+        else:
+            q_variable = test_q_net['z']
+        if config.use_truncated:
+            truncated_threshold = -tf.square(config.truncated_weight) / 2.0 - 0.5 * tf.log(2 * np.pi) - q_variable.distribution.logstd
+            is_truncated = q_variable.log_prob(group_ndims=0)
+            origin_q = q_variable.log_prob(group_ndims=0)
+            print(is_truncated)
+            is_truncated = tf.to_float(is_truncated < truncated_threshold)
+            print(is_truncated)
+            is_truncated = tf.reduce_sum(is_truncated, axis=[-1, -2])
+            print(is_truncated)
+            is_truncated = tf.equal(is_truncated, 0.0)
+            print(is_truncated)
+
+            p_z = tf.boolean_mask(p_z, is_truncated)
+            q_z_given_x = tf.boolean_mask(q_z_given_x, is_truncated)
+            q_z_given_x = q_z_given_x - np.log(config.truncated_area) * config.z_dim
+            test_recon = tf.boolean_mask(test_recon, is_truncated)
+            print(q_z_given_x)
 
         vi = spt.VariationalInference(
-            log_joint=test_chain.model['x'].log_prob() + test_chain.model['z'].distribution.log_prob(
-                test_chain.model['z'], group_ndims=1, y=test_chain.model['x']
-            ).log_energy_prob,
-            latent_log_probs=[test_q_net['z'].log_prob()],
+            log_joint=test_recon + p_z,
+            latent_log_probs=[q_z_given_x],
             axis=0
         )
+        test_recon = tf.reduce_mean(test_recon)
         adv_test_nll = -tf.reduce_mean(
             tf.reshape(
                 vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
@@ -923,10 +950,13 @@ def main():
         pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.mean))
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
-        q_z_given_x = test_q_net['z'].log_prob()
+
+        p_z_energy = test_chain.model['z'].log_prob().energy
+        if config.use_truncated:
+            p_z_energy = tf.boolean_mask(p_z_energy, is_truncated)
 
         another_log_Z_compute_op = spt.ops.log_mean_exp(
-            -test_chain.model['z'].log_prob().energy - q_z_given_x + np.log(config.len_train)
+            -p_z_energy - q_z_given_x + np.log(config.len_train)
         )
         kl_adv_and_gaussian = tf.reduce_mean(
             test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob

@@ -37,7 +37,7 @@ spt.Bernoulli.mean = property(_bernoulli_mean)
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 16
+    z_dim = 12
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -1161,7 +1161,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/89/0c/d4e63c432be92e5ce0e5/checkpoint/checkpoint/checkpoint.dat-468000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/ea/1c/d4747dc47d24eb3021e5/checkpoint/checkpoint/checkpoint.dat-468000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
