@@ -183,7 +183,7 @@ def main():
     with tf.name_scope('testing'):
         test_q_net = q_net(input_origin_x if config.use_q_z_given_e else input_x, n_z=config.test_n_z)
         test_chain = test_q_net.chain(
-            p_net, latent_axis=0, observed={'x': input_origin_x if config.use_origin_x_as_observe else input_x})
+            p_net, latent_axis=0, observed={'x': tf.to_float(input_x)})
         test_nll = -tf.reduce_mean(test_chain.vi.evaluation.is_loglikelihood())
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
 
