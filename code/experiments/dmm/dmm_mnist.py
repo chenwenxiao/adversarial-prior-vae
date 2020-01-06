@@ -864,7 +864,7 @@ def main():
     results.make_dirs('plotting/test.reconstruct', exist_ok=True)
     results.make_dirs('train_summary', exist_ok=True)
 
-    (_x_train, _y_train), (_x_test, _y_test) = spt.datasets.load_fashion_mnist(x_shape=config.x_shape)
+    (_x_train, _y_train), (_x_test, _y_test) = spt.datasets.load_mnist(x_shape=config.x_shape)
 
     # prepare for training and testing data
     # train_flow = bernoulli_flow(

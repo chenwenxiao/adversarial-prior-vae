@@ -96,8 +96,8 @@ class ExpConfig(spt.Config):
     min_logstd_of_q = -5.0
 
     use_truncated = True
-    truncated_weight = 3.0
-    truncated_area = 0.99730020
+    truncated_weight = 2.0
+    truncated_area = 0.95449974
 
     @property
     def x_shape(self):
