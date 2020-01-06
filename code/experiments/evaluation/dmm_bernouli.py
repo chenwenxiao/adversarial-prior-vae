@@ -95,7 +95,8 @@ class ExpConfig(spt.Config):
     epsilon = -20.0
     min_logstd_of_q = -5.0
 
-    tri_sigma = 0.99730020
+    truncated_weiht = 3.0
+    truncated_area = 0.99730020
 
     @property
     def x_shape(self):
@@ -908,7 +909,7 @@ def main():
         else:
             q_variable = test_q_net['z']
 
-        truncated_threshold = -tf.square(3.0) / 2.0 - 0.5 * tf.log(2 * np.pi) - q_variable.distribution.logstd
+        truncated_threshold = -tf.square(config.truncated_area) / 2.0 - 0.5 * tf.log(2 * np.pi) - q_variable.distribution.logstd
         is_truncated = q_variable.log_prob(group_ndims=0)
         origin_q = q_variable.log_prob(group_ndims=0)
         print(is_truncated)
@@ -921,7 +922,7 @@ def main():
 
         p_z = tf.boolean_mask(p_z, is_truncated)
         q_z_given_x = tf.boolean_mask(q_z_given_x, is_truncated)
-        q_z_given_x = q_z_given_x - np.log(config.tri_sigma) * config.z_dim
+        q_z_given_x = q_z_given_x - np.log(config.truncated_area) * config.z_dim
         test_recon = tf.boolean_mask(test_recon, is_truncated)
         test_recon = tf.reduce_mean(test_recon)
         print(q_z_given_x)
