@@ -95,6 +95,7 @@ class ExpConfig(spt.Config):
     epsilon = -20.0
     min_logstd_of_q = -5.0
 
+    use_truncated = True
     truncated_weiht = 3.0
     truncated_area = 0.99730020
 
@@ -844,6 +845,10 @@ def main():
     results.make_dirs('plotting/test.reconstruct', exist_ok=True)
     results.make_dirs('train_summary', exist_ok=True)
 
+    if config.use_truncated:
+        config.test_n_qz = int(config.test_n_qz / (config.truncated_area ** config.z_dim))
+        print('new test n ez is {}'.format(config.test_n_qz))
+
     posterior_flow = spt.layers.planar_normalizing_flows(
         config.nf_layers, name='posterior_flow')
 
@@ -908,30 +913,30 @@ def main():
             q_variable = test_q_net['z'].flow_origin
         else:
             q_variable = test_q_net['z']
+        if config.use_truncated:
+            truncated_threshold = -tf.square(config.truncated_weight) / 2.0 - 0.5 * tf.log(2 * np.pi) - q_variable.distribution.logstd
+            is_truncated = q_variable.log_prob(group_ndims=0)
+            origin_q = q_variable.log_prob(group_ndims=0)
+            print(is_truncated)
+            is_truncated = tf.to_float(is_truncated < truncated_threshold)
+            print(is_truncated)
+            is_truncated = tf.reduce_sum(is_truncated, axis=[-1, -2])
+            print(is_truncated)
+            is_truncated = tf.equal(is_truncated, 0.0)
+            print(is_truncated)
 
-        truncated_threshold = -tf.square(config.truncated_area) / 2.0 - 0.5 * tf.log(2 * np.pi) - q_variable.distribution.logstd
-        is_truncated = q_variable.log_prob(group_ndims=0)
-        origin_q = q_variable.log_prob(group_ndims=0)
-        print(is_truncated)
-        is_truncated = tf.to_float(is_truncated < truncated_threshold)
-        print(is_truncated)
-        is_truncated = tf.reduce_sum(is_truncated, axis=[-1, -2])
-        print(is_truncated)
-        is_truncated = tf.equal(is_truncated, 0.0)
-        print(is_truncated)
-
-        p_z = tf.boolean_mask(p_z, is_truncated)
-        q_z_given_x = tf.boolean_mask(q_z_given_x, is_truncated)
-        q_z_given_x = q_z_given_x - np.log(config.truncated_area) * config.z_dim
-        test_recon = tf.boolean_mask(test_recon, is_truncated)
-        test_recon = tf.reduce_mean(test_recon)
-        print(q_z_given_x)
+            p_z = tf.boolean_mask(p_z, is_truncated)
+            q_z_given_x = tf.boolean_mask(q_z_given_x, is_truncated)
+            q_z_given_x = q_z_given_x - np.log(config.truncated_area) * config.z_dim
+            test_recon = tf.boolean_mask(test_recon, is_truncated)
+            print(q_z_given_x)
 
         vi = spt.VariationalInference(
             log_joint=test_recon + p_z,
             latent_log_probs=[q_z_given_x],
             axis=0
         )
+        test_recon = tf.reduce_mean(test_recon)
         adv_test_nll = -tf.reduce_mean(
             tf.reshape(
                 vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)

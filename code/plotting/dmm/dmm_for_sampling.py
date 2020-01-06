@@ -1095,11 +1095,12 @@ def main():
                         print(e)
 
                     mala_images = None
+                    ori_images = None
                     if loop.epoch >= config.max_epoch:
 
                         step_length = config.smallest_step
                         with loop.timeit('mala_sample_time'):
-                            for i in range(0, 11):
+                            for i in range(0, 101):
                                 [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
                                  batch_history_ratio] = session.run(
                                     [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z,
@@ -1109,7 +1110,7 @@ def main():
                                     })
                                 batch_z = batch_history_z[-1]
 
-                                if i % 10 == 0:
+                                if i % 100 == 0:
                                     print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
                                     try:
                                         save_images_collection(
@@ -1122,11 +1123,30 @@ def main():
                                         print(e)
 
                         mala_images = images
-                    else:
-                        mala_images = gan_images
+                        # batch_z = batch_reconstruct_z
+                        # batch_z = np.expand_dims(batch_z, axis=1)
+                        # for i in range(0, 101):
+                        #     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
+                        #      batch_history_ratio] = session.run(
+                        #         [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
+                        #         feed_dict={
+                        #             initial_z: batch_z,
+                        #         })
+                        #     batch_z = batch_history_z[-1]
+                        #     if i % 100 == 0:
+                        #         print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
+                        #         try:
+                        #             save_images_collection(
+                        #                 images=np.round(images),
+                        #                 filename='plotting/sample/{}-ORI-{}.png'.format(extra_index, i),
+                        #                 grid_size=(10, 10),
+                        #                 results=results,
+                        #             )
+                        #         except Exception as e:
+                        #             print(e)
+                        ori_images = mala_images
 
-                    return mala_images
-                return images
+                    return gan_images, mala_images, ori_images
 
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
@@ -1141,7 +1161,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/9a/0c/d434dabfcaec0ad890e5/checkpoint/checkpoint/checkpoint.dat-508400'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/aa/1c/d445f4f80a9f167ee0e5/checkpoint/checkpoint/checkpoint.dat-2542000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
