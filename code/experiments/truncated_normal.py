@@ -4,6 +4,7 @@ import tensorflow as tf
 import zhusuan.distributions as zd
 
 from tfsnippet.distributions.utils import compute_density_immediately, reduce_group_ndims
+from zhusuan.utils import add_name_scope
 from tfsnippet.utils import settings, get_default_scope_name
 
 from tfsnippet.distributions.wrapper import ZhuSuanDistribution
@@ -63,7 +64,36 @@ class TruncatedNormal(ZhuSuanDistribution):
         """Get the standard deviation of the Normal distribution."""
         return self._distribution.std
 
-    def _sample(self, n_samples):
+    @add_name_scope
+    def _sample(self, n_samples=None):
+        """
+        sample(n_samples=None)
+
+        Return samples from the distribution. When `n_samples` is None (by
+        default), one sample of shape ``batch_shape + value_shape`` is
+        generated. For a scalar `n_samples`, the returned Tensor has a new
+        sample dimension with size `n_samples` inserted at ``axis=0``, i.e.,
+        the shape of samples is ``[n_samples] + batch_shape + value_shape``.
+
+        :param n_samples: A 0-D `int32` Tensor or None. How many independent
+            samples to draw from the distribution.
+        :return: A Tensor of samples.
+        """
+        if n_samples is None:
+            samples = self.__sample(n_samples=1)
+            return tf.squeeze(samples, axis=0)
+        elif isinstance(n_samples, int):
+            return self.__sample(n_samples)
+        else:
+            n_samples = tf.convert_to_tensor(n_samples, dtype=tf.int32)
+            _assert_rank_op = tf.assert_rank(
+                n_samples, 0,
+                message="n_samples should be a scalar (0-D Tensor).")
+            with tf.control_dependencies([_assert_rank_op]):
+                samples = self.__sample(n_samples)
+            return samples
+
+    def __sample(self, n_samples):
         mean, std = self.mean, self.std
         if not self.is_reparameterized:
             mean = tf.stop_gradient(mean)

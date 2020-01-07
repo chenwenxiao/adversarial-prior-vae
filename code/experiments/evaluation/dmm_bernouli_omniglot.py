@@ -461,6 +461,7 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
     if config.use_truncated:
         z_distribution = TruncatedNormal(mean=z_mean,
                                          logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q))
+        print(z_distribution.batch_shape)
     else:
         z_distribution = spt.Normal(mean=z_mean,
                                     logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q))
