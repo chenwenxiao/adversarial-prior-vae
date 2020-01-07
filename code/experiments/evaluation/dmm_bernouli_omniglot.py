@@ -10,6 +10,7 @@ from matplotlib import pyplot
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
+from code.experiments.truncated_normal import TruncatedNormal
 from tfsnippet import DiscretizedLogistic
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
@@ -96,8 +97,6 @@ class ExpConfig(spt.Config):
     min_logstd_of_q = -5.0
 
     use_truncated = True
-    truncated_weight = 3.0
-    truncated_area = 0.9973002
 
     @property
     def x_shape(self):
@@ -459,16 +458,21 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
     z_logstd = spt.layers.dense(h_x, config.z_dim, scope='z_logstd', kernel_initializer=tf.zeros_initializer())
 
     # sample z ~ q(z|x)
+    if config.use_truncated:
+        z_distribution = TruncatedNormal(mean=z_mean,
+                                         logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q))
+    else:
+        z_distribution = spt.Normal(mean=z_mean,
+                                    logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q))
+
     z_distribution = spt.FlowDistribution(
-        spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
+        z_distribution,
         posterior_flow
     )
     if config.use_flow:
         z = net.add('z', z_distribution, n_samples=n_z)
     else:
-        z = net.add('z',
-                    spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q)),
-                    n_samples=n_z, group_ndims=1)
+        z = net.add('z', z_distribution, n_samples=n_z, group_ndims=1)
 
     return net
 
@@ -845,10 +849,6 @@ def main():
     results.make_dirs('plotting/test.reconstruct', exist_ok=True)
     results.make_dirs('train_summary', exist_ok=True)
 
-    if config.use_truncated:
-        config.test_n_qz = int(config.test_n_qz / (config.truncated_area ** config.z_dim))
-        print('new test n ez is {}'.format(config.test_n_qz))
-
     posterior_flow = spt.layers.planar_normalizing_flows(
         config.nf_layers, name='posterior_flow')
 
@@ -909,28 +909,6 @@ def main():
         ).log_energy_prob
         q_z_given_x = test_q_net['z'].log_prob()
 
-        if config.use_flow:
-            q_variable = test_q_net['z'].flow_origin
-        else:
-            q_variable = test_q_net['z']
-        if config.use_truncated:
-            truncated_threshold = -tf.square(config.truncated_weight) / 2.0 - 0.5 * tf.log(2 * np.pi) - q_variable.distribution.logstd
-            is_truncated = q_variable.log_prob(group_ndims=0)
-            origin_q = q_variable.log_prob(group_ndims=0)
-            print(is_truncated)
-            is_truncated = tf.to_float(is_truncated < truncated_threshold)
-            print(is_truncated)
-            is_truncated = tf.reduce_sum(is_truncated, axis=[-1, -2])
-            print(is_truncated)
-            is_truncated = tf.equal(is_truncated, 0.0)
-            print(is_truncated)
-
-            p_z = tf.boolean_mask(p_z, is_truncated)
-            q_z_given_x = tf.boolean_mask(q_z_given_x, is_truncated)
-            q_z_given_x = q_z_given_x - np.log(config.truncated_area) * config.z_dim
-            test_recon = tf.boolean_mask(test_recon, is_truncated)
-            print(q_z_given_x)
-
         vi = spt.VariationalInference(
             log_joint=test_recon + p_z,
             latent_log_probs=[q_z_given_x],
@@ -954,8 +932,6 @@ def main():
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
 
         p_z_energy = test_chain.model['z'].log_prob().energy
-        if config.use_truncated:
-            p_z_energy = tf.boolean_mask(p_z_energy, is_truncated)
 
         another_log_Z_compute_op = spt.ops.log_mean_exp(
             -p_z_energy - q_z_given_x + np.log(config.len_train)
