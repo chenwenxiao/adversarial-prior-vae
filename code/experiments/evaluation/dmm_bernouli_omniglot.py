@@ -464,12 +464,11 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
     else:
         z_distribution = spt.Normal(mean=z_mean,
                                     logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q))
-
-    z_distribution = spt.FlowDistribution(
-        z_distribution,
-        posterior_flow
-    )
     if config.use_flow:
+        z_distribution = spt.FlowDistribution(
+            z_distribution,
+            posterior_flow
+        )
         z = net.add('z', z_distribution, n_samples=n_z)
     else:
         z = net.add('z', z_distribution, n_samples=n_z, group_ndims=1)
