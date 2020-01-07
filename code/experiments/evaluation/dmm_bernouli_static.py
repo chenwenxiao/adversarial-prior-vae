@@ -10,6 +10,7 @@ from matplotlib import pyplot
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
+from code.experiments.datasets.static_mnist import load_static_mnist
 from tfsnippet import DiscretizedLogistic
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
@@ -92,12 +93,12 @@ class ExpConfig(spt.Config):
     sample_n_z = 100
     fid_samples = 5000
 
-    epsilon = -20.0
-    min_logstd_of_q = -5.0
-
     use_truncated = True
     truncated_weight = 2.0
     truncated_area = 0.95449974
+
+    epsilon = -20.0
+    min_logstd_of_q = -3.0
 
     @property
     def x_shape(self):
@@ -1036,7 +1037,7 @@ def main():
             with loop.timeit('plot_time'):
                 # plot reconstructs
                 for [x] in reconstruct_test_flow:
-                    x_samples = bernouli_sampler.sample(x)
+                    x_samples = x
                     images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
                     images[::3, ...] = np.round(255.0 * x)
                     images[1::3, ...] = np.round(255.0 * x_samples)
@@ -1053,7 +1054,7 @@ def main():
                     break
 
                 for [x] in reconstruct_train_flow:
-                    x_samples = bernouli_sampler.sample(x)
+                    x_samples = x
                     images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
                     images[::3, ...] = np.round(255.0 * x)
                     images[1::3, ...] = np.round(255.0 * x_samples)
@@ -1118,27 +1119,29 @@ def main():
                     return mala_images
 
     # prepare for training and testing data
-    (_x_train, _y_train), (_x_test, _y_test) = \
-        spt.datasets.load_mnist(x_shape=config.x_shape)
+    _x_train, _x_valid, _x_test = load_static_mnist(x_shape=config.x_shape)
     # train_flow = bernoulli_flow(
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
     x_train = _x_train / 255.0
     x_test = _x_test / 255.0
-    bernouli_sampler = BernoulliSampler()
+    x_valid = _x_valid / 255.0
     train_flow = spt.DataFlow.arrays([x_train, x_train], config.batch_size, shuffle=True, skip_incomplete=True)
-    train_flow = train_flow.map(lambda x, y: [bernouli_sampler.sample(x), y])
+    train_flow = train_flow.map(lambda x, y: [x, y])
     Z_compute_flow = spt.DataFlow.arrays([x_train, x_train], config.test_batch_size, shuffle=True, skip_incomplete=True)
-    Z_compute_flow = Z_compute_flow.map(lambda x, y: [bernouli_sampler.sample(x), y])
     reconstruct_train_flow = spt.DataFlow.arrays(
         [x_train], 100, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(
         [x_test], 100, shuffle=True, skip_incomplete=False)
+    valid_flow = spt.DataFlow.arrays(
+        [x_valid, x_valid],
+        config.test_batch_size
+    )
 
     test_flow = spt.DataFlow.arrays(
         [x_test, x_test],
         config.test_batch_size
     )
-    test_flow = test_flow.map(lambda x, y: [bernouli_sampler.sample(x), y])
+    test_flow = test_flow.map(lambda x, y: [x, y])
     # mapped_test_flow = test_flow.to_arrays_flow(config.test_batch_size).map(bernouli_sampler)
     # gathered_flow = spt.DataFlow.gather([test_flow, mapped_test_flow])
 
@@ -1161,7 +1164,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/bc/1c/d445f4f80a9f104021e5/checkpoint/checkpoint/checkpoint.dat-468000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/d9/1c/d445f4f80a9f15a7d0e5/checkpoint/checkpoint/checkpoint.dat-390000'  # '/mnt/mfs/mlstorage-experiments/cwx17/2c/fb/d4e63c432be9319e0cd5/checkpoint/checkpoint/checkpoint.dat-312000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1235,11 +1238,6 @@ def main():
 
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()
-
-            all_nll_list = np.asarray(all_nll_list)
-            all_log_Z_list = np.asarray(all_log_Z_list)
-            print('NLL: {} ± {}'.format(np.mean(all_nll_list), np.std(all_nll_list)))
-            print('log_Z: {} ± {}'.format(np.mean(all_log_Z_list), np.std(all_log_Z_list)))
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')

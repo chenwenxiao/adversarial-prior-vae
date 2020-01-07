@@ -628,9 +628,9 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
     x = net.add('x', DiscretizedLogistic(
         mean=x_mean,
         log_scale=spt.ops.maybe_clip_value(beta if config.uniform_scale else x_logstd, min_val=config.epsilon),
-        bin_size=2.0 / 256.0,
-        min_val=-1.0 + 1.0 / 256.0,
-        max_val=1.0 - 1.0 / 256.0,
+        bin_size=1.0 / 256.0,
+        min_val=0.0 + 0.5 / 256.0,
+        max_val=1.0 - 0.5 / 256.0,
         epsilon=1e-10
     ), group_ndims=3)
     return net
