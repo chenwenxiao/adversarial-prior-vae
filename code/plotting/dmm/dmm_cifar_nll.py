@@ -19,6 +19,9 @@ from tfsnippet.examples.utils import (MLResults,
                                       print_with_title)
 from code.experiments.utils import get_inception_score, get_fid
 from code.experiments.datasets.svhn import load_svhn
+from code.experiments.datasets.imagenet import load_imagenet_test
+from code.experiments.datasets.lsun import load_lsun_test
+
 import numpy as np
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
 from scipy.misc import logsumexp
@@ -1186,9 +1189,10 @@ def main():
         [x_test, x_test],
         config.test_batch_size)
 
-    (svhn_train, _), (svhn_test, __) = load_svhn(config.x_shape)
-    svhn_train = (svhn_train - 127.5) / 256.0 * 2
-    svhn_test = (svhn_test - 127.5) / 256.0 * 2
+    #(svhn_test, svhn_train) = load_imagenet_test(config.x_shape)
+    (_svhn_test, _) = load_imagenet_test(config.x_shape)
+    svhn_train = (_svhn_test - 127.5) / 256.0 * 2
+    svhn_test = (_svhn_test - 127.5) / 256.0 * 2
     svhn_train_flow = spt.DataFlow.arrays([svhn_train, svhn_train], config.test_batch_size)
     svhn_test_flow = spt.DataFlow.arrays([svhn_test, svhn_test], config.test_batch_size)
 
@@ -1469,7 +1473,7 @@ def main():
                                  'log(bits/dim)', 'out_of_distribution_overall_{}'.format('log_prob' if log_prob else 'ood'))
 
                     plot_overall()
-                    plot_overall(log_prob=True)
+                    # plot_overall(log_prob=True)
 
                 with loop.timeit('eval_time'):
                     cifar_train_evaluator.run()
