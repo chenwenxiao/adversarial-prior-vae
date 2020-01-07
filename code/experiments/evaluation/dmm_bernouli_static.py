@@ -11,6 +11,7 @@ from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
 from code.experiments.datasets.static_mnist import load_static_mnist
+from code.experiments.truncated_normal import TruncatedNormal
 from tfsnippet import DiscretizedLogistic
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
