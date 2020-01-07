@@ -458,16 +458,21 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
     z_logstd = spt.layers.dense(h_x, config.z_dim, scope='z_logstd', kernel_initializer=tf.zeros_initializer())
 
     # sample z ~ q(z|x)
-    z_distribution = spt.FlowDistribution(
-        spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
-        posterior_flow
-    )
+    if config.use_truncated:
+        z_distribution = TruncatedNormal(mean=z_mean,
+                                         logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q))
+        print(z_distribution.batch_shape)
+    else:
+        z_distribution = spt.Normal(mean=z_mean,
+                                    logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q))
     if config.use_flow:
+        z_distribution = spt.FlowDistribution(
+            z_distribution,
+            posterior_flow
+        )
         z = net.add('z', z_distribution, n_samples=n_z)
     else:
-        z = net.add('z',
-                    spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q)),
-                    n_samples=n_z, group_ndims=1)
+        z = net.add('z', z_distribution, n_samples=n_z, group_ndims=1)
 
     return net
 
@@ -843,10 +848,6 @@ def main():
     results.make_dirs('plotting/train.reconstruct', exist_ok=True)
     results.make_dirs('plotting/test.reconstruct', exist_ok=True)
     results.make_dirs('train_summary', exist_ok=True)
-
-    if config.use_truncated:
-        config.test_n_qz = int(config.test_n_qz / (config.truncated_area ** config.z_dim))
-        print('new test n ez is {}'.format(config.test_n_qz))
 
     posterior_flow = spt.layers.planar_normalizing_flows(
         config.nf_layers, name='posterior_flow')
