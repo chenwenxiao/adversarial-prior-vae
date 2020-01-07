@@ -38,7 +38,7 @@ spt.Bernoulli.mean = property(_bernoulli_mean)
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 13
+    z_dim = 12
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
