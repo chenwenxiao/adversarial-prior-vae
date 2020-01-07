@@ -849,10 +849,6 @@ def main():
     results.make_dirs('plotting/test.reconstruct', exist_ok=True)
     results.make_dirs('train_summary', exist_ok=True)
 
-    if config.use_truncated:
-        config.test_n_qz = int(config.test_n_qz / (config.truncated_area ** config.z_dim))
-        print('new test n ez is {}'.format(config.test_n_qz))
-
     posterior_flow = spt.layers.planar_normalizing_flows(
         config.nf_layers, name='posterior_flow')
 
