@@ -86,7 +86,7 @@ class ExpConfig(spt.Config):
 
     test_fid_n_pz = 5000
     test_x_samples = 1
-    log_Z_times = 10
+    log_Z_times = 1
     log_Z_x_samples = 64
 
     len_train = 50000
@@ -466,6 +466,8 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
         z_distribution = spt.Normal(mean=z_mean,
                                     logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q))
     if config.use_flow:
+        z_distribution = TruncatedNormal(mean=z_mean,
+                                         logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon))
         z_distribution = spt.FlowDistribution(
             z_distribution,
             posterior_flow
@@ -974,7 +976,7 @@ def main():
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega', 'D_kappa'],
-                           max_epoch=config.max_epoch + 100,
+                           max_epoch=config.max_epoch + 10,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),

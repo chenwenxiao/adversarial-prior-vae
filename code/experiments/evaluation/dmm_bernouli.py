@@ -466,6 +466,8 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
         z_distribution = spt.Normal(mean=z_mean,
                                     logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q))
     if config.use_flow:
+        z_distribution = TruncatedNormal(mean=z_mean,
+                                         logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon))
         z_distribution = spt.FlowDistribution(
             z_distribution,
             posterior_flow

@@ -78,7 +78,7 @@ class ExpConfig(spt.Config):
     train_n_pz = 128
     train_n_qz = 1
     test_n_pz = 1000
-    test_n_qz = 100
+    test_n_qz = 1000
     test_batch_size = 1
     test_epoch_freq = 1000
     plot_epoch_freq = 20
@@ -466,6 +466,8 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
         z_distribution = spt.Normal(mean=z_mean,
                                     logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q))
     if config.use_flow:
+        z_distribution = TruncatedNormal(mean=z_mean,
+                                         logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon))
         z_distribution = spt.FlowDistribution(
             z_distribution,
             posterior_flow
