@@ -93,6 +93,8 @@ class ExpConfig(spt.Config):
     sample_n_z = 100
     fid_samples = 5000
 
+    use_truncated = True
+
     epsilon = -20.0
     min_logstd_of_q = -5.0
 
