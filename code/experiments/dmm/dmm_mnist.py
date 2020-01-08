@@ -895,7 +895,7 @@ def main():
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_origin_x')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
-    beta = tf.Variable(initial_value=-3.0, dtype=tf.float32, name='beta', trainable=True)
+    beta = tf.Variable(initial_value=-2.0, dtype=tf.float32, name='beta', trainable=True)
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
