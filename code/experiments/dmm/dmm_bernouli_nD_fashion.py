@@ -475,6 +475,8 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
     else:
         z = net.add('z', z_distribution, n_samples=n_z, group_ndims=1)
 
+    return net
+
 
 __log_Z = None
 

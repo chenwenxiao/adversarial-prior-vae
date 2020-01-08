@@ -10,6 +10,7 @@ from matplotlib import pyplot
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
+from code.experiments.truncated_normal import TruncatedNormal
 from tfsnippet import DiscretizedLogistic
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
@@ -473,6 +474,8 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
         z = net.add('z', z_distribution, n_samples=n_z)
     else:
         z = net.add('z', z_distribution, n_samples=n_z, group_ndims=1)
+
+    return net
 
 
 __log_Z = None
