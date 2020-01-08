@@ -5,7 +5,7 @@ In \cref{sec:pull_back_prior}, we focus on the 2nd optimization and propose the 
 
 \subsection{Determine $\beta$}
 
-$\beta$ in \cref{eq:pull_back_prior} represents how far $p_\lambda$ is from $p_\mathcal{N}$, but how we decide the value of $\beta$? When $\beta$ is smaller, the difference between $p_\lambda$ and $p_\mathcal{N}$ is less, i.e. the representation ability of $p_\lambda$ is severely limited. When $\beta$ is larger, $p_\lambda$ is farther from $p_\mathcal{N}$. But noticing that in \cref{eq:final_optimization}, we simplify the optimization of $D$ by a fixed $D$ obtained in $W^1(\E_{p_\mathcal{N}}p_\theta(x|z), p^*)$, if $p_\lambda$ is enough far from $p_\mathcal{N}$, this approximation will become invalid. Consequently, $\beta$ should be set to an appropriate value which can't limit the representation ability of $p_\lambda$ and could make sure the approximation $D$ is valid. It is important to realize that the Pull-back Prior is serving for better ELBO. Whatever the representation ability of $p_\lambda$ is limited or approximation $D$ is invalid, the ELBO will suffer. Therefore, it is reasonable to set $\beta$ by the optimization for ELBO ($\lambda$ contains $\beta$ and $\omega$ which is the parameters of $D$):
+$\beta$ in \cref{eq:pull_back_prior} represents how far $p_\lambda$ is from $p_\mathcal{N}$, but how to decide the value of $\beta$? When $\beta$ is smaller, the difference between $p_\lambda$ and $p_\mathcal{N}$ is less, i.e. the representation ability of $p_\lambda$ is severely limited. When $\beta$ is larger, $p_\lambda$ is farther from $p_\mathcal{N}$. But noticing that in \cref{eq:final_optimization}, we simplify the optimization of $D$ by a fixed $D$ obtained in $W^1(p^\dag, p^*)$, if $p_\lambda$ is too far from $p_\mathcal{N}$, this approximation will become invalid. Consequently, $\beta$ should be set to an appropriate value which can't limit the representation ability of $p_\lambda$ and could make sure the approximation $D$ is valid. It is important to realize that the Pull-back Prior is serving for better ELBO. Whatever the representation ability of $p_\lambda$ is limited or approximation $D$ is invalid, the ELBO will suffer. Therefore, it is reasonable to search $\beta$ by the optimization for ELBO ($\lambda$ contains $\beta$ and $\omega$, which is the parameters of $D$):
 \begin{equation}
 	\beta = \arg \min_{\beta} \mathcal{L}(\theta, \phi, \lambda) = \arg \min_{\beta} \mathcal{L}(\theta, \phi, \beta, \omega) \tag{8}
 \end{equation}
@@ -75,15 +75,15 @@ We have introduced the architecture and training algorithm for VAEPP, whose perf
 
 What will happen if $\mathcal{L}(\theta, \phi, \beta, \omega)$ is directly trained by SGVB? The behavior of $\theta, \phi, \beta$ is same as \cref{alg:vaepp} since the optimization for them is not changed. We only need to show the optimization $\max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$. We firstly show an inequality of $\ln Z$:
 \begin{equation*}
-	\ln Z = \ln \E_{p_\mathcal{N}} \exp \{- \beta * D(G(z))\} \geq \E_{p_\mathcal{N}} [- \beta * D(G(z))]
+	\ln Z = \ln \E_{p_\mathcal{N}(z)} e^{- \beta * D(G(z))} \geq \E_{p_\mathcal{N}(z)} [- \beta * D(G(z))]
 \end{equation*}
 Then $\max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$ indeed find a suboptimal solution for $W^1(p^*, p_\theta)$ (sign $\simeq$ means that optimizations at left and right are equivalent):
 \begin{align*}\label{eq:improve_vaepp}
 	&\max_{Lip(D) \leq 1} \mathcal{L} \simeq \max_{Lip(D) \leq 1} \{ -\E_{q_\phi(z)} \beta*D(G(z)) - \ln Z \}\\ 
-	&\leq \beta \max_{Lip(D) \leq 1} \{ \E_{p_\mathcal{N}} D(G(z)) - E_{q_\phi(z)} D(G(z)) \} \\
-	&= \beta W^1(\E_{p_\mathcal{N}}p_\theta(x|z), p_r) \approx \beta W^1(\E_{p_\mathcal{N}}p_\theta(x|z), p^*) \tag{11}
+	&\leq \beta \max_{Lip(D) \leq 1} \{ \E_{p_\mathcal{N}(z)} D(G(z)) - E_{q_\phi(z)} D(G(z)) \} \tag{11} \\
+	&= \beta W^1(p^\dag, p_r) \approx \beta W^1(p^\dag, p^*) 
 \end{align*}
-where $p_r$ denotes $p_r(x) = \E_{q_\phi(z)} p_\theta(x|z)$, consisting of reconstructed data. The last approximation sign is from the fact that $p_\theta \rightarrow p^*$ after a few epoch in the training of VAE. 
+where $p_r$ denotes $p_r(x) = \E_{q_\phi(z)} p_\theta(x|z)$, consisting of reconstructed data. The last approximation sign is from the fact that $p_r \rightarrow p^*$ after a few epoch in the training of VAE. 
 
 \cref{eq:improve_vaepp} indicates that it is possible to obtain a suboptimal solution for $D$ by directly optimizing $\mathcal{L}$, and the gradient penalty term should be multiplied by $\beta$. By this way, the optimizations for $\omega$ and $\theta, \phi, \beta$ is combined into one, which is provides as \cref{alg:improved_vaepp}. 
 \begin{algorithm}[tb]
