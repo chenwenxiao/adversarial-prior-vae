@@ -10,6 +10,7 @@ from matplotlib import pyplot
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
+from code.experiments.datasets.omniglot import load_omniglot
 from code.experiments.truncated_normal import TruncatedNormal
 from tfsnippet import DiscretizedLogistic
 from tfsnippet.examples.utils import (MLResults,
@@ -1096,7 +1097,7 @@ def main():
 
     # prepare for training and testing data
     (_x_train, _y_train), (_x_test, _y_test) = \
-        spt.datasets.load_mnist(x_shape=config.x_shape)
+        load_omniglot(x_shape=config.x_shape)
     # train_flow = bernoulli_flow(
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
     x_train = _x_train / 255.0
@@ -1138,7 +1139,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/4e/1c/d445f4f80a9ff48541e5/checkpoint/checkpoint/checkpoint.dat-190000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/de/1c/d445f4f80a9f1bd161e5/checkpoint/checkpoint/checkpoint.dat-190000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
