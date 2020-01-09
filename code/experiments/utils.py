@@ -379,8 +379,8 @@ def get_fid_compare_gan(sample, real):
     """
     tf.import_graph_def(graph_def, name='FID_Inception_Net')
     with tf.Session() as sess:
-        (fake_activations,_) = inception_transform_np(sample, 50)
-        (real_activations,_) = inception_transform_np(real, 50)
+        (fake_activations,_) = inception_transform_np(sample, 30)
+        (real_activations,_) = inception_transform_np(real, 30)
         fake_activations = tf.convert_to_tensor(fake_activations)
         real_activations = tf.convert_to_tensor(real_activations)
         fid = tfgan.eval.frechet_classifier_distance_from_activations(
@@ -419,7 +419,7 @@ def get_fid_sngan(sample, real, batchsize=100):
     return fid
 
 
-get_fid = get_fid_google
+get_fid = get_fid_compare_gan
 
 if __name__ == '__main__':
 
