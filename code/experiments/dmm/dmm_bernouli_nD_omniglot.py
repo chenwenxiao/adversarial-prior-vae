@@ -621,7 +621,7 @@ def p_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, initial
     x_mean = tf.clip_by_value(x_mean, 1e-7, 1 - 1e-7)
     logits = tf.log(x_mean) - tf.log1p(-x_mean)
     bernouli = spt.Bernoulli(
-        logits=logits
+        logits=logits, dtype=tf.float32
     )
     # bernouli.mean = x_mean
     x = net.add('x', bernouli, group_ndims=3)

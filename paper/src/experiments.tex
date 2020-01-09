@@ -122,37 +122,37 @@ To valid the \cref{eq:behavior_of_beta}, we calculate the $\E_{p_\lambda(z)}[ D(
 
 
 
-\subsection{Out-of-Distribution}
+% \subsection{Out-of-Distribution}
 
-We found that discriminator of VAEPP performs normally while model assign higher density to the data from out-of-distribution, as shown in fig(TODO). It inspires us to use the exact information from discriminator to design 3 indicators, log-likelihood $\log p_\theta(x)$, energy $D(x)$ and norm of gradient $\|\nabla_{x} D(x)\|$ to solve OoD problem, as shown in fig(). From the likelihood, \cite{song2017pixeldefend} showed that it is useful to assume the data is out-of-distribution if it have very high or very low density. For energy and norm of gradient, it performs normally, i.e., when energy is higher or norm of gradient is smaller, it more likely belongs to out-of-distribution. Hence, we evaluate the AUC and AP for them and combination of them in OoD problem on CIFAR and SVHN, as shown in \cref{tab:compare_ood}. The method to combine them is simple: normalize them into a standard Gaussian in training set of CIFAR, and the score of this indicator contributing to combination score is the absolute/original/negative value of it. We have tested all kinds of combination and the best one is $|\log p_\theta(x)| - \|\nabla_x D(x)\|$. The performance of it on other datasets is shown in \cref{tab:compare_ood_other_datasets} which is competitive to other indicators $T_{perm}$~\cite{song2017pixeldefend} and WAIC~\cite{choi2018waic}. 
-\begin{table}[tb]
-\centering
-\begin{tabular}{lrr}  
-\toprule
-Indicator  & AUC/AP \\
-\midrule
-$\log p_\theta(x)$   &  1.00/1.00      \\
-$D(x)$               &  1.00/1.00      \\
-$\|\nabla_x D(x)\|$  &  1.00/1.00      \\
-$|\log p_\theta(x)| - \|\nabla_x D(x)\|$ & 1.00/1.00 \\
-\bottomrule
-\end{tabular}
-\caption{Comparation between indicators and their combination.}
-\label{tab:compare_ood}
-\end{table}
-\begin{table}[tb]
-\centering
-\begin{tabular}{lrrrr}  
-\toprule
-Dataset  &  $T_{perm}$ & WAIC & VAEPP\\
-\midrule
-Fashion vs MNIST  & 0.78/0.71  & 0.24/0.38 & 1.00/1.00  \\
-CIFAR vs SVHN     & 0.86/0.82  & 0.16/0.55 & 1.00/1.00  \\
-CIFAR vs ImageNet & 0.50/0.51  & 0.58/0.59 & 1.00/1.00  \\
-CIFAR vs LSUN     & 0.58/0.56  & 0.60/0.28 & 1.00/1.00  \\
-\bottomrule
-\end{tabular}
-\caption{Comparation the performance of VAEPP with other models in OoD problem. The data of $T_{perm}$ and WAIC is from \protect \cite{song2019unsupervised}. The reason that we can't compare VAEPP with \protect\cite{song2019unsupervised} is that it assumes a batch of OoD data can be obtained but we don't have this assumption. In fast, many online anomaly detection system must deal the online data on time when the number of OoD data in a batch is unknown. }
-\label{tab:compare_ood_other_datasets}
-\end{table}
+%We found that discriminator of VAEPP performs normally while model assign higher density to the data from out-of-distribution, as shown in fig(TODO). It inspires us to use the exact information from discriminator to design 3 indicators, log-likelihood $\log p_\theta(x)$, energy $D(x)$ and norm of gradient $\|\nabla_{x} D(x)\|$ to solve OoD problem, as shown in fig(). From the likelihood, \cite{song2017pixeldefend} showed that it is useful to assume the data is out-of-distribution if it have very high or very low density. For energy and norm of gradient, it performs normally, i.e., when energy is higher or norm of gradient is smaller, it more likely belongs to out-of-distribution. Hence, we evaluate the AUC and AP for them and combination of them in OoD problem on CIFAR and SVHN, as shown in \cref{tab:compare_ood}. The method to combine them is simple: normalize them into a standard Gaussian in training set of CIFAR, and the score of this indicator contributing to combination score is the absolute/original/negative value of it. We have tested all kinds of combination and the best one is $|\log p_\theta(x)| - \|\nabla_x D(x)\|$. The performance of it on other datasets is shown in \cref{tab:compare_ood_other_datasets} which is competitive to other indicators $T_{perm}$~\cite{song2017pixeldefend} and WAIC~\cite{choi2018waic}. 
+%\begin{table}[tb]
+%\centering
+%\begin{tabular}{lrr}  
+%\toprule
+%Indicator  & AUC/AP \\
+%\midrule
+%$\log p_\theta(x)$   &  1.00/1.00      \\
+%$D(x)$               &  1.00/1.00      \\
+%$\|\nabla_x D(x)\|$  &  1.00/1.00      \\
+%$|\log p_\theta(x)| - \|\nabla_x D(x)\|$ & 1.00/1.00 \\
+%\bottomrule
+%\end{tabular}
+%\caption{Comparation between indicators and their combination.}
+%\label{tab:compare_ood}
+%\end{table}
+%\begin{table}[tb]
+%\centering
+%\begin{tabular}{lrrrr}  
+%\toprule
+%Dataset  &  $T_{perm}$ & WAIC & VAEPP\\
+%\midrule
+%Fashion vs MNIST  & 0.78/0.71  & 0.24/0.38 & 1.00/1.00  \\
+%CIFAR vs SVHN     & 0.86/0.82  & 0.16/0.55 & 1.00/1.00  \\
+%CIFAR vs ImageNet & 0.50/0.51  & 0.58/0.59 & 1.00/1.00  \\
+%CIFAR vs LSUN     & 0.58/0.56  & 0.60/0.28 & 1.00/1.00  \\
+%\bottomrule
+%\end{tabular}
+%\caption{Comparation the performance of VAEPP with other models in OoD problem. The data of $T_{perm}$ and WAIC is from \protect \cite{song2019unsupervised}. The reason that we can't compare VAEPP with \protect\cite{song2019unsupervised} is that it assumes a batch of OoD data can be obtained but we don't have this assumption. In fast, many online anomaly detection system must deal the online data on time when the number of OoD data in a batch is unknown. }
+%\label{tab:compare_ood_other_datasets}
+%\end{table}
 
