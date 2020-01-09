@@ -365,7 +365,7 @@ def inception_transform_np(inputs, batch_size):
         features = np.vstack(features)
         logits = np.vstack(logits)
         return features, logits
-
+ 
 def get_fid_compare_gan(sample, real):
     """Returns the FID
     
@@ -424,8 +424,10 @@ get_fid = get_fid_compare_gan
 if __name__ == '__main__':
 
     (train_x, train_y), (test_x, test_y) = spt.datasets.load_cifar10(channels_last=True)
+    from code.experiments.datasets import celeba
+    train_x, validate_x, test_x = load_celeba()
 
-    x1 = test_x
+    x1 = train_x
     x2 = train_x
 
     if len(x1) > len(x2):

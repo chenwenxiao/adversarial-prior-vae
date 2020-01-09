@@ -10,6 +10,8 @@ from matplotlib import pyplot
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
+from code.experiments.datasets.omniglot import load_omniglot
+from code.experiments.truncated_normal import TruncatedNormal
 from tfsnippet import DiscretizedLogistic
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
@@ -37,7 +39,7 @@ spt.Bernoulli.mean = property(_bernoulli_mean)
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 32
+    z_dim = 36
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -77,8 +79,8 @@ class ExpConfig(spt.Config):
     train_n_pz = 128
     train_n_qz = 1
     test_n_pz = 1000
-    test_n_qz = 10
-    test_batch_size = 64
+    test_n_qz = 1000
+    test_batch_size = 1
     test_epoch_freq = 1000
     plot_epoch_freq = 20
     grad_epoch_freq = 10
@@ -91,6 +93,8 @@ class ExpConfig(spt.Config):
     len_train = 50000
     sample_n_z = 100
     fid_samples = 5000
+
+    use_truncated = True
 
     epsilon = -20.0
     min_logstd_of_q = -5.0
@@ -455,16 +459,22 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
     z_logstd = spt.layers.dense(h_x, config.z_dim, scope='z_logstd', kernel_initializer=tf.zeros_initializer())
 
     # sample z ~ q(z|x)
-    z_distribution = spt.FlowDistribution(
-        spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
-        posterior_flow
-    )
+    if config.use_truncated:
+        z_distribution = TruncatedNormal(mean=z_mean,
+                                         logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q))
+        print(z_distribution.batch_shape)
+    else:
+        z_distribution = spt.Normal(mean=z_mean,
+                                    logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q))
     if config.use_flow:
+
+        z_distribution = spt.FlowDistribution(
+            z_distribution,
+            posterior_flow
+        )
         z = net.add('z', z_distribution, n_samples=n_z)
     else:
-        z = net.add('z',
-                    spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q)),
-                    n_samples=n_z, group_ndims=1)
+        z = net.add('z', z_distribution, n_samples=n_z, group_ndims=1)
 
     return net
 
@@ -708,8 +718,8 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
 
 def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None):
     with tf.name_scope('adv_prior_loss'):
-        gp_omega = get_gradient_penalty(q_net['z'] if config.use_flow else q_net['z'].distribution.mean,
-                                        pn_omega['f_z'].distribution.mean, D=D_kappa, space='f_z')
+        gp_omega = get_gradient_penalty(q_net['z'] if config.use_flow else q_net['z'].distribution.mean, pn_omega['f_z'].distribution.mean, D=D_kappa,
+                                        space='f_z')
         gp_theta = get_gradient_penalty(input_origin_x, pn_theta['x'].distribution.mean)
         if config.use_dg:
             gp_dg = get_gradient_penalty(q_net['z'], pn_theta['z'], space='z')
@@ -864,7 +874,7 @@ def main():
         train_pn_omega = p_omega_net(n_z=config.train_n_pz, beta=beta)
         train_log_Z = spt.ops.log_mean_exp(-train_pn_theta['z'].log_prob().energy - train_pn_theta['z'].log_prob())
         train_q_net = q_net(input_origin_x, posterior_flow, n_z=config.train_n_qz)
-        train_p_net = p_net(observed={'x': input_x, 'z': train_q_net['z']},
+        train_p_net = p_net(observed={'x': input_origin_x, 'z': train_q_net['z']},
                             n_z=config.train_n_qz, beta=beta, log_Z=train_log_Z)
 
         VAE_nD_loss, VAE_loss, VAE_D_loss, VAE_G_loss, VAE_D_real, D_loss, G_loss, D_real = get_all_loss(
@@ -879,11 +889,8 @@ def main():
         test_q_net = q_net(input_origin_x, posterior_flow, n_z=config.test_n_qz)
         # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
-        test_chain = test_q_net.chain(p_net, observed={'x': input_x}, n_z=config.test_n_qz, latent_axis=0,
+        test_chain = test_q_net.chain(p_net, observed={'x': tf.to_float(input_x)}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta, log_Z=get_log_Z())
-        test_recon = tf.reduce_mean(
-            test_chain.model['x'].log_prob()
-        )
         test_mse = tf.reduce_sum(
             (tf.round(test_chain.model['x'].distribution.mean * 255.0) - tf.round(
                 tf.to_float(test_chain.model['x']) * 255.0)) ** 2,
@@ -898,14 +905,19 @@ def main():
             )
         )
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
+        test_recon = test_chain.model['x'].log_prob()
+        p_z = test_chain.model['z'].distribution.log_prob(
+            test_chain.model['z'], group_ndims=1, y=test_chain.model['x']
+        ).log_energy_prob
+        q_z_given_x = test_q_net['z'].log_prob()
+
 
         vi = spt.VariationalInference(
-            log_joint=test_chain.model['x'].log_prob() + test_chain.model['z'].distribution.log_prob(
-                test_chain.model['z'], group_ndims=1, y=test_chain.model['x']
-            ).log_energy_prob,
-            latent_log_probs=[test_q_net['z'].log_prob()],
+            log_joint=test_recon + p_z,
+            latent_log_probs=[q_z_given_x],
             axis=0
         )
+        test_recon = tf.reduce_mean(test_recon)
         adv_test_nll = -tf.reduce_mean(
             tf.reshape(
                 vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
@@ -921,10 +933,11 @@ def main():
         pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.mean))
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
-        q_z_given_x = test_q_net['z'].log_prob()
+
+        p_z_energy = test_chain.model['z'].log_prob().energy
 
         another_log_Z_compute_op = spt.ops.log_mean_exp(
-            -test_chain.model['z'].log_prob().energy - q_z_given_x + np.log(config.len_train)
+            -p_z_energy - q_z_given_x + np.log(config.len_train)
         )
         kl_adv_and_gaussian = tf.reduce_mean(
             test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob
@@ -937,29 +950,28 @@ def main():
             'p_net/xi') + tf.trainable_variables('D_psi')
         VAE_nD_params = tf.trainable_variables('q_net') + tf.trainable_variables('G_theta') + tf.trainable_variables(
             'beta') + tf.trainable_variables('posterior_flow') + tf.trainable_variables('p_net/xi')
-        D_params = tf.trainable_variables('D_kappa')
+        D_psi_params = tf.trainable_variables('D_psi')
+        D_kappa_params = tf.trainable_variables('D_kappa')
         G_params = tf.trainable_variables('G_omega')
-        print("========VAE_params=========")
-        print(VAE_params)
-        print("========D_params=========")
-        print(D_params)
-        print("========G_params=========")
-        print(G_params)
         with tf.variable_scope('VAE_optimizer'):
             VAE_optimizer = tf.train.AdamOptimizer(learning_rate)
             VAE_grads = VAE_optimizer.compute_gradients(VAE_loss, VAE_params)
         with tf.variable_scope('VAE_nD_optimizer'):
             VAE_nD_optimizer = tf.train.AdamOptimizer(learning_rate)
             VAE_nD_grads = VAE_nD_optimizer.compute_gradients(VAE_nD_loss, VAE_nD_params)
-        with tf.variable_scope('D_optimizer'):
+        with tf.variable_scope('D_psi_optimizer'):
+            VAE_D_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
+            VAE_D_grads = VAE_D_optimizer.compute_gradients(VAE_D_loss, D_psi_params)
+        with tf.variable_scope('D_kappa_optimizer'):
             D_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
-            D_grads = D_optimizer.compute_gradients(D_loss, D_params)
+            D_grads = D_optimizer.compute_gradients(D_loss, D_kappa_params)
         with tf.variable_scope('G_optimizer'):
             G_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5, beta2=0.999)
             G_grads = G_optimizer.compute_gradients(G_loss, G_params)
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             VAE_train_op = VAE_optimizer.apply_gradients(VAE_grads)
             VAE_nD_train_op = VAE_optimizer.apply_gradients(VAE_nD_grads)
+            VAE_D_train_op = VAE_D_optimizer.apply_gradients(VAE_D_grads)
             G_train_op = G_optimizer.apply_gradients(G_grads)
             D_train_op = D_optimizer.apply_gradients(D_grads)
 
@@ -1085,7 +1097,7 @@ def main():
 
     # prepare for training and testing data
     (_x_train, _y_train), (_x_test, _y_test) = \
-        spt.datasets.load_mnist(x_shape=config.x_shape)
+        load_omniglot(x_shape=config.x_shape)
     # train_flow = bernoulli_flow(
     #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
     x_train = _x_train / 255.0
@@ -1132,7 +1144,7 @@ def main():
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega', 'D_kappa'],
-                           max_epoch=config.max_epoch + 1,
+                           max_epoch=config.max_epoch,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
@@ -1164,6 +1176,66 @@ def main():
             n_critical = config.n_critical
             # adversarial training
             for epoch in epoch_iterator:
+
+                if epoch <= config.warm_up_start:
+                    step_iterator = MyIterator(train_flow)
+                    while step_iterator.has_next:
+                        for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
+                            # vae training
+                            [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
+                             batch_train_recon_pure_energy, batch_VAE_D_real, batch_VAE_G_loss, batch_train_kl,
+                             batch_train_grad_penalty] = session.run(
+                                [VAE_nD_train_op, VAE_loss, beta, xi_node, train_recon, train_recon_energy,
+                                 train_recon_pure_energy, VAE_D_real, VAE_G_loss,
+                                 train_kl, train_grad_penalty],
+                                feed_dict={
+                                    input_x: x,
+                                    input_origin_x: origin_x,
+                                    warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
+                                })
+                            loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
+                            loop.collect_metrics(xi=xi_value)
+                            loop.collect_metrics(beta=beta_value)
+                            loop.collect_metrics(train_recon=batch_train_recon)
+                            loop.collect_metrics(train_recon_pure_energy=batch_train_recon_pure_energy)
+                            loop.collect_metrics(train_recon_energy=batch_train_recon_energy)
+                            loop.collect_metrics(VAE_D_real=batch_VAE_D_real)
+                            loop.collect_metrics(VAE_G_loss=batch_VAE_G_loss)
+                            loop.collect_metrics(train_kl=batch_train_kl)
+                            loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
+
+                            _ = session.run(VAE_D_train_op, feed_dict={
+                                input_x: x,
+                                input_origin_x: origin_x,
+                                warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
+                            })
+                else:
+                    step_iterator = MyIterator(train_flow)
+                    while step_iterator.has_next:
+                        for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
+                            # discriminator training
+                            [_, batch_D_loss, batch_D_real] = session.run(
+                                [D_train_op, D_loss, D_real], feed_dict={
+                                    input_x: x,
+                                    input_origin_x: origin_x,
+                                })
+                            loop.collect_metrics(D_loss=batch_D_loss)
+                            loop.collect_metrics(D_real=batch_D_real)
+
+                        # generator training x
+                        [_, batch_G_loss] = session.run(
+                            [G_train_op, G_loss], feed_dict={
+                            })
+                        loop.collect_metrics(G_loss=batch_G_loss)
+
+                if epoch in config.lr_anneal_epoch_freq:
+                    learning_rate.anneal()
+
+                if epoch == config.warm_up_start:
+                    learning_rate.set(config.initial_lr)
+
+                if epoch % config.plot_epoch_freq == 0:
+                    plot_samples(loop)
 
                 if epoch % config.test_epoch_freq == 0:
                     with loop.timeit('compute_Z_time'):

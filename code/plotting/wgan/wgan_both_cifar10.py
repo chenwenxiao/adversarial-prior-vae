@@ -10,7 +10,6 @@ from matplotlib import pyplot
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
-from code.experiments.datasets.svhn import load_svhn
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
                                       bernoulli_as_pixel,
@@ -24,6 +23,7 @@ from scipy.misc import logsumexp
 from tfsnippet.preprocessing import UniformNoiseSampler
 
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
+from code.experiments.datasets.svhn import load_svhn
 
 
 class ExpConfig(spt.Config):
@@ -56,7 +56,7 @@ class ExpConfig(spt.Config):
     lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
     lr_anneal_step_freq = None
 
-    gradient_penalty_algorithm = 'interpolate'  # both or interpolate
+    gradient_penalty_algorithm = 'both'  # both or interpolate
     gradient_penalty_weight = 2
     gradient_penalty_index = 6
     kl_balance_weight = 1.0
@@ -436,6 +436,8 @@ def get_log_Z():
     if __log_Z is None:
         __log_Z = spt.ScheduledVariable('log_Z', dtype=tf.float32, initial_value=1., model_var=True)
     return __log_Z
+
+
 
 
 @add_arg_scope
@@ -853,19 +855,111 @@ def main():
             G_train_op = G_optimizer.apply_gradients(G_grads)
             D_train_op = D_optimizer.apply_gradients(D_grads)
 
+    # derive the plotting function
+    with tf.name_scope('plotting'):
+        sample_n_z = 100
+        gan_plots = tf.reshape(p_omega_net(n_z=sample_n_z, beta=beta)['x'].distribution.mean,
+                               (-1,) + config.x_shape)
+        initial_z = q_net(gan_plots, posterior_flow)['z']
+        gan_plots = 256.0 * gan_plots / 2 + 127.5
+        initial_z = tf.expand_dims(initial_z, axis=1)
+        plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z)
+        plot_history_e_z = plot_net['z'].history_e_z
+        plot_history_z = plot_net['z'].history_z
+        plot_history_pure_e_z = plot_net['z'].history_pure_e_z
+        plot_history_ratio = plot_net['z'].history_ratio
+        x_plots = 256.0 * tf.reshape(
+            plot_net['x'].distribution.mean, (-1,) + config.x_shape) / 2 + 127.5
+        reconstruct_q_net = q_net(input_x, posterior_flow)
+        reconstruct_z = reconstruct_q_net['z']
+        reconstruct_plots = 256.0 * tf.reshape(
+            p_net(observed={'z': reconstruct_z}, beta=beta)['x'].distribution.mean,
+            (-1,) + config.x_shape
+        ) / 2 + 127.5
+        plot_reconstruct_energy = D_psi(reconstruct_plots)
+        gan_plots = tf.clip_by_value(gan_plots, 0, 255)
+        x_plots = tf.clip_by_value(x_plots, 0, 255)
+        reconstruct_plots = tf.clip_by_value(reconstruct_plots, 0, 255)
+
+    def plot_samples(loop):
+        with loop.timeit('plot_time'):
+            try:
+                # plot reconstructs
+                for [x] in reconstruct_train_flow:
+                    x_samples = uniform_sampler.sample(x)
+                    images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
+                    images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
+                    images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
+                    images[2::3, ...] = np.round(session.run(
+                        reconstruct_plots, feed_dict={input_x: x}))
+                    batch_reconstruct_z = session.run(reconstruct_z, feed_dict={input_x: x})
+                    # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
+                    save_images_collection(
+                        images=images,
+                        filename='plotting/train.reconstruct/{}.png'.format(loop.epoch),
+                        grid_size=(20, 15),
+                        results=results,
+                    )
+                    break
+
+                # plot reconstructs
+                for [x] in reconstruct_test_flow:
+                    x_samples = uniform_sampler.sample(x)
+                    images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
+                    images[::3, ...] = np.round(256.0 * x / 2 + 127.5)
+                    images[1::3, ...] = np.round(256.0 * x_samples / 2 + 127.5)
+                    images[2::3, ...] = np.round(session.run(
+                        reconstruct_plots, feed_dict={input_x: x}))
+                    save_images_collection(
+                        images=images,
+                        filename='plotting/test.reconstruct/{}.png'.format(loop.epoch),
+                        grid_size=(20, 15),
+                        results=results,
+                    )
+                    break
+                # plot samples
+                [images, gan_images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
+                 batch_history_ratio] = session.run(
+                    [x_plots, gan_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio])
+                # print(batch_history_e_z)
+                # print(np.mean(batch_history_z ** 2, axis=-1))
+                # print(batch_history_pure_e_z)
+                # print(batch_history_ratio)
+                save_images_collection(
+                    images=np.round(gan_images),
+                    filename='plotting/sample/gan-{}.png'.format(loop.epoch),
+                    grid_size=(10, 10),
+                    results=results,
+                )
+                save_images_collection(
+                    images=np.round(images),
+                    filename='plotting/sample/{}.png'.format(loop.epoch),
+                    grid_size=(10, 10),
+                    results=results,
+                )
+            except Exception as e:
+                print(e)
+
     # prepare for training and testing data
-    (_x_train, _y_train), (_x_test, _y_test) = spt.datasets.load_cifar10(x_shape=config.x_shape)
+    (_x_train, _y_train), (_x_test, _y_test) = \
+        spt.datasets.load_cifar10(x_shape=config.x_shape)
+    # train_flow = bernoulli_flow(
+    #     x_train, config.batch_size, shuffle=True, skip_incomplete=True)
     x_train = (_x_train - 127.5) / 256.0 * 2
     x_test = (_x_test - 127.5) / 256.0 * 2
-    # uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0, dtype=np.float)
-    train_flow = spt.DataFlow.arrays([x_train], config.test_batch_size)
+    uniform_sampler = UniformNoiseSampler(-1.0 / 256.0, 1.0 / 256.0, dtype=np.float)
+    train_flow = spt.DataFlow.arrays([x_train], config.batch_size, shuffle=True, skip_incomplete=True)
+    # train_flow = train_flow.map(uniform_sampler)
+    gan_train_flow = spt.DataFlow.arrays(
+        [np.concatenate([x_train, x_test], axis=0)], config.batch_size, shuffle=True, skip_incomplete=True)
+    gan_train_flow = gan_train_flow.map(uniform_sampler)
     reconstruct_train_flow = spt.DataFlow.arrays(
         [x_train], 100, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(
         [x_test], 100, shuffle=True, skip_incomplete=False)
     test_flow = spt.DataFlow.arrays(
-        [x_test],
-        config.test_batch_size)
+        [np.repeat(x_test, config.test_x_samples, axis=0)], config.test_batch_size)
+    test_flow = test_flow.map(uniform_sampler)
 
     (svhn_train, _), (svhn_test, __) = load_svhn(config.x_shape)
     svhn_train = (svhn_train - 127.5) / 256.0 * 2
@@ -878,10 +972,10 @@ def main():
         spt.utils.ensure_variables_initialized()
 
         # initialize the network
-        # for [x, origin_x] in train_flow:
-        #     print('Network initialized, first-batch loss is {:.6g}.\n'.
-        #           format(session.run(init_loss, feed_dict={input_x: x, input_origin_x: origin_x})))
-        #     break
+        for [x] in train_flow:
+            print('Network initialized, first-batch loss is {:.6g}.\n'.
+                  format(session.run(init_loss, feed_dict={input_x: x})))
+            break
 
         # if config.z_dim == 512:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/48/19/6f3b6c3ef49ded8ba2d5/checkpoint/checkpoint/checkpoint.dat-390000'
@@ -892,13 +986,12 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        # restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/93/0c/d434dabfcaecd3b5bed5/checkpoint/checkpoint/checkpoint.dat-195000'
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/24/29/6fc8930042bc9bab75d5/checkpoint/checkpoint/checkpoint.dat-195000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/63/0c/d434dabfcaec1533aed5/checkpoint/checkpoint/checkpoint.dat-175500'
+
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
-                           var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega',
-                                       'D_kappa'],
-                           max_epoch=config.max_epoch + 1,
+                           var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi'],
+                           max_epoch=config.max_epoch,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
@@ -938,9 +1031,9 @@ def main():
 
             epoch_iterator = loop.iter_epochs()
 
+            n_critical = config.n_critical
             # adversarial training
             for epoch in epoch_iterator:
-
                 with loop.timeit('out_of_distribution_test'):
                     def get_ele(ops, flow):
                         packs = []
@@ -1053,6 +1146,7 @@ def main():
                     cifar_test_evaluator.run()
                     svhn_train_evaluator.run()
                     svhn_test_evaluator.run()
+
 
                 loop.collect_metrics(lr=learning_rate.get())
                 loop.print_logs()

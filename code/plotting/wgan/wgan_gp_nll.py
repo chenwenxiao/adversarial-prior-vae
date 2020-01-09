@@ -16,9 +16,11 @@ from tfsnippet.examples.utils import (MLResults,
                                       bernoulli_flow,
                                       bernoulli_flow,
                                       print_with_title)
-from code.experiments.utils import get_inception_score, get_fid_google
+from code.experiments.utils import get_inception_score, get_fid
 import numpy as np
 from scipy.misc import logsumexp
+from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
+
 
 from tfsnippet.preprocessing import UniformNoiseSampler
 
@@ -72,7 +74,7 @@ class ExpConfig(spt.Config):
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
-    test_x_samples = 8
+    test_x_samples = 1
     log_Z_times = 10
 
     epsilon = -20
@@ -821,7 +823,7 @@ def main():
         ) + config.x_shape_multiple * np.log(128.0)
         adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
 
-        real_energy = tf.reduce_mean(D_psi(test_chain.model['x']))
+        real_energy = tf.reduce_mean(D_psi(input_origin_x))
         reconstruct_energy = tf.reduce_mean(D_psi(test_chain.model['x'].distribution.mean))
         pd_energy = tf.reduce_mean(
             D_psi(test_pn_net['x'].distribution.mean) * tf.exp(
@@ -984,6 +986,10 @@ def main():
             axis=0
         )
 
+
+        ele_grad = tf.gradients(D_psi(input_x), [input_x])[0]
+        ele_grad_norm = tf.reduce_sum(tf.square(ele_grad), axis=[-1, -2, -3])
+
         ele_adv_test_nll = -vi.evaluation.is_loglikelihood()
         print(ele_adv_test_nll.shape)
         adv_test_nll = tf.reduce_mean(ele_adv_test_nll)
@@ -992,7 +998,7 @@ def main():
         adv_test_lb = tf.reduce_mean(ele_adv_test_lb)
 
         ele_real_energy = D_psi(test_chain.model['x'])
-        real_energy = tf.reduce_mean(D_psi(test_chain.model['x']))
+        real_energy = tf.reduce_mean(D_psi(input_origin_x))
         reconstruct_energy = tf.reduce_mean(D_psi(test_chain.model['x'].distribution.mean))
         pd_energy = tf.reduce_mean(
             D_psi(test_pn_net['x'].distribution.mean) * tf.exp(
@@ -1128,13 +1134,10 @@ def main():
                 with loop.timeit('out_of_distribution_test'):
                     def get_ele(ops, flow):
                         packs = []
-                        for x in flow:
-                            #print(len(x))
-                        #for [batch_x, batch_ox] in flow:
+                        for [batch_x] in flow:
                             pack = session.run(
                                 ops, feed_dict={
-                                    #input_x: batch_x
-                                    input_x: x[0]
+                                    input_x: batch_x
                                 })  # [3, batch_size]
                             pack = np.transpose(np.asarray(pack), (1, 0))  # [batch_size, 3]
                             packs.append(pack)
@@ -1142,26 +1145,18 @@ def main():
                         packs = np.transpose(np.asarray(packs), (1, 0))  # [3, len_of_flow]
                         return packs
 
-                    cifar_train_nll, cifar_train_lb, cifar_train_recon, cifar_train_energy = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], train_flow)
+                    cifar_train_nll, cifar_train_lb, cifar_train_recon, cifar_train_energy, cifar_train_norm = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm], train_flow)
                     # print(cifar_train_nll.shape, cifar_train_lb.shape, cifar_train_recon.shape)
 
-                    cifar_test_nll, cifar_test_lb, cifar_test_recon, cifar_test_energy = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy], test_flow)
-                    svhn_train_nll, svhn_train_lb, svhn_train_recon, svhn_train_energy = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy],
+                    cifar_test_nll, cifar_test_lb, cifar_test_recon, cifar_test_energy, cifar_test_norm = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm], test_flow)
+                    svhn_train_nll, svhn_train_lb, svhn_train_recon, svhn_train_energy, svhn_train_norm = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm],
                         svhn_train_flow)
-                    svhn_test_nll, svhn_test_lb, svhn_test_recon, svhn_test_energy = get_ele(
-                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy],
+                    svhn_test_nll, svhn_test_lb, svhn_test_recon, svhn_test_energy, svhn_test_norm = get_ele(
+                        [ele_adv_test_nll, ele_adv_test_lb, ele_test_recon, ele_real_energy, ele_grad_norm],
                         svhn_test_flow)
-
-                    # Draw the histogram or exrta the data here
-                    pyplot.plot()
-                    pyplot.grid(c='silver', ls='--')
-                    pyplot.xlabel('log(bits/dim)')
-                    spines = pyplot.gca().spines
-                    for sp in spines:
-                        spines[sp].set_color('silver')
 
                     def draw_nll(nll, color, label):
                         nll = list(nll)
@@ -1183,18 +1178,65 @@ def main():
                         pyplot.legend()
                         print('%s done.' % label)
 
-                    pyplot.plot()
-                    pyplot.grid(c='silver', ls='--')
-                    pyplot.xlabel('bits/dim')
-                    spines = pyplot.gca().spines
-                    for sp in spines:
-                        spines[sp].set_color('silver')
+                    # Draw the histogram or exrta the data here
+                    def plot_fig(data_list, color_list, label_list, x_label, fig_name):
+                        pyplot.cla()
+                        pyplot.plot()
+                        pyplot.grid(c='silver', ls='--')
+                        pyplot.xlabel(x_label)
+                        spines = pyplot.gca().spines
+                        for sp in spines:
+                            spines[sp].set_color('silver')
 
-                    draw_nll(cifar_train_energy, 'red', 'CIFAR-10 Train')
-                    draw_nll(cifar_test_energy, 'salmon', 'CIFAR-10 Test')
-                    draw_nll(svhn_train_energy, 'green', 'SVHN Train')
-                    draw_nll(svhn_test_energy, 'lightgreen', 'SVHN Test')
-                    pyplot.savefig('plotting/wgan-div/out_of_distribution_energy.png')
+                        def draw_nll(nll, color, label):
+                            nll = list(nll)
+                            # print(nll)
+                            # print(nll.shape)
+
+                            n, bins, patches = pyplot.hist(nll, 40, normed=True, facecolor=color, alpha=0.4,
+                                                           label=label)
+
+                            index = []
+                            for i in range(len(bins) - 1):
+                                index.append((bins[i] + bins[i + 1]) / 2)
+
+                            def smooth(c, N=5):
+                                weights = np.hanning(N)
+                                return np.convolve(weights / weights.sum(), c)[N - 1:-N + 1]
+
+                            n[2:-2] = smooth(n)
+                            pyplot.plot(index, n, color=color)
+                            pyplot.legend()
+                            print('%s done.' % label)
+
+                        for i in range(len(data_list)):
+                            draw_nll(data_list[i], color_list[i], label_list[i])
+                        pyplot.savefig('plotting/wgan/%s.jpg' % fig_name)
+
+                        def draw_curve(cifar_test, svhn_test, fig_name):
+                            label = np.concatenate(([1] * len(cifar_test), [-1] * len(svhn_test)))
+                            score = np.concatenate((cifar_test, svhn_test))
+
+                            fpr, tpr, thresholds = roc_curve(label, score)
+                            precision, recall, thresholds = precision_recall_curve(label, score)
+                            pyplot.plot(recall, precision)
+                            pyplot.plot(fpr, tpr)
+                            print('%s auc: %4f, ap: %4f' % (fig_name, auc(fpr, tpr), average_precision_score(label, score)))
+
+                        pyplot.cla()
+                        pyplot.plot()
+                        draw_curve(data_list[1], data_list[3], fig_name)
+                        pyplot.savefig('plotting/wgan/%s_curve.jpg' % fig_name)
+
+                    plot_fig([cifar_train_energy, cifar_test_energy, svhn_train_energy, svhn_test_energy],
+                             ['red', 'salmon', 'green', 'lightgreen'],
+                             ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
+                             'energy', 'out_of_distribution_energy')
+
+                    plot_fig([cifar_train_norm, cifar_test_norm, svhn_train_norm, svhn_test_norm],
+                             ['red', 'salmon', 'green', 'lightgreen'],
+                             ['CIFAR-10 Train', 'CIFAR-10 Test', 'SVHN Train', 'SVHN Test'],
+                             'log(bits/dim)', 'out_of_distribution_norm')
 
                 with loop.timeit('eval_time'):
                     cifar_train_evaluator.run()

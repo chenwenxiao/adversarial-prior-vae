@@ -15,7 +15,7 @@ from tfsnippet.examples.utils import (MLResults,
                                       bernoulli_as_pixel,
                                       bernoulli_flow,
                                       print_with_title)
-from code.experiments.utils import get_inception_score, get_fid_google
+from code.experiments.utils import get_inception_score, get_fid
 import numpy as np
 from scipy.misc import logsumexp
 
@@ -68,7 +68,7 @@ class ExpConfig(spt.Config):
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
-    test_x_samples = 8
+    test_x_samples = 1
     log_Z_times = 10
 
     epsilon = -15
@@ -723,7 +723,7 @@ def main():
         ) + config.x_shape_multiple * np.log(128.0)
         adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
 
-        real_energy = tf.reduce_mean(D_psi(test_chain.model['x']))
+        real_energy = tf.reduce_mean(D_psi(input_origin_x))
         reconstruct_energy = tf.reduce_mean(D_psi(test_chain.model['x'].distribution.mean))
         pd_energy = tf.reduce_mean(
             D_psi(test_pn_net['x'].distribution.mean) * tf.exp(
@@ -966,7 +966,7 @@ def main():
                     sample_img = sample_img[:len(dataset_img)]
                     sample_img = np.asarray(sample_img)
 
-                    FID = get_fid_google(sample_img, dataset_img)
+                    FID = get_fid(sample_img, dataset_img)
                     # turn to numpy array
                     IS_mean, IS_std = get_inception_score(sample_img)
                     loop.collect_metrics(FID=FID)

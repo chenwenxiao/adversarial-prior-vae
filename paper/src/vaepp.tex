@@ -5,12 +5,11 @@ In \cref{sec:pull_back_prior}, we focus on the 2nd optimization and propose the 
 
 \subsection{Determine $\beta$}
 
-$\beta$ in \cref{eq:pull_back_prior} represents how far $p_\lambda$ is from $p_\mathcal{N}$, but how we decide the value of $\beta$? When $\beta$ is smaller, the difference between $p_\lambda$ and $p_\mathcal{N}$ is less, i.e. the representation ability of $p_\lambda$ is severely limited. When $\beta$ is larger, $p_\lambda$ is farther from $p_\mathcal{N}$. But noticing that in \cref{eq:final_optimization}, we simplify the optimization of $D$ by a fixed $D$ obtained in $W^1(\E_{p_\mathcal{N}}p_\theta(x|z), p^*)$, if $p_\lambda$ is enough far from $p_\mathcal{N}$, this approximation will become invalid. Consequently, $\beta$ should be set to an appropriate value which can't limit the representation ability of $p_\lambda$ and could make sure the approximation $D$ is valid. It is important to realize that the Pull-back Prior is serving for better ELBO. Whatever the representation ability of $p_\lambda$ is limited or approximation $D$ is invalid, the ELBO will suffer. Therefore, it is reasonable to set $\beta$ by the optimization for ELBO ($\lambda$ contains $\beta$ and $\omega$ which is the parameters of $D$):
+$\beta$ in \cref{eq:pull_back_prior} represents how far $p_\lambda$ is from $p_\mathcal{N}$, but how to decide the value of $\beta$? When $\beta$ is smaller, the difference between $p_\lambda$ and $p_\mathcal{N}$ is less, i.e. the representation ability of $p_\lambda$ is severely limited. When $\beta$ is larger, $p_\lambda$ is farther from $p_\mathcal{N}$. But noticing that in \cref{eq:final_optimization}, we simplify the optimization of $D$ by a fixed $D$ obtained in $W^1(p^\dag, p^*)$, if $p_\lambda$ is too far from $p_\mathcal{N}$, this approximation will become invalid. Consequently, $\beta$ should be set to an appropriate value which can't limit the representation ability of $p_\lambda$ and could make sure the approximation $D$ is valid. It is important to realize that the Pull-back Prior is serving for better ELBO. Whatever the representation ability of $p_\lambda$ is limited or approximation $D$ is invalid, the ELBO will suffer. Therefore, it is reasonable to search $\beta$ by the optimization for ELBO ($\lambda$ contains $\beta$ and $\omega$, which is the parameters of $D$):
 \begin{equation}
 	\beta = \arg \min_{\beta} \mathcal{L}(\theta, \phi, \lambda) = \arg \min_{\beta} \mathcal{L}(\theta, \phi, \beta, \omega) \tag{8}
 \end{equation}
-
-The optimization process of $\beta$ during training depends on $\partial \mathcal{L}/\partial \beta$.
+The optimization process of $\beta$ depends on $\partial \mathcal{L}/\partial \beta$:
 \begin{align*}\label{eq:behavior_of_beta}
 \frac{\partial \mathcal{L}}{\partial \beta} &= \E_{q_\phi(z)}[ -D(G(z))] - \frac{\partial Z}{\partial \beta} \\
 &= \E_{p_\lambda(z)}[ D(G(z))] - \E_{q_\phi(z)}[ D(G(z))]  \tag{9}
@@ -27,11 +26,14 @@ However, as we mentioned before, $q_\phi(z)$ is intractable to compute the exact
 \begin{equation*}
 	q_\phi(z) = \E_{p^*(x)} q_\phi(z|x) \approx \frac{1}{N}\sum_{i=1}^N q_\phi(z|x^{(i)}) \geq \frac{1}{N} q_\phi(z|x^{(j)})
 \end{equation*}
-where $x^{(j)}$ is one of real data, $N$ is the size of training set. To reduce the error, $q_\phi(z|x^{(j)})$ should be one of the largest in summation. Therefore, we firstly choose $x^{(j)}$, then sample $z$ from $q_\phi(z|x^{(j)})$ (by this way, $q_\phi(z|x^{(j)})$ will be large enough), and finally set $\frac{1}{N} q_\phi(z|x^{(j)})$ as a bias estimation for $q_\phi(z)$. When $p^*(x)$ consists of infinite data (\EG in MNIST the input of model is sampled from real images), $p^*(x)$ is sampled from a finite set $\{e^{(1)}, \ldots, e^{(N)}\}$. The estimation is:
-\begin{equation*}
-	q_\phi(z) \approx \frac{1}{N}\sum_{i=1}^N \E_{p^*(x|e^{(i)})} q_\phi(z|x) \geq \frac{1}{N} \E_{p^*(x|e^{(j)})} q_\phi(z|x)
-\end{equation*} 
-where $p^*(x|e)$ means the sampling process from $e$. $\hat{q}_\phi(z)$ denotes the bias estimation of $q_\phi(z)$. Then, a bias estimation $\hat{Z}$ is given by:
+where $x^{(j)}$ is one of real data, $N$ is the size of training set. To reduce the error, $q_\phi(z|x^{(j)})$ should be one of the largest in summation. Therefore, we firstly choose $x^{(j)}$, then sample $z$ from $q_\phi(z|x^{(j)})$ (by this way, $q_\phi(z|x^{(j)})$ will be large enough), and finally set $\frac{1}{N} q_\phi(z|x^{(j)})$ as a bias estimation for $q_\phi(z)$. When $p^*(x)$ consists of numerous data (\EG in MNIST the input of model is sampled from real images), $p^*(x)$ is sampled from a finite set $\{e^{(1)}, \ldots, e^{(N)}\}$. We introduce another ELBO which use $q_\phi(z|e)$ instead of $q_\phi(z|x)$. By this way, $q_\phi(z)$ will be easily computed. The ELBO is:
+\begin{align*}~\label{eq:another_elbo}
+	&\E_{p^*(x)} \ln p_\theta(x) \geq \E_{p^*(e)} \E_{p^*(x|e)} \ln \E_{q_\phi(z|e)} \frac{p_\theta(x|z)p_\theta(z)}{q_\phi(z|e)} \\
+	 &= \E_{p^*(e)} \E_{p^*(x|e)} \E_{q_\phi(z|e)} \ln \frac{p_\theta(x|z)p_\theta(z)}{q_\phi(z|e)} \tag{10} \\
+	 &= \E_{p^*(x)} \ln p^*(x) - \E_{p^*(e)} \E_{p^*(x|e)} KL(q_\phi(z|e), p_\theta(z|x))
+\end{align*} 
+where $p^*(x|e)$ means the sampling process from $e$, usually Bernouli distribution. \cref{eq:another_elbo} is similar to the original ELBO~\cref{eq:ELBO}, and the above conclusion about learnable prior holds for \cref{eq:another_elbo} by repeating above inference. % Additionally, when $p_\theta(x|z)$ and $p^*(x|e)$ is both Bernouli, term $\E_{p^*(x|e)} \ln p_\theta(x|z)$ has analytical solution $x\log e+(1-x)\log(1-e)$, which could make the training and evaluation more stable (don't need sample $x$). 
+Since $q_\phi(z|e)$ is known, above bias estimation of $q_\phi(z)$ is feasible by $\frac{1}{N} q_\phi(z|e^{(j)})$. The estimation using $q_\phi(z|x)$ is a special case that $p^*(x|e) = \delta(x - e)$, therefore, we will use $\frac{1}{N} q_\phi(z|e^{(j)})$ on all dataset. $\hat{q}_\phi(z)$ denotes the bias estimation of $q_\phi(z)$. Then, a bias estimation $\hat{Z}$ is given by:
 \begin{align*}\label{eq:Z_estimator}
 	Z = \E_{q_\phi(z)}\frac{f_\lambda(z)}{q_\phi(z)} \leq \E_{q_\phi(z)} \frac{f_\lambda(z)}{\hat{q}_\phi(z)} = \hat{Z} \tag{10}
 \end{align*}
@@ -42,60 +44,60 @@ Because $\beta$ is optimized from small to large during training, we use both es
 \end{equation*}
 which means $\hat{p}_\theta(x)$ is a lower bound of model density $p_\theta(x)$. 
 
-Thanks to the stable and efficient gradient penalty regularizer term provided by WGAN-GP and WGAN-div, we enjoy stable and efficient training process. Training algorithm for VAEPP based on WGAN-GP is provided as \cref{alg:vaepp}. We remove $n_{critic}$, number of critic iterations per generator iteration, from WGAN-GP framework since there is no significant difference when $n_{critic}$ varies in VAEPP.
+Thanks to the stable and efficient gradient penalty regularizer term provided by WGAN-GP and WGAN-div, we enjoy stable and efficient training process. Training algorithm for VAEPP based on WGAN-GP is provided as \cref{alg:vaepp}. 
 \begin{algorithm}[tb]
-\caption{VAEPP training algorithm}
+\caption{Naive VAEPP training algorithm}
 \label{alg:vaepp}
-\textbf{Require}: The gradient penalty algorithm $R$, the batch size $b$, the parameters for Adam Optimizers, $\tau$. 
+\textbf{Require}: The gradient penalty algorithm $R$, the batch size $b$, the number of critic iterations per generator iteration $n_c$, the parameters for Adam Optimizers, $\tau$. 
 
 \begin{algorithmic}[1] %[1] enables line numbers
 \WHILE{$\theta, \phi, \beta, \omega$ have not converged}
+\FOR {$k = 1, \ldots n_c$}
 \FOR {$i = 1, \ldots, b$}
-\STATE Sample real data $x \sim p^*$, latent variable $z \sim p_\mathcal{N}$.
-\STATE	$\hat{x} = \E_{p_\theta(x|z)}[x]$, get gradient penalty $\zeta \gets R(x, \hat{x})$. 
-\STATE $L^{(i)} \gets D(\hat{x}) - D(x) + \zeta$
-\ENDFOR
-\STATE $\omega \gets $ Adam $(\nabla_{\omega} \frac{1}{b}\sum_{i}^b L^{(i)}, \omega, \tau)$
-\FOR {$i = 1, \ldots, b$}
-\STATE Sample real data $x \sim p^*$, $z \sim q_\phi(z|x)$, $\epsilon \sim p_\mathcal{N}$.
-\STATE $Z^{(i)} \gets \frac{1}{2}(\exp\{-\beta * D(G(\epsilon))\} + N \frac{f_\lambda(z)}{q_\phi(z|x)})$
-\STATE $\mathcal{L}^{(i)} \gets \ln p_\theta(x|z) + \ln f_\lambda(z) - \ln q_\phi(z|x)$
+\STATE Sample real data $x \sim p^*$, $z \sim q_\phi(z|e)$, $\epsilon \sim p_\mathcal{N}$
+\STATE $Z^{(i)} \gets \frac{1}{2}(\exp\{-\beta * D(G(\epsilon))\} + \frac{f_\lambda(z)}{\hat{q}_\phi(z)})$
+\STATE $\mathcal{L}^{(i)} \gets \ln p_\theta(x|z) + \ln f_\lambda(z) - \ln q_\phi(z|e)$
 \ENDFOR
 \STATE $\mathcal{L} \gets \frac{1}{b}\sum_{i}^b \mathcal{L}^{(i)} - \ln (\frac{1}{b}\sum_{i}^b Z^{(i)})$
 \STATE $\theta, \phi, \beta \gets $ Adam $(\nabla_{\theta, \phi, \beta} \mathcal{L}, \{\theta, \phi, \beta\}, \tau)$
+\ENDFOR
+\FOR {$i = 1, \ldots, b$}
+\STATE Sample real data $e, x \sim p^*$, latent variable $z \sim p_\mathcal{N}$
+\STATE	$\hat{x} = \E_{p_\theta(x|z)}[x]$, get gradient penalty $\zeta \gets R(x, \hat{x})$
+\STATE $L^{(i)} \gets D(\hat{x}) - D(x) + \zeta$
+\ENDFOR
+\STATE $\omega \gets $ Adam $(\nabla_{\omega} \frac{1}{b}\sum_{i}^b L^{(i)}, \omega, \tau)$
 \ENDWHILE
 \end{algorithmic}
 \end{algorithm}
-
 \subsection{Improvement of VAEPP} \label{subsec:improve_of_vaepp}
-We have introduced the architecture and training algorithm for VAEPP, whose performance is better than vanilla VAE and some variants of VAE with learnable prior. However, we notice that in the training process, the optimization of $\omega$ may influence the optimization of $\theta, \phi, \beta$, \EG the optimization for $\omega$ significantly worsen the loss function which have been optimized well. The reason is that the optimization for $\omega$ is independent to the optimization of $\theta, \phi, \beta$ in \cref{alg:vaepp}. This independence is from the philosophy of GAN but it may suffer the performance of VAEPP (log-likelihood). Hence, is it possible to combine this two optimization into one to improve the performance and stability of VAEPP? Our answer is positive and our goal is to use SGVB with gradient penalty regularizer to train it. 
+We have introduced the architecture and training algorithm for VAEPP, whose performance is better than vanilla VAE and some variants of VAE with learnable prior. However, we notice that in the training process, the optimization of $\omega$ may influence the optimization of $\theta, \phi, \beta$, \EG the optimization for $\omega$ significantly worsen the loss function which have been optimized well. The reason is that the optimization for $\omega$ is independent to the optimization of $\theta, \phi, \beta$ in \cref{alg:vaepp}. This independence is from the philosophy of GAN but it may suffer the performance of VAEPP (log-likelihood). Hence, it is necessary to combine this two optimization into one to improve the performance and stability of VAEPP. Our solution is to use SGVB with gradient penalty regularizer to train VAEPP, \IE $\max_{\theta, \phi, \beta} \max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$. 
 
-Let's see what will happen if $\mathcal{L}(\theta, \phi, \beta, \omega)$ is directly trained by SGVB. The behavior of $\theta, \phi, \beta$ will be same as \cref{alg:vaepp} since the optimization for them is not changed. The only thing we need to check is the optimization for $\max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$. We firstly show an inequality of $\ln Z$:
+What will happen if $\mathcal{L}(\theta, \phi, \beta, \omega)$ is directly trained by SGVB? The behavior of $\theta, \phi, \beta$ is same as \cref{alg:vaepp} since the optimization for them is not changed. We only need to show the optimization $\max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$. We firstly show an inequality of $\ln Z$:
 \begin{equation*}
-	\ln Z = \ln \E_{p_\mathcal{N}} \exp \{- \beta * D(G(z))\} \geq \E_{p_\mathcal{N}} [- \beta * D(G(z))]
+	\ln Z = \ln \E_{p_\mathcal{N}(z)} e^{- \beta * D(G(z))} \geq \E_{p_\mathcal{N}(z)} [- \beta * D(G(z))]
 \end{equation*}
 Then $\max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$ indeed find a suboptimal solution for $W^1(p^*, p_\theta)$ (sign $\simeq$ means that optimizations at left and right are equivalent):
 \begin{align*}\label{eq:improve_vaepp}
-	\max_{Lip(D) \leq 1} \mathcal{L} &\simeq \max_{Lip(D) \leq 1} \{ -\E_{q_\phi(z)} \beta*D(G(z)) - \ln Z \}\\ 
-	&\leq \beta \max_{Lip(D) \leq 1} \{ \E_{p_\mathcal{N}} D(G(z)) - E_{q_\phi(z)} D(G(z)) \} \\
-	&= \beta W^1(p_\theta, p_r) \approx \beta W^1(p_\theta, p^*) \tag{11}
+	&\max_{Lip(D) \leq 1} \mathcal{L} \simeq \max_{Lip(D) \leq 1} \{ -\E_{q_\phi(z)} \beta*D(G(z)) - \ln Z \}\\ 
+	&\leq \beta \max_{Lip(D) \leq 1} \{ \E_{p_\mathcal{N}(z)} D(G(z)) - E_{q_\phi(z)} D(G(z)) \} \tag{11} \\
+	&= \beta W^1(p^\dag, p_r) \approx \beta W^1(p^\dag, p^*) 
 \end{align*}
-where $p_r$ denotes $p_r(x) = \E_{q_\phi(z)} p_\theta(x|z)$, consisting of reconstructed data. The last approximation sign is from the fact that $p_\theta \rightarrow p^*$ after a few epoch in the training of VAE. 
+where $p_r$ denotes $p_r(x) = \E_{q_\phi(z)} p_\theta(x|z)$, consisting of reconstructed data. The last approximation sign is from the fact that $p_r \rightarrow p^*$ after a few epoch in the training of VAE. 
 
 \cref{eq:improve_vaepp} indicates that it is possible to obtain a suboptimal solution for $D$ by directly optimizing $\mathcal{L}$, and the gradient penalty term should be multiplied by $\beta$. By this way, the optimizations for $\omega$ and $\theta, \phi, \beta$ is combined into one, which is provides as \cref{alg:improved_vaepp}. 
-
 \begin{algorithm}[tb]
-\caption{Improved VAEPP training algorithm}
+\caption{VAEPP training algorithm}
 \label{alg:improved_vaepp}
 \textbf{Require}: The gradient penalty algorithm $R$, the batch size $b$, the parameters for Adam Optimizers, $\tau$. 
 
 \begin{algorithmic}[1] %[1] enables line numbers
 \WHILE{$\theta, \phi, \beta, \omega$ have not converged}
 \FOR {$i = 1, \ldots, b$}
-\STATE Sample real data $x \sim p^*$, $z \sim q_\phi(z|x)$, $\epsilon \sim p_\mathcal{N}$.
-\STATE $\hat{x} = \E_{p_\theta(x|z)}[x]$, get gradient penalty $\zeta \gets R(x, \hat{x})$. 
-\STATE $Z^{(i)} \gets \frac{1}{2}(\exp\{-\beta * D(G(\epsilon))\} + N \frac{f_\lambda(z)}{q_\phi(z|x)})$
-\STATE $\mathcal{L}^{(i)} \gets \ln p_\theta(x|z) + \ln f_\lambda(z) - \ln q_\phi(z|x) + \beta \zeta$
+\STATE Sample real data $e, x \sim p^*$, $z \sim q_\phi(z|e)$, $\epsilon \sim p_\mathcal{N}$
+\STATE $\hat{x} = \E_{p_\theta(x|\epsilon)}[x]$, get gradient penalty $\zeta \gets R(x, \hat{x})$ 
+\STATE $Z^{(i)} \gets \frac{1}{2}(\exp\{-\beta * D(G(\epsilon))\} + \frac{f_\lambda(z)}{\hat{q}_\phi(z)})$
+\STATE $\mathcal{L}^{(i)} \gets \ln p_\theta(x|z) + \ln f_\lambda(z) - \ln q_\phi(z|e) + \beta \zeta$
 \ENDFOR
 \STATE $\mathcal{L} \gets \frac{1}{b}\sum_{i}^b \mathcal{L}^{(i)} - \ln (\frac{1}{b}\sum_{i}^b Z^{(i)})$
 \STATE $\theta, \phi, \beta, \omega \gets $ Adam $(\nabla_{\theta, \phi, \beta} \mathcal{L}, \{\theta, \phi, \beta, \omega\}, \tau)$
@@ -108,7 +110,7 @@ It is not easy to sample $z$ from $p_\lambda(z)$ since the formula of $p_\lambda
 
 Langevin dynamics may be a useful sampling method because it only requires that $\nabla_z \log p_\lambda(z)$ is computable and the initial $z_0$ has an enough high density. Moreover, MEG~\cite{kumar2019maximum} have implemented a Metropolis-Adjusted Langevin Algorithm (MALA) for sampling where the formula of density is similar to $p_\lambda$ and also contains a discriminator term. But the selection of initial $z_0$ whose density is high enough is still a problem. 
 
-VAEPP indeed combine the theory of VAE and GAN, hence, it could be seen as a VAE-GAN model, therefore, following this philosophy, it is natural to use GAN for helping the sampling of VAEPP. We try to use GAN to model the distribution $q_\phi(z)$, which has high enough density in $p_\lambda(z)$. The sampling of VAEPP consists of 3 part: generate initial $z_0$ by a GAN, then generate $z \sim p_\lambda(z)$ by Langevin dynamics, and finally generate $x$ by decoder. 
+Following the philosophy of VAEPP, \IE using the technique of GAN to assist VAE, it is natural to use GAN to model the distribution $q_\phi(z)$, and use samples of GAN as the initial point of MALA, which has high enough density in $p_\lambda(z)$. The sampling of VAEPP consists of 3 part: generate initial $z_0$ by a GAN, then generate $z \sim p_\lambda(z)$ by Langevin dynamics, and finally generate $x$ by decoder. 
 
 
  
