@@ -533,11 +533,11 @@ def G_omega(z):
                    weight_norm=True,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_z = z
-        h_z = spt.layers.dense(h_z, 40)
-        h_z = spt.layers.dense(h_z, 40)
-        h_z = spt.layers.dense(h_z, 40)
-        h_z = spt.layers.dense(h_z, 40)
-        h_z = spt.layers.dense(h_z, 40)
+        h_z = spt.layers.dense(h_z, 64)
+        h_z = spt.layers.dense(h_z, 64)
+        h_z = spt.layers.dense(h_z, 64)
+        h_z = spt.layers.dense(h_z, 64)
+        h_z = spt.layers.dense(h_z, 64)
         h_z = spt.layers.dense(h_z, config.z_dim)
     x_mean = h_z
     return x_mean
@@ -589,12 +589,12 @@ def D_kappa(x, y=None):
                    weight_norm=True,
                    kernel_regularizer=spt.layers.l2_regularizer(config.l2_reg)):
         h_z = x
-        h_z = spt.layers.dense(h_z, 40)
-        h_z = spt.layers.dense(h_z, 40)
-        h_z = spt.layers.dense(h_z, 40)
-        h_z = spt.layers.dense(h_z, 40)
-        h_z = spt.layers.dense(h_z, 40)
-        h_z = spt.layers.dense(h_z, 40)
+        h_z = spt.layers.dense(h_z, 64)
+        h_z = spt.layers.dense(h_z, 64)
+        h_z = spt.layers.dense(h_z, 64)
+        h_z = spt.layers.dense(h_z, 64)
+        h_z = spt.layers.dense(h_z, 64)
+        h_z = spt.layers.dense(h_z, 64)
     # sample z ~ q(z|x)
     h_z = spt.layers.dense(h_z, 1, scope='level_-1')
     return tf.squeeze(h_z, axis=-1)
