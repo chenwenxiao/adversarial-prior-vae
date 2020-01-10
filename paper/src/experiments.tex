@@ -101,7 +101,7 @@ Best GAN   & $\sim10$& $\sim32$&$\sim70$& $\sim49$\\
 VAE+Flow   & $54.8$. & $62.1$  & $81.2$ & $65.7$\\
 WAE-MMD    & $115.0$ & $101.7$ & $80.9$ & $62.9$\\
 2-StageVAE & $12.6$  & $29.3$  & $72.9$ & $44.4$\\
-VAEPP      & $12.6$  & $29.3$  & $71.0$ & $53.4$ \\
+VAEPP      & $13.1$  & $29.3$  & $71.0$ & $53.4$ \\
 \bottomrule
 \end{tabular} 
 \caption{FID comparasons to GAN-based models and other VAEs. Best GAN indicates the best FID on each dataset across all GAN models when trained using settings suggested by original authors. The data of Best GAN and other VAEs is from \protect\cite{dai2019diagnosing}. As suggested by \protect\cite{dai2019diagnosing}, the variance of $p_\theta(x|z)$ of VAEPP is independent on $z$ and $\dim \mathcal{Z}$ is small (128). }
