@@ -14,6 +14,7 @@ IAFVAE           &  79.88  &  3.11    \\
 PixelVAE++       &  78.00  &  2.90   \\
 PixelRNN         &  79.20  &  3.00    \\
 VLAE             &  79.03  &  2.95     \\
+PixelSNAIL       &         & 2.85      \\
 PixelHVAE with VampPrior &  78.45  &     \\
 \midrule
 \textbf{Without autoregressive}   \\
@@ -21,15 +22,16 @@ Implicit Optimal Priors & 83.21 \\
 Discrete VAE     &  81.01     \\
 LARS             &  80.30     \\
 VampPrior        &  79.75     \\
+BIVA            &  78.59      &    3.08    \\
 \textbf{Naive VAEPP}      &  76.49 & 3.15    \\
 \textbf{VAEPP}            &  76.37 & 2.91	    \\
 \textbf{VAEPP+Flow}       &  76.23 & 2.84    \\
 \bottomrule
 \end{tabular}
-\caption{Test log-likelihood on MNIST and Bits/dim on CIFAR-10. Bits/dim means $-\log p_\theta(x|z) / (3072 * \ln(2))$. Most of VAEs based on learnable prior focus on MNIST and don't try CIFAR-10. The data is from \protect\cite{maaloe2019biva}. 
+\caption{Test negative log-likelihood on MNIST and Bits/dim on CIFAR-10. Bits/dim means $-\log p_\theta(x|z) / (3072 * \ln(2))$. The data is from \protect\cite{maaloe2019biva},  \protect\cite{chen2017pixelsnail}, \protect\cite{tomczak2018vae}, \protect\cite{bauer2019resampled} and \protect\cite{takahashi2019variational}. 
 %The learnable prior is indeed more useful on MNIST since the reconstruction loss is not hard to optimize on MNIST and the improvement by autoregressive component is limited. On CIFAR-10, the image is more complex and reconstruction loss is hard to optimize. Therefore, autoregressive component improve the VAEPP significantly and the improvement of learnable prior is limited. 
 VAEPP+Flow means VAEPP with a normalization flow on encoder, to enhance the ability of encoder. 
-Additional, we compare VAE based on $q_\phi(z|x)$ and $q_\phi(z|e)$ on MNIST, whose NLL are 81.10 and 83.30 respectively. It validates that using $q_\phi(z|e)$ is not the reason of improvement but the powerful presentation ability of Pull-back Prior. VAEPP achieves the state of art on MNIST, and is competitive to the models with autoregressive component. }
+Additional, we compare VAE based on $q_\phi(z|x)$ and $q_\phi(z|e)$ on MNIST, whose NLL are 81.10 and 83.30 respectively. It validates that using $q_\phi(z|e)$ will not improve the performance. VAEPP achieves the state of art, and is competitive to the models with autoregressive component. }
 \label{tab:mnist-nll}
 \end{table}
 \begin{table}[tb]
@@ -81,7 +83,7 @@ To valid that VAEPP is more stable and efficient than Naive VAEPP in \cref{subse
 	\centering
 	\includegraphics[width=1.0\columnwidth]{../figures/loss_curves.png}
 	\caption{
-	Training process of Naive VAEPP and VAEPP on CIFAR-10. As can been, Naive VAEPP is more unstable and nearly crash at 80 epoch. Although VAEPP have a gap at 100 epoch, but it is acceptable. From global view, the training loss of VAEPP is more smooth than Naive VAEPP and is better than Naive VAEPP over almost all training process, which validates the motivation in \cref{subsec:improve_of_vaepp}. There are little gaps at per 200 epoch because learning rate is half at every 200 epoch. 
+	Training process of Naive VAEPP and VAEPP on CIFAR-10. As can been, Naive VAEPP is more unstable and nearly crash at 80 epoch. Although VAEPP have a gap at 100 epoch, but it is acceptable. From global view, the training loss of VAEPP is more smooth than Naive VAEPP and is better than Naive VAEPP over almost all training process, which validates the motivation in \cref{subsec:improve_of_vaepp}. There are little gaps at per 200 epoch because learning rate is reduced to half at every 200 epoch. 
 	}
 	\label{fig:loss_curves}
 \end{figure}

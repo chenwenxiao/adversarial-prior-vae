@@ -50,7 +50,7 @@ class ExpConfig(spt.Config):
     max_step = None
     batch_size = 128
     noise_len = 8
-    smallest_step = 5e-5
+    smallest_step = 5e-6
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = [100, 200, 300, 400, 800, 1200, 1600, 2000]
@@ -1136,7 +1136,7 @@ def main():
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega', 'D_kappa'],
-                           max_epoch=config.max_epoch,
+                           max_epoch=config.max_epoch + 1,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
