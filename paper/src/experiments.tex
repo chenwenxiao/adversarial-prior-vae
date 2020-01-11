@@ -1,5 +1,5 @@
 \section{Experiments}
-VAEPP is evaluated in vast common datasets including MNIST, Fashion-MNIST~\cite{xiao2017/online}, CIFAR-10~\cite{krizhevsky2009learning} and CelebA with metrics log-likelihood, FID~\cite{heusel2017gans} and IS~\cite{salimans2016improved} to show the performance of VAEPP. Moreover, we try to help VAE to solve OoD problem by the additional information of discriminator. 
+VAEPP is evaluated in vast common datasets including MNIST, Fashion-MNIST~\cite{xiao2017/online}, Omniglot~\cite{lake2015human}, CIFAR-10~\cite{krizhevsky2009learning} and CelebA~\cite{liu2015deep} with metrics log-likelihood, FID~\cite{heusel2017gans} and IS~\cite{salimans2016improved} to show the performance of VAEPP. Moreover, we try to help VAE to solve OoD problem by the additional information of discriminator. 
 \subsection{Log-likelihood}
 \begin{table}[tb]
 \centering
@@ -17,17 +17,18 @@ VLAE             &  79.03  &  2.95     \\
 PixelHVAE with VampPrior &  78.45  &     \\
 \midrule
 \textbf{Without autoregressive}   \\
+Implicit Optimal Priors & 83.21 \\
 Discrete VAE     &  81.01     \\
 LARS             &  80.30     \\
 VampPrior        &  79.75     \\
-Naive VAEPP      &  (79.18) & 3.15    \\
-VAEPP            &  76.99 & 2.91	    \\
-VAEPP+Flow       &  (77.11) & 2.84    \\
+\textbf{Naive VAEPP}      &  76.49 & 3.15    \\
+\textbf{VAEPP}            &  76.37 & 2.91	    \\
+\textbf{VAEPP+Flow}       &  (77.11) & 2.84    \\
 \bottomrule
 \end{tabular}
-\caption{Test log-likelihood on MNIST and Bits/dim on CIFAR-10. Bits/dim means $-\log p_\theta(x|z) / (3072 * \ln(2))$. Most of VAEs based on learnable prior focus on MNIST and don't try CIFAR-10. 
+\caption{Test log-likelihood on MNIST and Bits/dim on CIFAR-10. Bits/dim means $-\log p_\theta(x|z) / (3072 * \ln(2))$. Most of VAEs based on learnable prior focus on MNIST and don't try CIFAR-10. The data is from \protect\cite{maaloe2019biva}. 
 %The learnable prior is indeed more useful on MNIST since the reconstruction loss is not hard to optimize on MNIST and the improvement by autoregressive component is limited. On CIFAR-10, the image is more complex and reconstruction loss is hard to optimize. Therefore, autoregressive component improve the VAEPP significantly and the improvement of learnable prior is limited. 
-VAEPP+Flow means that we apply a normalization flow on encoder, to enhance the ability of encoder. 
+VAEPP+Flow means VAEPP with a normalization flow on encoder, to enhance the ability of encoder. 
 Additional, we compare VAE based on $q_\phi(z|x)$ and $q_\phi(z|e)$ on MNIST, whose NLL are 81.10 and 83.30 respectively. It validates that using $q_\phi(z|e)$ is not the reason of improvement but the powerful presentation ability of Pull-back Prior. VAEPP achieves the state of art on MNIST, and is competitive to the models with autoregressive component. }
 \label{tab:mnist-nll}
 \end{table}
@@ -37,9 +38,9 @@ Additional, we compare VAE based on $q_\phi(z|x)$ and $q_\phi(z|e)$ on MNIST, wh
 \toprule
 Model   & Static MNIST & Fashion & Omniglot \\
 \midrule
-Naive VAEPP    &  (81.16)    &  217.883  &  (96.86)  \\
-VAEPP          &  78.00    &  ()  &  86.96   \\
-VAEPP+Flow     &  (80.77)    &  (222.23)  &  (88.83)   \\
+Naive VAEPP    &      &    &    \\
+VAEPP          &      &    &     \\
+VAEPP+Flow     &      &    &     \\
 \bottomrule
 \end{tabular}
 %Naive VAEPP    &  81.16$\pm$    &  225.08$\pm$1.18  &  96.86$\pm$  \\
@@ -75,6 +76,16 @@ To valid that it is better to use $q_\phi(z)$ to evaluate $Z$ than $p_\mathcal{N
 To ensure the variance of estimation $\hat{Z}$ is small enough, the $q_\phi(z|e)$ is selected as truncated normal distribution (drop the sample whose magnitude is more than 2 standard deviation form the mean) instead of normal distribution. In \cref{eq:Z_estimator}, $\hat{q}_\phi(z)$ is the denominator and estimated by $\frac{1}{N}q_\phi(z|e^{(j)})$. If $q_\phi(z|e^{(j)})$ is selected as normal distribution, the probability of $z$ in tail will be larger when the number of samples become larger, which will lead to huge variance to the estimation $\hat{Z}$. With $10^9$ samples, the variance of these two method are $0.809260$ (standard) and $0.000967$ (truncated) in MNIST. 
 % We ensure the variance of results shown in \cref{tab:cifar-nll} and \cref{tab:mnist-nll} are less than 0.05. 
 
+\begin{figure}
+	\centering
+	\includegraphics[width=1.0\columnwidth]{../figures/loss_curves.png}
+	\caption{
+	Training process of Naive VAEPP and VAEPP on CIFAR-10. As can been, Naive VAEPP is more unstable and nearly crash at 80 epoch. Although VAEPP have a gap at 100 epoch, but it is acceptable. From global view, the training loss of VAEPP is more smooth than Naive VAEPP and is better than Naive VAEPP over almost all training process, which validates the motivation in \cref{subsec:improve_of_vaepp}. The little gap at per 200 epoch is due to the learning rate is half at every 200 epoch. 
+	}
+	\label{fig:loss_curves}
+\end{figure}
+
+
 To valid that VAEPP is more stable and efficient than Naive VAEPP in \cref{subsec:improve_of_vaepp}, we draw the training loss of VAEPP and Naive VAEPP on CIFAR-10, shown in fig (TODO).
 %We evaluate $Z$ by two ways mentioned in \cref{subsec:determine_z} and compare the variance of them in 10 times on CIFAR-10. The variance of estimation based on $q_\phi(z)$ (4.82), is much less than the variance of estimation based on $p_\mathcal{N}$ (TODO), which supports our proposition in \cref{subsec:determine_z}. Since the variance of $Z$ also influence the variance of log-likelihood, we also evaluate the variance of log-likelihood in 10 times on CIFAR-10 (4.82) to ensure the stability of evaluation. 
 
@@ -90,7 +101,7 @@ Best GAN   & $\sim10$& $\sim32$&$\sim70$& $\sim49$\\
 VAE+Flow   & $54.8$. & $62.1$  & $81.2$ & $65.7$\\
 WAE-MMD    & $115.0$ & $101.7$ & $80.9$ & $62.9$\\
 2-StageVAE & $12.6$  & $29.3$  & $72.9$ & $44.4$\\
-VAEPP      & $12.6$  & $29.3$  & $71.0$ & $53.4$ \\
+VAEPP      & $13.1$  & $29.3$  & $71.0$ & $53.4$ \\
 \bottomrule
 \end{tabular} 
 \caption{FID comparasons to GAN-based models and other VAEs. Best GAN indicates the best FID on each dataset across all GAN models when trained using settings suggested by original authors. The data of Best GAN and other VAEs is from \protect\cite{dai2019diagnosing}. As suggested by \protect\cite{dai2019diagnosing}, the variance of $p_\theta(x|z)$ of VAEPP is independent on $z$ and $\dim \mathcal{Z}$ is small (128). }
@@ -100,14 +111,17 @@ VAEPP      & $12.6$  & $29.3$  & $71.0$ & $53.4$ \\
 	\centering
 	\includegraphics[width=0.8\columnwidth]{../figures/fid_is_nll_on_different_dim.png}
 	\caption{
-	Comparation of VAEPP when the dimension of latent space varies on CIFAR-10 with metrics BPD, FID and IS. FID and BPD is better when it is smaller and IS is better when it is larger. When dimension of latent space is greater than 128, the quality of sampling becomes worse and BPD becomes better as $\dim \mathcal{Z}$ increases. It validates the proposition that $\dim \mathcal{Z}$ should be selected as a minimal number of active latent dimensions in \protect\cite{dai2019diagnosing}. Meanwhile, the reconstruction term is optimized more due to the latent space could remains more information and the $KL(q_\phi(z)||p_\lambda(z))$ could stay invariant (learnable prior minimizes it) as $\dim \mathcal{Z}$ is larger. It also shows that FID, IS is not always same as BPD, maybe greatly different. 
+	Comparation of VAEPP with learnable scalar variance of $p_\theta(x|z)$, as the dimension of latent space varies on CIFAR-10, with metrics BPD, FID and IS. FID and BPD is better when it is smaller and IS is better when it is larger. When dimension of latent space is greater than 128, the quality of sampling becomes worse and BPD becomes better as $\dim \mathcal{Z}$ increases. It validates the proposition that $\dim \mathcal{Z}$ should be selected as a minimal number of active latent dimensions in \protect\cite{dai2019diagnosing}. Meanwhile, the reconstruction term is optimized more due to the latent space could remains more information and the $KL(q_\phi(z)||p_\lambda(z))$ could stay invariant (learnable prior minimizes it) as $\dim \mathcal{Z}$ is larger. It also shows that FID, IS is not always same as BPD, maybe greatly different. 
 	}
 	\label{fig:compare_nD_over_z_dim}
 \end{figure}
 
-As common sense, it is hard to achieve best performance in FID, IS and log-likelihood by same setting. We observe this fact that when dimension of latent space is increasing, the trend of FID, IS is different to the trend of log-likelihood, as shown in \cref{fig:compare_nD_over_z_dim}. As diagnosis in \cite{dai2019diagnosing}, the dimension of latent space should be selected as a number that little larger than the dimension of real data manifold, $\dim \mathcal{Z} = 128$, as our experimental result.  
+As common sense, it is hard to achieve best performance in FID, IS and log-likelihood by same setting. We observe this fact that when dimension of latent space is increasing, the trend of FID, IS is different to the trend of log-likelihood, as shown in \cref{fig:compare_nD_over_z_dim}. As diagnosis in \cite{dai2019diagnosing}, the variance of $p_\theta(x|z)$ is chosen as a learnable scalar, and the dimension of latent space is selected as a number that little larger than the dimension of real data manifold, $\dim \mathcal{Z} = 128$, as our experimental result.  
 
 To valid the \cref{eq:behavior_of_beta}, we calculate the $\E_{p_\lambda(z)}[ D(G(z))]$ (discriminator on generated samples) and $\E_{q_\phi(z)}[ D(G(z))]$ (discriminator on reconstructed samples). They are -12.3467 and -12.2947 respectively on CIFAR-10. The discriminator on real samples are -12.2962, which is nearly same as discriminator on reconstructed samples. 
+
+To valid the assumption in \cref{subsec:inference} holds in actual experiment, we calculate $|\E_{p_\theta(x|z)}D(x) - D(G(z))|$ on $q_\phi(z)$, $p_\mathcal{N}(z)$ and $p_\lambda(z)$, which are (), () and () respectively on CIFAR-10. 
+
 
 % CIFAR [-12.352115, -12.347757, -12.345433, -12.345455, -12.3524475, 
 % -12.345604, -12.345031, -12.348698, -12.346703, -12.350895, -12.353839,
@@ -122,37 +136,37 @@ To valid the \cref{eq:behavior_of_beta}, we calculate the $\E_{p_\lambda(z)}[ D(
 
 
 
-\subsection{Out-of-Distribution}
+% \subsection{Out-of-Distribution}
 
-We found that discriminator of VAEPP performs normally while model assign higher density to the data from out-of-distribution, as shown in fig(TODO). It inspires us to use the exact information from discriminator to design 3 indicators, log-likelihood $\log p_\theta(x)$, energy $D(x)$ and norm of gradient $\|\nabla_{x} D(x)\|$ to solve OoD problem, as shown in fig(). From the likelihood, \cite{song2017pixeldefend} showed that it is useful to assume the data is out-of-distribution if it have very high or very low density. For energy and norm of gradient, it performs normally, i.e., when energy is higher or norm of gradient is smaller, it more likely belongs to out-of-distribution. Hence, we evaluate the AUC and AP for them and combination of them in OoD problem on CIFAR and SVHN, as shown in \cref{tab:compare_ood}. The method to combine them is simple: normalize them into a standard Gaussian in training set of CIFAR, and the score of this indicator contributing to combination score is the absolute/original/negative value of it. We have tested all kinds of combination and the best one is $|\log p_\theta(x)| - \|\nabla_x D(x)\|$. The performance of it on other datasets is shown in \cref{tab:compare_ood_other_datasets} which is competitive to other indicators $T_{perm}$~\cite{song2017pixeldefend} and WAIC~\cite{choi2018waic}. 
-\begin{table}[tb]
-\centering
-\begin{tabular}{lrr}  
-\toprule
-Indicator  & AUC/AP \\
-\midrule
-$\log p_\theta(x)$   &  1.00/1.00      \\
-$D(x)$               &  1.00/1.00      \\
-$\|\nabla_x D(x)\|$  &  1.00/1.00      \\
-$|\log p_\theta(x)| - \|\nabla_x D(x)\|$ & 1.00/1.00 \\
-\bottomrule
-\end{tabular}
-\caption{Comparation between indicators and their combination.}
-\label{tab:compare_ood}
-\end{table}
-\begin{table}[tb]
-\centering
-\begin{tabular}{lrrrr}  
-\toprule
-Dataset  &  $T_{perm}$ & WAIC & VAEPP\\
-\midrule
-Fashion vs MNIST  & 0.78/0.71  & 0.24/0.38 & 1.00/1.00  \\
-CIFAR vs SVHN     & 0.86/0.82  & 0.16/0.55 & 1.00/1.00  \\
-CIFAR vs ImageNet & 0.50/0.51  & 0.58/0.59 & 1.00/1.00  \\
-CIFAR vs LSUN     & 0.58/0.56  & 0.60/0.28 & 1.00/1.00  \\
-\bottomrule
-\end{tabular}
-\caption{Comparation the performance of VAEPP with other models in OoD problem. The data of $T_{perm}$ and WAIC is from \protect \cite{song2019unsupervised}. The reason that we can't compare VAEPP with \protect\cite{song2019unsupervised} is that it assumes a batch of OoD data can be obtained but we don't have this assumption. In fast, many online anomaly detection system must deal the online data on time when the number of OoD data in a batch is unknown. }
-\label{tab:compare_ood_other_datasets}
-\end{table}
+%We found that discriminator of VAEPP performs normally while model assign higher density to the data from out-of-distribution, as shown in fig(TODO). It inspires us to use the exact information from discriminator to design 3 indicators, log-likelihood $\log p_\theta(x)$, energy $D(x)$ and norm of gradient $\|\nabla_{x} D(x)\|$ to solve OoD problem, as shown in fig(). From the likelihood, \cite{song2017pixeldefend} showed that it is useful to assume the data is out-of-distribution if it have very high or very low density. For energy and norm of gradient, it performs normally, i.e., when energy is higher or norm of gradient is smaller, it more likely belongs to out-of-distribution. Hence, we evaluate the AUC and AP for them and combination of them in OoD problem on CIFAR and SVHN, as shown in \cref{tab:compare_ood}. The method to combine them is simple: normalize them into a standard Gaussian in training set of CIFAR, and the score of this indicator contributing to combination score is the absolute/original/negative value of it. We have tested all kinds of combination and the best one is $|\log p_\theta(x)| - \|\nabla_x D(x)\|$. The performance of it on other datasets is shown in \cref{tab:compare_ood_other_datasets} which is competitive to other indicators $T_{perm}$~\cite{song2017pixeldefend} and WAIC~\cite{choi2018waic}. 
+%\begin{table}[tb]
+%\centering
+%\begin{tabular}{lrr}  
+%\toprule
+%Indicator  & AUC/AP \\
+%\midrule
+%$\log p_\theta(x)$   &  1.00/1.00      \\
+%$D(x)$               &  1.00/1.00      \\
+%$\|\nabla_x D(x)\|$  &  1.00/1.00      \\
+%$|\log p_\theta(x)| - \|\nabla_x D(x)\|$ & 1.00/1.00 \\
+%\bottomrule
+%\end{tabular}
+%\caption{Comparation between indicators and their combination.}
+%\label{tab:compare_ood}
+%\end{table}
+%\begin{table}[tb]
+%\centering
+%\begin{tabular}{lrrrr}  
+%\toprule
+%Dataset  &  $T_{perm}$ & WAIC & VAEPP\\
+%\midrule
+%Fashion vs MNIST  & 0.78/0.71  & 0.24/0.38 & 1.00/1.00  \\
+%CIFAR vs SVHN     & 0.86/0.82  & 0.16/0.55 & 1.00/1.00  \\
+%CIFAR vs ImageNet & 0.50/0.51  & 0.58/0.59 & 1.00/1.00  \\
+%CIFAR vs LSUN     & 0.58/0.56  & 0.60/0.28 & 1.00/1.00  \\
+%\bottomrule
+%\end{tabular}
+%\caption{Comparation the performance of VAEPP with other models in OoD problem. The data of $T_{perm}$ and WAIC is from \protect \cite{song2019unsupervised}. The reason that we can't compare VAEPP with \protect\cite{song2019unsupervised} is that it assumes a batch of OoD data can be obtained but we don't have this assumption. In fast, many online anomaly detection system must deal the online data on time when the number of OoD data in a batch is unknown. }
+%\label{tab:compare_ood_other_datasets}
+%\end{table}
 
