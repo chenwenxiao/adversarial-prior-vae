@@ -91,7 +91,7 @@ class ExpConfig(spt.Config):
 
     len_train = 50000
     sample_n_z = 100
-    fid_samples = 5000
+    fid_samples = 50000
     fid_test_times = 10
 
     use_truncated = True
@@ -1140,7 +1140,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/ee/1c/d445f4f80a9f2bd161e5/checkpoint/checkpoint/checkpoint.dat-936000.index'  # '/mnt/mfs/mlstorage-experiments/cwx17/2c/fb/d4e63c432be9319e0cd5/checkpoint/checkpoint/checkpoint.dat-312000'
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/ee/1c/d445f4f80a9f2bd161e5/checkpoint/checkpoint/checkpoint.dat-936000'  # '/mnt/mfs/mlstorage-experiments/cwx17/2c/fb/d4e63c432be9319e0cd5/checkpoint/checkpoint/checkpoint.dat-312000'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
