@@ -23,7 +23,7 @@ LARS             &  80.30     \\
 VampPrior        &  79.75     \\
 \textbf{Naive VAEPP}      &  76.49 & 3.15    \\
 \textbf{VAEPP}            &  76.37 & 2.91	    \\
-\textbf{VAEPP+Flow}       &  (77.11) & 2.84    \\
+\textbf{VAEPP+Flow}       &  76.23 & 2.84    \\
 \bottomrule
 \end{tabular}
 \caption{Test log-likelihood on MNIST and Bits/dim on CIFAR-10. Bits/dim means $-\log p_\theta(x|z) / (3072 * \ln(2))$. Most of VAEs based on learnable prior focus on MNIST and don't try CIFAR-10. The data is from \protect\cite{maaloe2019biva}. 
@@ -39,7 +39,7 @@ Additional, we compare VAE based on $q_\phi(z|x)$ and $q_\phi(z|e)$ on MNIST, wh
 Model   & Static MNIST & Fashion & Omniglot \\
 \midrule
 Naive VAEPP    &      &    &    \\
-VAEPP          &      &    &     \\
+VAEPP          &   77.737   &    &     \\
 VAEPP+Flow     &      &    &     \\
 \bottomrule
 \end{tabular}
@@ -67,26 +67,24 @@ WGAN-div-2   &  4.47   & 2.99      \\
 \label{tab:compare_nD_over_R}
 \end{table}
 
-We compare our algorithms with other log-likelihood based model on MNIST, CIFAR-10 and CelebA as shown in \cref{tab:mnist-nll}, \cref{tab:cifar-nll}. Because the improvement of auto-regressive components is significant, we separate models by whether use auto-regressive component as \cite{maaloe2019biva} did. Improved VAEPP outperforms most of the models without autoregressive component and is competitive to the models with autoregressive component. The reason of why VAEPP don't use auto-regressive component is that VAEPP is time-consuming in training,  evaluation and sampling due to the huge structure (need additional discriminator) and Langevin dynamics. It is not easy to apply auto-regressive component on VAEPP considering auto-regressive component is also time-consuming. 
+We compare our algorithms with other log-likelihood based model on MNIST and CIFAR-10 as shown in \cref{tab:mnist-nll}, and another	\cref{tab:cifar-nll}. Because the improvement of auto-regressive components is significant, we separate models by whether use auto-regressive component as \cite{maaloe2019biva} did. Improved VAEPP outperforms most of the models without autoregressive component and is competitive to the models with autoregressive component. The reason of why VAEPP don't use auto-regressive component is that VAEPP is time-consuming in training,  evaluation and sampling due to the huge structure (need additional discriminator) and Langevin dynamics. It is not easy to apply auto-regressive component on VAEPP considering auto-regressive component is also time-consuming. 
 % Concretely, a whole process including training, evaluation and sampling on CIFAR10 will cost roughly one week on single Nvidia 2080Ti GPU card. 
 On the other hand, we expect that the pure improvement on learnable prior could improve the performance of VAE rather than the careful design on encoder or decoder, since it is clearer and easier to develop in theory. Therefore, how to apply autoregressive component on VAEPP is a valuable and challenging practical work. We leave it as a future work.
 
 To valid that it is better to use $q_\phi(z)$ to evaluate $Z$ than $p_\mathcal{N}(z)$ in ~\cref{subsec:determine_z}, we calculate the $KL(q_\phi(z)||p_\lambda(z))$ and $KL(p_\mathcal{N}(z)||p_\lambda(z))$ on CIFAR-10 and MNIST. The former is less than the difference (180.3 on CIFAR-10) between reconstruction term and ELBO~\cite{hoffman2016elbo}, and the latter one can be evaluated directly (1011.30 on CIFAR-10). Consequently, $q_\phi(z)$ is closer to $p_\lambda(z)$ than $p_\mathcal{N}(z)$. 
 
-To ensure the variance of estimation $\hat{Z}$ is small enough, the $q_\phi(z|e)$ is selected as truncated normal distribution (drop the sample whose magnitude is more than 2 standard deviation form the mean) instead of normal distribution. In \cref{eq:Z_estimator}, $\hat{q}_\phi(z)$ is the denominator and estimated by $\frac{1}{N}q_\phi(z|e^{(j)})$. If $q_\phi(z|e^{(j)})$ is selected as normal distribution, the probability of $z$ in tail will be larger when the number of samples become larger, which will lead to huge variance to the estimation $\hat{Z}$. With $10^9$ samples, the variance of these two method are $0.809260$ (standard) and $0.000967$ (truncated) in MNIST. 
-% We ensure the variance of results shown in \cref{tab:cifar-nll} and \cref{tab:mnist-nll} are less than 0.05. 
+To ensure the variance of estimation $\hat{Z}$ is small enough, the $q_\phi(z|e)$ is selected as truncated normal distribution (drop the sample whose magnitude is more than 2 standard deviation form the mean) instead of normal distribution. In \cref{eq:Z_estimator}, $\hat{q}_\phi(z)$ is the denominator and estimated by $\frac{1}{N}q_\phi(z|e^{(j)})$. If $q_\phi(z|e^{(j)})$ is selected as normal distribution, the probability of $z$ in tail will be larger when the number of samples become larger, which will lead to huge variance to the estimation $\hat{Z}$. With $10^9$ samples, the variance of these two method are $0.809260$ (standard) and $0.000967$ (truncated) in MNIST. Therefore, truncated normal is selected as default setting. 
 
+To valid that VAEPP is more stable and efficient than Naive VAEPP in \cref{subsec:improve_of_vaepp}, we draw the training loss of VAEPP and Naive VAEPP on CIFAR-10, shown in \cref{fig:loss_curves}.
+% We ensure the variance of results shown in \cref{tab:cifar-nll} and \cref{tab:mnist-nll} are less than 0.05. 
 \begin{figure}
 	\centering
 	\includegraphics[width=1.0\columnwidth]{../figures/loss_curves.png}
 	\caption{
-	Training process of Naive VAEPP and VAEPP on CIFAR-10. As can been, Naive VAEPP is more unstable and nearly crash at 80 epoch. Although VAEPP have a gap at 100 epoch, but it is acceptable. From global view, the training loss of VAEPP is more smooth than Naive VAEPP and is better than Naive VAEPP over almost all training process, which validates the motivation in \cref{subsec:improve_of_vaepp}. The little gap at per 200 epoch is due to the learning rate is half at every 200 epoch. 
+	Training process of Naive VAEPP and VAEPP on CIFAR-10. As can been, Naive VAEPP is more unstable and nearly crash at 80 epoch. Although VAEPP have a gap at 100 epoch, but it is acceptable. From global view, the training loss of VAEPP is more smooth than Naive VAEPP and is better than Naive VAEPP over almost all training process, which validates the motivation in \cref{subsec:improve_of_vaepp}. There are little gaps at per 200 epoch because learning rate is half at every 200 epoch. 
 	}
 	\label{fig:loss_curves}
 \end{figure}
-
-
-To valid that VAEPP is more stable and efficient than Naive VAEPP in \cref{subsec:improve_of_vaepp}, we draw the training loss of VAEPP and Naive VAEPP on CIFAR-10, shown in fig (TODO).
 %We evaluate $Z$ by two ways mentioned in \cref{subsec:determine_z} and compare the variance of them in 10 times on CIFAR-10. The variance of estimation based on $q_\phi(z)$ (4.82), is much less than the variance of estimation based on $p_\mathcal{N}$ (TODO), which supports our proposition in \cref{subsec:determine_z}. Since the variance of $Z$ also influence the variance of log-likelihood, we also evaluate the variance of log-likelihood in 10 times on CIFAR-10 (4.82) to ensure the stability of evaluation. 
 
 \subsection{Quality of Sampling}
@@ -101,7 +99,7 @@ Best GAN   & $\sim10$& $\sim32$&$\sim70$& $\sim49$\\
 VAE+Flow   & $54.8$. & $62.1$  & $81.2$ & $65.7$\\
 WAE-MMD    & $115.0$ & $101.7$ & $80.9$ & $62.9$\\
 2-StageVAE & $12.6$  & $29.3$  & $72.9$ & $44.4$\\
-VAEPP      & $13.1$  & $29.3$  & $71.0$ & $53.4$ \\
+VAEPP      & $13.1$  & $39.4$  & $71.0$ & $53.4$ \\
 \bottomrule
 \end{tabular} 
 \caption{FID comparasons to GAN-based models and other VAEs. Best GAN indicates the best FID on each dataset across all GAN models when trained using settings suggested by original authors. The data of Best GAN and other VAEs is from \protect\cite{dai2019diagnosing}. As suggested by \protect\cite{dai2019diagnosing}, the variance of $p_\theta(x|z)$ of VAEPP is independent on $z$ and $\dim \mathcal{Z}$ is small (128). }
