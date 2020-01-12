@@ -32,7 +32,7 @@ where $x^{(j)}$ is one of real data, $N$ is the size of training set. To reduce 
 	 &= \E_{p^*(e)} \E_{p^*(x|e)} \E_{q_\phi(z|e)} \ln \frac{p_\theta(x|z)p_\theta(z)}{q_\phi(z|e)} \tag{10} \\
 	 &= \E_{p^*(x)} \ln p^*(x) - \E_{p^*(e)} \E_{p^*(x|e)} KL(q_\phi(z|e), p_\theta(z|x))
 \end{align*} 
-where $p^*(x|e)$ means the sampling process from $e$, usually Bernouli distribution. \cref{eq:another_elbo} is similar to the original ELBO~\cref{eq:ELBO}, and the above conclusion about learnable prior holds for \cref{eq:another_elbo} by repeating above inference. % Additionally, when $p_\theta(x|z)$ and $p^*(x|e)$ is both Bernouli, term $\E_{p^*(x|e)} \ln p_\theta(x|z)$ has analytical solution $x\log e+(1-x)\log(1-e)$, which could make the training and evaluation more stable (don't need sample $x$). 
+where $p^*(x|e)$ means the sampling process from $e$, usually Bernouli distribution. \cref{eq:another_elbo} is similar to the original ELBO~\cref{eq:ELBO}, and the above conclusion about learnable prior holds for \cref{eq:another_elbo} by repeating above inference. Additionally, the assumption $D(G(z)) = \E_{p_\theta(x|z)} D(x)$ in \cref{subsec:inference} can be seen as an extension definition, which extends the definition of $D$ from $\{0, 1\}^m$ to $\mathbb{R}^m$, where $m$ is the dimension of data. % Additionally, when $p_\theta(x|z)$ and $p^*(x|e)$ is both Bernouli, term $\E_{p^*(x|e)} \ln p_\theta(x|z)$ has analytical solution $x\log e+(1-x)\log(1-e)$, which could make the training and evaluation more stable (don't need sample $x$). 
 Since $q_\phi(z|e)$ is known, above bias estimation of $q_\phi(z)$ is feasible by $\frac{1}{N} q_\phi(z|e^{(j)})$. The estimation using $q_\phi(z|x)$ is a special case that $p^*(x|e) = \delta(x - e)$, therefore, we will use $\frac{1}{N} q_\phi(z|e^{(j)})$ on all dataset. $\hat{q}_\phi(z)$ denotes the bias estimation of $q_\phi(z)$. Then, a bias estimation $\hat{Z}$ is given by:
 \begin{align*}\label{eq:Z_estimator}
 	Z = \E_{q_\phi(z)}\frac{f_\lambda(z)}{q_\phi(z)} \leq \E_{q_\phi(z)} \frac{f_\lambda(z)}{\hat{q}_\phi(z)} = \hat{Z} \tag{10}
@@ -54,7 +54,7 @@ Thanks to the stable and efficient gradient penalty regularizer term provided by
 \WHILE{$\theta, \phi, \beta, \omega$ have not converged}
 \FOR {$k = 1, \ldots n_c$}
 \FOR {$i = 1, \ldots, b$}
-\STATE Sample real data $x \sim p^*$, $z \sim q_\phi(z|e)$, $\epsilon \sim p_\mathcal{N}$
+\STATE Sample $e, x \sim p^*$, $z \sim q_\phi(z|e)$, $\epsilon \sim p_\mathcal{N}$
 \STATE $Z^{(i)} \gets \frac{1}{2}(\exp\{-\beta * D(G(\epsilon))\} + \frac{f_\lambda(z)}{\hat{q}_\phi(z)})$
 \STATE $\mathcal{L}^{(i)} \gets \ln p_\theta(x|z) + \ln f_\lambda(z) - \ln q_\phi(z|e)$
 \ENDFOR
@@ -62,7 +62,7 @@ Thanks to the stable and efficient gradient penalty regularizer term provided by
 \STATE $\theta, \phi, \beta \gets $ Adam $(\nabla_{\theta, \phi, \beta} \mathcal{L}, \{\theta, \phi, \beta\}, \tau)$
 \ENDFOR
 \FOR {$i = 1, \ldots, b$}
-\STATE Sample real data $e, x \sim p^*$, latent variable $z \sim p_\mathcal{N}$
+\STATE Sample $e, x \sim p^*$, latent variable $z \sim p_\mathcal{N}$
 \STATE	$\hat{x} = \E_{p_\theta(x|z)}[x]$, get gradient penalty $\zeta \gets R(x, \hat{x})$
 \STATE $L^{(i)} \gets D(\hat{x}) - D(x) + \zeta$
 \ENDFOR
@@ -94,7 +94,7 @@ where $p_r$ denotes $p_r(x) = \E_{q_\phi(z)} p_\theta(x|z)$, consisting of recon
 \begin{algorithmic}[1] %[1] enables line numbers
 \WHILE{$\theta, \phi, \beta, \omega$ have not converged}
 \FOR {$i = 1, \ldots, b$}
-\STATE Sample real data $e, x \sim p^*$, $z \sim q_\phi(z|e)$, $\epsilon \sim p_\mathcal{N}$
+\STATE Sample $e, x \sim p^*$, $z \sim q_\phi(z|e)$, $\epsilon \sim p_\mathcal{N}$
 \STATE $\hat{x} = \E_{p_\theta(x|\epsilon)}[x]$, get gradient penalty $\zeta \gets R(x, \hat{x})$ 
 \STATE $Z^{(i)} \gets \frac{1}{2}(\exp\{-\beta * D(G(\epsilon))\} + \frac{f_\lambda(z)}{\hat{q}_\phi(z)})$
 \STATE $\mathcal{L}^{(i)} \gets \ln p_\theta(x|z) + \ln f_\lambda(z) - \ln q_\phi(z|e) + \beta \zeta$
