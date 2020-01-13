@@ -50,7 +50,7 @@ class ExpConfig(spt.Config):
     max_step = None
     batch_size = 128
     noise_len = 8
-    smallest_step = 5e-6
+    smallest_step = 1e-6
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = [100, 200, 300, 400, 800, 1200, 1600, 2000]
@@ -74,7 +74,7 @@ class ExpConfig(spt.Config):
     plot_epoch_freq = 20
     grad_epoch_freq = 10
 
-    test_fid_n_pz = 5000
+    test_fid_n_pz = 50000
     test_x_samples = 1
     log_Z_times = 100000
     log_Z_x_samples = 8

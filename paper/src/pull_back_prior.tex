@@ -43,7 +43,7 @@ We solve \cref{eq:lagrange_function} by Euler-Lagrange equation:
 \end{equation*}
 Therefore, $\ln p_\lambda(z) = \frac{1}{\gamma} D(G(z)) + \ln p_\mathcal{N}(z) + (\frac{\eta}{\gamma} - 1)$ is the optimal solution, which could be organized into \cref{eq:pull_back_prior}. From this inference, we could explain the meaning of $\beta = \frac{1}{\gamma}$ and $Z = \frac{\eta}{\gamma} - 1$. $\beta$ represents how far $p_\lambda$ is from $p_\mathcal{N}$, since $\gamma$ is the Lagrange multiplier of constraint $KL(p_\lambda, p_\mathcal{N}) \leq \alpha$. $Z$ is the partition function since $\eta$ is the Lagrange multiplier of constraint $\int_{\mathcal{Z}} p_\lambda(z) \dd z = 1$.
 
-We obtain the basic formula of Pull-back Prior. However, it remains some troubles about how to optimize it and calculate partition function $Z$ in VAE architecture. 
+We obtain the basic formula of Pull-back Prior, which is an extension of $p_\mathcal{N}$, who is the special case that $\beta = 0$. However, it remains some troubles about how to optimize it and calculate partition function $Z$ in VAE architecture. 
 
 
 
