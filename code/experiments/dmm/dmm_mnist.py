@@ -79,7 +79,7 @@ class ExpConfig(spt.Config):
     test_n_pz = 1000
     test_n_qz = 100
     test_batch_size = 8
-    test_epoch_freq = 1000
+    test_epoch_freq = 400
     plot_epoch_freq = 20
     grad_epoch_freq = 10
 
