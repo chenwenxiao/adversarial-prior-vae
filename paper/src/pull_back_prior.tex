@@ -1,9 +1,7 @@
 \section{Pull-back Prior}\label{sec:pull_back_prior}
 
 \subsection{Intuition}
-We follow the way of learnable priors and improve the performance of VAE by apply another powerful learnable prior, called by Pull-back Prior. It is the basic idea of Pull-back Prior that the optimal solution of prior, i.e. aggregated prior, is intractable and another feasible prior which is not optimal theoretically, could lead to better performance than an approximation aggregated prior.
-
-The formula of Pull-back Prior is given by:
+We follow the way of learnable priors and propose Pull-back Prior to improve the representation ability of VAE. It is the basic idea that the optimal solution, aggregated prior, is intractable and non-optimal solution, Pull-back Prior, could lead to better performance than an approximation aggregated prior. The formula of Pull-back Prior is given by:
 \begin{equation}\label{eq:pull_back_prior}
 	\ln p_\lambda(z) = \ln p_\mathcal{N}(z) - \beta * D(G(z)) - \ln Z \tag{4}
 \end{equation}
@@ -13,7 +11,7 @@ A simplistic explanation of Pull-back Prior is given following: We would like to
 
 \subsection{Inference}~\label{subsec:inference}
 
-Before the starting of inference of Pull-back Prior, we need to review the inference of aggregated posterior. We divide the optimization of $\min_{\theta, \phi, \lambda} \mathcal{L}(\theta, \phi, \lambda)$ into 2 part $\min_{\theta, \phi} \min_{\lambda} \mathcal{L}(\theta, \phi, \lambda)$. Considering the 2nd optimization $\min_\lambda \mathcal{L}(\theta, \phi, \lambda)$, the optimal solution is $p_\lambda(z) = q_\phi(z)$. The key idea of the inference of Pull-back Prior is to set another objective function $\hat{\mathcal{L}}$ for 2nd optimization. Noticing that the ELBO is derived by KL-divergence between $p^*$ and $p_\theta$, a candidate objective function is another divergence. This operation is called Double Metrics Analysis (DMA). 
+Before the starting of inference of Pull-back Prior, we need to review the inference of aggregated posterior. We divide the optimization of $\min_{\theta, \phi, \lambda} \mathcal{L}(\theta, \phi, \lambda)$ into 2 part $\min_{\theta, \phi} \min_{\lambda} \mathcal{L}(\theta, \phi, \lambda)$. Considering the 2nd optimization $\min_\lambda \mathcal{L}(\theta, \phi, \lambda)$, the optimal solution is $p_\lambda(z) = q_\phi(z)$. The key idea of the inference of Pull-back Prior is to set another objective function $\hat{\mathcal{L}}$ for 2nd optimization. Noticing that the ELBO is derived by KL-divergence between $p^*$ and $p_\theta$, a candidate $\hat{\mathcal{L}}$ could be another divergence. This operation is called Double Metrics Analysis (DMA). 
 
 Choosing another divergence will lead to a new learnable prior rather than $q_\phi$. We could make this new learnable prior feasible and efficient, but however, it will never be the theoretical optimal prior, \IE the essence of DMA is to get an acceptable trade-off between theory and practice. 
 
