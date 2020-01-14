@@ -1,18 +1,18 @@
 \section{VAEPP}\label{sec:vaepp}
 
 
-In \cref{sec:pull_back_prior}, we focus on the 2nd optimization and propose the Pull-back Prior as the analytical solution of it. In this section, we will return to the original objective ELBO, and discuss how to use Pull-back Prior to optimize ELBO.  VAEPP is a more general framework than VAE, which is a special case of VAEPP than $\beta = 0$. 
+In \cref{sec:pull_back_prior}, we focus on the 2nd optimization and propose the Pull-back Prior as the analytical solution of it. In this section, we will return to the original objective ELBO, and discuss how to use Pull-back Prior to optimize ELBO.  VAEPP is a more general framework than VAE, which is a special case of VAEPP wth $\beta = 0$. 
 
 \subsection{Determine $\beta$}
 
 $\beta$ in \cref{eq:pull_back_prior} represents how far $p_\lambda$ is from $p_\mathcal{N}$, but how to decide the value of $\beta$? When $\beta$ is smaller, the difference between $p_\lambda$ and $p_\mathcal{N}$ is less, i.e. the representation ability of $p_\lambda$ is severely limited. When $\beta$ is larger, $p_\lambda$ is farther from $p_\mathcal{N}$. But noticing that in \cref{eq:final_optimization}, we simplify the optimization of $D$ by a fixed $D$ obtained in $W^1(p^\dag, p^*)$, if $p_\lambda$ is too far from $p_\mathcal{N}$, this approximation will become invalid. Consequently, $\beta$ should be set to an appropriate value which can't limit the representation ability of $p_\lambda$ and could make sure the approximation $D$ is valid. It is important to realize that the Pull-back Prior is serving for better ELBO. Whatever the representation ability of $p_\lambda$ is limited or approximation $D$ is invalid, the ELBO will suffer. Therefore, it is reasonable to search $\beta$ by the optimization for ELBO ($\lambda$ contains $\beta$ and $\omega$, which is the parameters of $D$):
 \begin{equation}
-	\beta = \arg \min_{\beta} \mathcal{L}(\theta, \phi, \lambda) = \arg \min_{\beta} \mathcal{L}(\theta, \phi, \beta, \omega) \tag{8}
+	\beta = \arg \min_{\beta} \mathcal{L}(\theta, \phi, \lambda) = \arg \min_{\beta} \mathcal{L}(\theta, \phi, \beta, \omega) \tag{10}
 \end{equation}
 The optimization process of $\beta$ depends on $\partial \mathcal{L}/\partial \beta$:
 \begin{align*}\label{eq:behavior_of_beta}
 \frac{\partial \mathcal{L}}{\partial \beta} &= \E_{q_\phi(z)}[ -D(G(z))] - \frac{\partial Z}{\partial \beta} \\
-&= \E_{p_\lambda(z)}[ D(G(z))] - \E_{q_\phi(z)}[ D(G(z))]  \tag{9}
+&= \E_{p_\lambda(z)}[ D(G(z))] - \E_{q_\phi(z)}[ D(G(z))]  \tag{11}
 \end{align*}
 The 1st term in \cref{eq:behavior_of_beta} is the mean of discriminator on data generated from $p_\lambda$. The 2nd term in \cref{eq:behavior_of_beta} is the mean of discriminator on reconstructed data which is nearly same as real data when reconstruction is well-trained. Hence, $\partial \mathcal{L}/\partial \beta = 0$ represents that the discriminator can't distinguish the reconstructed data (nearly same as real data) and generated data. It coincides the philosophy of GAN. 
 
@@ -29,13 +29,13 @@ However, as we mentioned before, $q_\phi(z)$ is intractable to compute the exact
 where $x^{(j)}$ is one of real data, $N$ is the size of training set. To reduce the error, $q_\phi(z|x^{(j)})$ should be one of the largest in summation. Therefore, we firstly choose $x^{(j)}$, then sample $z$ from $q_\phi(z|x^{(j)})$ (by this way, $q_\phi(z|x^{(j)})$ will be large enough), and finally set $\frac{1}{N} q_\phi(z|x^{(j)})$ as a bias estimation for $q_\phi(z)$. When $p^*(x)$ consists of numerous data (\EG in MNIST the input of model is sampled from real images), $p^*(x)$ is sampled from another distribution $p^*(e)$, and $N$ might be very large. The situation with finite $N$ can be seen as a special case that $p^*(x|e) = \delta(x - e)$. We introduce another ELBO which use $q_\phi(z|e)$ instead of $q_\phi(z|x)$:
 \begin{align*}~\label{eq:another_elbo}
 	&\E_{p^*(x)} \ln p_\theta(x) \geq \E_{p^*(e)} \E_{p^*(x|e)} \ln \E_{q_\phi(z|e)} \frac{p_\theta(x|z)p_\theta(z)}{q_\phi(z|e)} \\
-	 &= \E_{p^*(e)} \E_{p^*(x|e)} \E_{q_\phi(z|e)} \ln \frac{p_\theta(x|z)p_\theta(z)}{q_\phi(z|e)} \tag{10} \\
+	 &= \E_{p^*(e)} \E_{p^*(x|e)} \E_{q_\phi(z|e)} \ln \frac{p_\theta(x|z)p_\theta(z)}{q_\phi(z|e)} \tag{12} \\
 	 &= \E_{p^*(x)} \ln p^*(x) - \E_{p^*(e)} \E_{p^*(x|e)} KL(q_\phi(z|e), p_\theta(z|x))
 \end{align*} 
 where $p^*(x|e)$ means the sampling process from $e$, usually Bernouli distribution. \cref{eq:another_elbo} is similar to the original ELBO~\cref{eq:ELBO}, and the above conclusion about learnable prior holds for \cref{eq:another_elbo} by repeating above inference. Additionally, the assumption $D(G(z)) = \E_{p_\theta(x|z)} D(x)$ in \cref{subsec:inference} can be seen as an extension definition $D(e) = \E_{p^*(x|e)} D(x)$, which extends the definition of $D$ from $\{0, 1\}^m$ to $[0, 1]^m$, where $m$ is the dimension of data. % Additionally, when $p_\theta(x|z)$ and $p^*(x|e)$ is both Bernouli, term $\E_{p^*(x|e)} \ln p_\theta(x|z)$ has analytical solution $x\log e+(1-x)\log(1-e)$, which could make the training and evaluation more stable (don't need sample $x$). 
 Since $q_\phi(z|e)$ is known, above bias estimation of $q_\phi(z)$ is feasible by $\frac{1}{N} q_\phi(z|e^{(j)})$. $\hat{q}_\phi(z)$ denotes the bias estimation of $q_\phi(z)$. Then, a bias estimation $\hat{Z}$ is given by:
 \begin{align*}\label{eq:Z_estimator}
-	Z = \E_{q_\phi(z)}\frac{f_\lambda(z)}{q_\phi(z)} \leq \E_{q_\phi(z)} \frac{f_\lambda(z)}{\hat{q}_\phi(z)} = \hat{Z} \tag{10}
+	Z = \E_{q_\phi(z)}\frac{f_\lambda(z)}{q_\phi(z)} \leq \E_{q_\phi(z)} \frac{f_\lambda(z)}{\hat{q}_\phi(z)} = \hat{Z} \tag{12}
 \end{align*}
 
 Because $\beta$ is optimized from small to large during training, we use both estimations for $Z$ in training. After training, $\beta$ is large and $p_\lambda$ approach to $q_\phi$ by \cref{eq:behavior_of_beta}, therefore we use \cref{eq:Z_estimator} for computing the final value of $Z$. The last thing we need to check is that the bias of estimation will not improve the log-likelihood in evaluation:

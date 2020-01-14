@@ -89,7 +89,7 @@ class ExpConfig(spt.Config):
     log_Z_x_samples = 64
 
     len_train = 50000
-    sample_n_z = 100
+    sample_n_z = 1
     fid_samples = 50000
     fid_test_times = 10
 
@@ -989,6 +989,7 @@ def main():
                 p_net(observed={'z': reconstruct_z}, beta=beta)['x'].distribution.mean,
                 (-1,) + config.x_shape
             )
+            plot_origin_energy = D_psi(plot_origin_net['x'])
             plot_reconstruct_energy = D_psi(reconstruct_plots)
             gan_z_pure_energy = plot_net['z'].distribution.log_prob(gan_z).pure_energy
             gan_z_energy = plot_net['z'].distribution.log_prob(gan_z).energy
@@ -1002,88 +1003,60 @@ def main():
                 extra_index = loop.epoch
             with loop.timeit('plot_time'):
                 # plot reconstructs
-                for [x] in reconstruct_test_flow:
+                for [x] in reconstruct_train_flow:
                     x_samples = bernouli_sampler.sample(x)
-                    images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
-                    images[::3, ...] = np.round(255.0 * x)
-                    images[1::3, ...] = np.round(255.0 * x_samples)
-                    batch_reconstruct_plots, batch_reconstruct_z = session.run(
+                    batch_reconstruct_plots, begin_reconstruct_z = session.run(
                         [reconstruct_plots, reconstruct_z], feed_dict={input_x: x_samples, input_origin_x: x})
-                    images[2::3, ...] = np.round(batch_reconstruct_plots)
                     # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
-                    save_images_collection(
-                        images=images,
-                        filename='plotting/test.reconstruct/{}.png'.format(extra_index),
-                        grid_size=(20, 15),
-                        results=results,
-                    )
                     break
+
+                begin_reconstruct_z = np.expand_dims(begin_reconstruct_z, 1)
+                end_reconstruct_z = np.random.randn(config.sample_n_z, 1, config.z_dim)
+
+                print('{}-plot_samples'.format(extra_index))
+                length = 8
+                images = np.zeros((length * 2 - 1,) + config.x_shape, dtype=np.uint8)
+                interpolated_energy_list = []
+                for i in range(0, length):
+                    weight = 1.0 * i / (length - 1)
+                    interpolated_z = weight * end_reconstruct_z + (1.0 - weight) * begin_reconstruct_z
+                    batch_interpolated_plots, batch_interpolated_energy = session.run(
+                        [x_origin_plots, plot_origin_energy], feed_dict={
+                            initial_z: interpolated_z
+                        })
+                    images[i] = batch_interpolated_plots
+                    interpolated_energy_list.append(batch_interpolated_energy)
 
                 for [x] in reconstruct_train_flow:
                     x_samples = bernouli_sampler.sample(x)
-                    images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
-                    images[::3, ...] = np.round(255.0 * x)
-                    images[1::3, ...] = np.round(255.0 * x_samples)
-                    batch_reconstruct_plots, batch_reconstruct_z = session.run(
+                    batch_reconstruct_plots, begin_reconstruct_z = session.run(
                         [reconstruct_plots, reconstruct_z], feed_dict={input_x: x_samples, input_origin_x: x})
-                    images[2::3, ...] = np.round(batch_reconstruct_plots)
                     # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
+                    break
+
+                begin_reconstruct_z = np.expand_dims(begin_reconstruct_z, 1)
+                tmp = begin_reconstruct_z
+                end_reconstruct_z = tmp
+                begin_reconstruct_z = end_reconstruct_z
+                for i in range(1, length):
+                    weight = 1.0 * i / (length - 1)
+                    interpolated_z = weight * end_reconstruct_z + (1.0 - weight) * begin_reconstruct_z
+                    batch_interpolated_plots, batch_interpolated_energy = session.run(
+                        [x_origin_plots, plot_origin_energy], feed_dict={
+                            initial_z: interpolated_z
+                        })
+                    images[length + i - 1] = batch_interpolated_plots
+                    interpolated_energy_list.append(batch_interpolated_energy)
+
+                if np.max(interpolated_energy_list) - max(interpolated_energy_list[0],
+                                                          interpolated_energy_list[-1]) > 0.05:
+                    print(interpolated_energy_list)
                     save_images_collection(
                         images=images,
                         filename='plotting/train.reconstruct/{}.png'.format(extra_index),
-                        grid_size=(20, 15),
+                        grid_size=(config.sample_n_z, length * 2 - 1),
                         results=results,
                     )
-                    break
-
-                if loop.epoch > config.warm_up_start:
-                    # plot samples
-                    with loop.timeit('gan_sample_time'):
-                        gan_images, batch_z, batch_z_energy, batch_z_pure_energy = session.run(
-                            [gan_plots, gan_z, gan_z_energy, gan_z_pure_energy])
-
-                    try:
-                        save_images_collection(
-                            images=np.round(gan_images),
-                            filename='plotting/sample/gan-{}.png'.format(extra_index),
-                            grid_size=(10, 10),
-                            results=results,
-                        )
-                    except Exception as e:
-                        print(e)
-
-                    mala_images = None
-                    if loop.epoch >= config.max_epoch:
-
-                        step_length = config.smallest_step
-                        with loop.timeit('mala_sample_time'):
-                            for i in range(0, 101):
-                                [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
-                                 batch_history_ratio] = session.run(
-                                    [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z,
-                                     plot_history_ratio],
-                                    feed_dict={
-                                        initial_z: batch_z,
-                                        mcmc_alpha: np.asarray([step_length])
-                                    })
-                                batch_z = batch_history_z[-1]
-
-                                if i % 100 == 0:
-                                    print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
-                                    try:
-                                        save_images_collection(
-                                            images=np.round(images),
-                                            filename='plotting/sample/{}-MALA-{}.png'.format(extra_index, i),
-                                            grid_size=(10, 10),
-                                            results=results,
-                                        )
-                                    except Exception as e:
-                                        print(e)
-
-                        mala_images = images
-                    ori_images = mala_images
-
-                    return gan_images, mala_images, ori_images
 
     # prepare for training and testing data
     (_x_train, _y_train), (_x_test, _y_test) = \
@@ -1098,9 +1071,9 @@ def main():
     Z_compute_flow = spt.DataFlow.arrays([x_train, x_train], config.test_batch_size, shuffle=True, skip_incomplete=True)
     Z_compute_flow = Z_compute_flow.map(lambda x, y: [bernouli_sampler.sample(x), y])
     reconstruct_train_flow = spt.DataFlow.arrays(
-        [x_train], 100, shuffle=True, skip_incomplete=False)
+        [x_train], config.sample_n_z, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(
-        [x_test], 100, shuffle=True, skip_incomplete=False)
+        [x_test], config.sample_n_z, shuffle=True, skip_incomplete=False)
 
     test_flow = spt.DataFlow.arrays(
         [x_test, x_test],
@@ -1134,7 +1107,7 @@ def main():
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega', 'D_kappa'],
-                           max_epoch=config.max_epoch + 1,
+                           max_epoch=config.max_epoch + 1000,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
@@ -1144,7 +1117,6 @@ def main():
                            checkpoint_epoch_freq=100,
                            restore_checkpoint=restore_checkpoint
                            ) as loop:
-
             evaluator = spt.Evaluator(
                 loop,
                 metrics={'test_nll': test_nll, 'test_lb': test_lb,
@@ -1166,45 +1138,7 @@ def main():
             n_critical = config.n_critical
             # adversarial training
             for epoch in epoch_iterator:
-                dataset_img = np.tile(_x_train, (1, 1, 1, 3))
-                gan_img = []
-                mala_img = []
-                ori_img = []
-                for i in range(config.fid_samples // config.sample_n_z):
-                    gan_images, mala_images, ori_images = plot_samples(loop, 10000 + i)
-                    gan_img.append(gan_images)
-                    mala_img.append(mala_images)
-                    ori_img.append(ori_images)
-                    print('{}-th sample finished...'.format(i))
-
-                gan_img = np.concatenate(gan_img, axis=0).astype('uint8')
-                gan_img = np.asarray(gan_img)
-                gan_img = np.tile(gan_img, (1, 1, 1, 3))
-                mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
-                mala_img = np.asarray(mala_img)
-                mala_img = np.tile(mala_img, (1, 1, 1, 3))
-                np.savez('sample_store', gan_img=gan_img, ori_img=ori_img, mala_img=mala_img)
-                for i in range(config.fid_test_times):
-                    FID = get_fid(gan_img, dataset_img)
-                    IS_mean, IS_std = get_inception_score(gan_img)
-                    loop.collect_metrics(FID_gan=FID)
-                    loop.collect_metrics(IS_gan=IS_mean)
-
-                    FID = get_fid(mala_img, dataset_img)
-                    IS_mean, IS_std = get_inception_score(mala_img)
-                    loop.collect_metrics(FID=FID)
-                    loop.collect_metrics(IS=IS_mean)
-
-                    # ori_img = np.concatenate(ori_img, axis=0).astype('uint8')
-                    # ori_img = np.asarray(ori_img)
-                    # FID = get_fid(ori_img, dataset_img)
-                    # IS_mean, IS_std = get_inception_score(ori_img)
-                    # loop.collect_metrics(FID_ori=FID)
-                    # loop.collect_metrics(IS_ori=IS_mean)
-
-                    loop.collect_metrics(lr=learning_rate.get())
-                    loop.print_logs()
-
+                plot_samples(loop, epoch)
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')
     results.close()
