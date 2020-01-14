@@ -89,7 +89,7 @@ class ExpConfig(spt.Config):
     log_Z_x_samples = 64
 
     len_train = 50000
-    sample_n_z = 100
+    sample_n_z = 1
     fid_samples = 50000
     fid_test_times = 10
 
@@ -1005,39 +1005,58 @@ def main():
                 # plot reconstructs
                 for [x] in reconstruct_train_flow:
                     x_samples = bernouli_sampler.sample(x)
-                    images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
-                    images[::3, ...] = np.round(255.0 * x)
-                    images[1::3, ...] = np.round(255.0 * x_samples)
                     batch_reconstruct_plots, begin_reconstruct_z = session.run(
                         [reconstruct_plots, reconstruct_z], feed_dict={input_x: x_samples, input_origin_x: x})
-                    images[2::3, ...] = np.round(batch_reconstruct_plots)
                     # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
                     break
 
-                for [x] in reconstruct_train_flow:
-                    x_samples = bernouli_sampler.sample(x)
-                    images = np.zeros((300,) + config.x_shape, dtype=np.uint8)
-                    images[::3, ...] = np.round(255.0 * x)
-                    images[1::3, ...] = np.round(255.0 * x_samples)
-                    batch_reconstruct_plots, end_reconstruct_z = session.run(
-                        [reconstruct_plots, reconstruct_z], feed_dict={input_x: x_samples, input_origin_x: x})
-                    images[2::3, ...] = np.round(batch_reconstruct_plots)
-                    # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
-                    break
+                begin_reconstruct_z = np.expand_dims(begin_reconstruct_z, 1)
+                end_reconstruct_z = np.random.randn(config.sample_n_z, 1, config.z_dim)
 
+                print('{}-plot_samples'.format(extra_index))
                 length = 8
+                images = np.zeros((length * 2 - 1,) + config.x_shape, dtype=np.uint8)
+                interpolated_energy_list = []
                 for i in range(0, length):
-                    weight = 1.0 * i / length
+                    weight = 1.0 * i / (length - 1)
                     interpolated_z = weight * end_reconstruct_z + (1.0 - weight) * begin_reconstruct_z
                     batch_interpolated_plots, batch_interpolated_energy = session.run(
                         [x_origin_plots, plot_origin_energy], feed_dict={
                             initial_z: interpolated_z
                         })
-                    images = np.zeros((length * 1,) + config.x_shape, dtype=np.uint8)
-                    images[i::length] = batch_interpolated_plots
-                    print('{}-th interploate energy is {}'.format(i, batch_interpolated_energy))
+                    images[i] = batch_interpolated_plots
+                    interpolated_energy_list.append(batch_interpolated_energy)
 
+                for [x] in reconstruct_train_flow:
+                    x_samples = bernouli_sampler.sample(x)
+                    batch_reconstruct_plots, begin_reconstruct_z = session.run(
+                        [reconstruct_plots, reconstruct_z], feed_dict={input_x: x_samples, input_origin_x: x})
+                    # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
+                    break
 
+                begin_reconstruct_z = np.expand_dims(begin_reconstruct_z, 1)
+                tmp = begin_reconstruct_z
+                end_reconstruct_z = tmp
+                begin_reconstruct_z = end_reconstruct_z
+                for i in range(1, length):
+                    weight = 1.0 * i / (length - 1)
+                    interpolated_z = weight * end_reconstruct_z + (1.0 - weight) * begin_reconstruct_z
+                    batch_interpolated_plots, batch_interpolated_energy = session.run(
+                        [x_origin_plots, plot_origin_energy], feed_dict={
+                            initial_z: interpolated_z
+                        })
+                    images[length + i - 1] = batch_interpolated_plots
+                    interpolated_energy_list.append(batch_interpolated_energy)
+
+                if np.max(interpolated_energy_list) - max(interpolated_energy_list[0],
+                                                          interpolated_energy_list[-1]) > 0.05:
+                    print(interpolated_energy_list)
+                    save_images_collection(
+                        images=images,
+                        filename='plotting/train.reconstruct/{}.png'.format(extra_index),
+                        grid_size=(config.sample_n_z, length * 2 - 1),
+                        results=results,
+                    )
 
     # prepare for training and testing data
     (_x_train, _y_train), (_x_test, _y_test) = \
@@ -1052,9 +1071,9 @@ def main():
     Z_compute_flow = spt.DataFlow.arrays([x_train, x_train], config.test_batch_size, shuffle=True, skip_incomplete=True)
     Z_compute_flow = Z_compute_flow.map(lambda x, y: [bernouli_sampler.sample(x), y])
     reconstruct_train_flow = spt.DataFlow.arrays(
-        [x_train], 1, shuffle=True, skip_incomplete=False)
+        [x_train], config.sample_n_z, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(
-        [x_test], 1, shuffle=True, skip_incomplete=False)
+        [x_test], config.sample_n_z, shuffle=True, skip_incomplete=False)
 
     test_flow = spt.DataFlow.arrays(
         [x_test, x_test],
@@ -1088,7 +1107,7 @@ def main():
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega', 'D_kappa'],
-                           max_epoch=config.max_epoch + 100,
+                           max_epoch=config.max_epoch + 1000,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
