@@ -1,6 +1,6 @@
 \section{Pull-back Prior}\label{sec:pull_back_prior}
 
-\subsection{Intuition}
+\subsection{Intuition}\label{subsec:intuition}
 We follow the way of learnable priors and propose Pull-back Prior to improve the representation ability of VAE. It is the basic idea that the optimal solution, aggregated prior, is intractable and non-optimal solution, Pull-back Prior, could lead to better performance than an approximation aggregated prior. The formula of Pull-back Prior is given by:
 \begin{equation}\label{eq:pull_back_prior}
 	\ln p_\lambda(z) = \ln p_\mathcal{N}(z) - \beta * D(G(z)) - \ln Z \tag{4}

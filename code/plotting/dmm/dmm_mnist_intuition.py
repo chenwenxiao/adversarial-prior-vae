@@ -1018,7 +1018,7 @@ def main():
                 images = np.zeros((length * 2 - 1,) + config.x_shape, dtype=np.uint8)
                 interpolated_energy_list = []
                 for i in range(0, length):
-                    weight = 1.0 * i / (length - 1)
+                    weight = 0.4 * i / (length - 1)
                     interpolated_z = weight * end_reconstruct_z + (1.0 - weight) * begin_reconstruct_z
                     batch_interpolated_plots, batch_interpolated_energy = session.run(
                         [x_origin_plots, plot_origin_energy], feed_dict={
@@ -1029,15 +1029,13 @@ def main():
 
                 for [x] in reconstruct_train_flow:
                     x_samples = bernouli_sampler.sample(x)
-                    batch_reconstruct_plots, begin_reconstruct_z = session.run(
+                    batch_reconstruct_plots, end_reconstruct_z = session.run(
                         [reconstruct_plots, reconstruct_z], feed_dict={input_x: x_samples, input_origin_x: x})
                     # print(np.mean(batch_reconstruct_z ** 2, axis=-1))
                     break
 
-                begin_reconstruct_z = np.expand_dims(begin_reconstruct_z, 1)
-                tmp = begin_reconstruct_z
-                end_reconstruct_z = tmp
-                begin_reconstruct_z = end_reconstruct_z
+                end_reconstruct_z = np.expand_dims(end_reconstruct_z, 1)
+                begin_reconstruct_z = interpolated_z
                 for i in range(1, length):
                     weight = 1.0 * i / (length - 1)
                     interpolated_z = weight * end_reconstruct_z + (1.0 - weight) * begin_reconstruct_z
@@ -1107,7 +1105,7 @@ def main():
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega', 'D_kappa'],
-                           max_epoch=config.max_epoch + 1000,
+                           max_epoch=config.max_epoch + 100,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
@@ -1119,14 +1117,9 @@ def main():
                            ) as loop:
             evaluator = spt.Evaluator(
                 loop,
-                metrics={'test_nll': test_nll, 'test_lb': test_lb,
-                         'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb,
-                         'reconstruct_energy': reconstruct_energy,
-                         'real_energy': real_energy,
-                         'pd_energy': pd_energy, 'pn_energy': pn_energy,
-                         'test_recon': test_recon, 'kl_adv_and_gaussian': kl_adv_and_gaussian, 'test_mse': test_mse},
+                metrics={'real_energy': real_energy},
                 inputs=[input_x, input_origin_x],
-                data_flow=test_flow,
+                data_flow=train_flow,
                 time_metric_name='test_time'
             )
 
@@ -1138,6 +1131,14 @@ def main():
             n_critical = config.n_critical
             # adversarial training
             for epoch in epoch_iterator:
+                if epoch == config.max_epoch + 1:
+                    energy_list = []
+                    for [x, ox] in train_flow:
+                        energy_list.append(session.run(real_energy, feed_dict={
+                            input_x: x,
+                            input_origin_x: ox
+                        }))
+                    print(np.mean(energy_list), np.std(energy_list))
                 plot_samples(loop, epoch)
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')
