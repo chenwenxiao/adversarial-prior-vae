@@ -3,7 +3,7 @@ import subprocess
 
 for parent, dirs, files in os.walk('.'):
     for f in files:
-        if f.endswith('.pdf'):
+        if f.endswith(('.pdf', '.png')):
             src = os.path.join(parent, f)
             dst_dir = os.path.join('../dist.strip/', parent)
             dst = os.path.join(dst_dir, f)
@@ -11,5 +11,4 @@ for parent, dirs, files in os.walk('.'):
                 os.makedirs(dst_dir)
             if not os.path.exists(dst):
                 print('* {} -> {}'.format(src, dst))
-                subprocess.check_call(['pdfcrop', src ,dst])
-
+                subprocess.check_call(['pdfcrop', src, dst])
