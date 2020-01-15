@@ -3,7 +3,7 @@ import subprocess
 
 for parent, dirs, files in os.walk('.'):
     for f in files:
-        if f.endswith(('.pdf', '.png')):
+        if f.endswith(('.pdf')):
             src = os.path.join(parent, f)
             dst_dir = os.path.join('../dist.strip/', parent)
             dst = os.path.join(dst_dir, f)

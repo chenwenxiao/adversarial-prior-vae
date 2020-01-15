@@ -15,7 +15,7 @@ Before the starting of inference of Pull-back Prior, we need to review the infer
 
 Choosing another divergence will lead to a new learnable prior rather than $q_\phi$. We could make this new learnable prior feasible and efficient, but however, it will never be the theoretical optimal prior, \IE the essence of DMA is to get an acceptable trade-off between theory and practice. 
 
-We choose Wasserstein distance for 2nd optimization, because it shows wonderful performance in WGAN and has stable theoretical basis in transition theory. Considering following optimization:
+We choose Wasserstein distance for 2nd optimization, because it shows wonderful performance in WGAN and has stable theoretical basis in theory of optimal transport. Considering following optimization:
 \begin{align*}\label{eq:direct_2nd_optimization}
 	& \min_{\lambda} \hat{\mathcal{L}}(\theta, \phi, \lambda) = \min_{\lambda} W^1(p_\theta, p^*) = \\
 	& \min_{\lambda} \sup_{Lip(D) \leq 1} \{\E_{p_\lambda(z)} \E_{p_\theta(x|z)} D(x)  - \E_{p^*(x)} D(x)\} 
