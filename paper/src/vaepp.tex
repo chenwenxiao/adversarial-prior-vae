@@ -1,11 +1,11 @@
 \section{Training and Sampling}\label{sec:vaepp}
 In this section, we will propose two training methods and a sampling method for VAEPP. The main difference between these two training method is the selection of discriminator. 
 
-\subsection{Baseline training} \label{subsec:naive_vaepp}
+\subsection{Naive training for VAEPP} \label{subsec:naive_vaepp}
 Discriminator is selected by $W^1(p^\dag, p^*)$ where $p^\dag(x) = \E_{p_\mathcal{N}(z)} p_\theta(x|z)$, and it could be trained directly by WGAN-GP or WGAN-div. 
 Naive training algorithm for VAEPP is provided in \cref{alg:vaepp}, where the training of WGAN and SGVB runs alternately. 
 \begin{algorithm}[tb]
-\caption{Baseline training algorithm for VAEPP}
+\caption{Naive training algorithm for VAEPP}
 \label{alg:vaepp}
 \textbf{Require}: The gradient penalty algorithm $R$, the batch size $b$, the number of critic iterations per generator iteration $n_c$, the parameters for Adam Optimizers, $\tau$. 
 
@@ -30,7 +30,7 @@ Naive training algorithm for VAEPP is provided in \cref{alg:vaepp}, where the tr
 \end{algorithmic}
 \end{algorithm}
 
-\subsection{Combing training} \label{subsec:improve_of_vaepp}
+\subsection{Combing training for VAEPP} \label{subsec:improve_of_vaepp}
 However, we notice that in the training process, the optimization of $\omega$ may influence the optimization of $\theta, \phi, \beta$, \EG the optimization for $\omega$ significantly worsen the loss function. The reason is that the optimization for $\omega$ is independent to the optimization of $\theta, \phi, \beta$ in \cref{alg:vaepp}. This independence is from the philosophy of GAN but may lower the performance of VAEPP (log-likelihood). Hence, it is necessary to combine these two optimization into one to improve the performance and stability of VAEPP. Our solution is to use SGVB with gradient penalty regularizer to train VAEPP, \IE $\max_{\theta, \phi, \beta} \max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$. 
 
 In such optimization, the behavior of $\theta, \phi, \beta$ is same as \cref{alg:vaepp} since the optimization for them is same. For analysis of $\omega$, we firstly show an inequality of $\ln Z$:
@@ -40,7 +40,7 @@ In such optimization, the behavior of $\theta, \phi, \beta$ is same as \cref{alg
 Then $\max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$ indeed find a suboptimal solution for $W^1(p^\dag, p^*)$ (sign $\simeq$ means that optimizations at left and right are equivalent):
 \begin{align*}\label{eq:improve_vaepp}
 	&\max_{Lip(D) \leq 1} \mathcal{L} \simeq \max_{Lip(D) \leq 1} \{ -\E_{q_\phi(z)} \beta*D(G(z)) - \ln Z \}\\ 
-	&\leq \beta \max_{Lip(D) \leq 1} \{ \E_{p_\mathcal{N}(z)} D(G(z)) - E_{q_\phi(z)} D(G(z)) \} \tag{11} \\
+	&\leq \beta \max_{Lip(D) \leq 1} \{ \E_{p_\mathcal{N}(z)} D(G(z)) - E_{q_\phi(z)} D(G(z)) \} \tag{9} \\
 	&= \beta W^1(p^\dag, p_r) \approx \beta W^1(p^\dag, p^*) 
 \end{align*}
 where $p_r$ denotes $p_r(x) = \E_{q_\phi(z)} p_\theta(x|z)$, consisting of reconstructed data. The last approximation sign is from the fact that $p_r \rightarrow p^*$ after a few epoch in the training of VAE. 
@@ -66,7 +66,7 @@ Thanks to the stable and efficient gradient penalty regularizer term provided by
 \end{algorithmic}
 \end{algorithm}
 
-\subsection{Sampling}
+\subsection{Sampling from VAEPP}
 It is not easy to sample $z$ from $p_\lambda(z)$ since the formula of $p_\lambda(z)$ is complicated. Accept/Reject Sampling (ARS) is also not useful for $p_\lambda$ because ARS requires that $p_\lambda(z) / p_\mathcal{N}(z)$ is bounded by a constant $M$ (It means $\beta$ is limited to a very small value), such that a sample could be sampled in $M$ times. 
 
 Langevin Dynamics may be a useful sampling method because it only requires that $\nabla_z \log p_\lambda(z)$ is computable and the initial $z_0$ has an enough high density~\cite{song2019generative}. Moreover, MEG~\cite{kumar2019maximum} have implemented a Metropolis-Adjusted Langevin Algorithm (MALA) for sampling where the formula of density is similar to $p_\lambda$ and also contains a discriminator term. But the selection of initial $z_0$ whose density is high enough is still a problem. 

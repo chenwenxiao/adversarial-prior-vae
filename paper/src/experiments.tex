@@ -1,6 +1,6 @@
 \section{Experiments}
 VAEPP is evaluated in vast common datasets including MNIST, Fashion-MNIST~\cite{xiao2017/online}, Omniglot~\cite{lake2015human}, CIFAR-10~\cite{krizhevsky2009learning} and CelebA~\cite{liu2015deep} with metrics log-likelihood, FID~\cite{heusel2017gans} and IS~\cite{salimans2016improved} to show the performance of VAEPP. Moreover, we try to help VAE to solve OoD problem by the additional information of discriminator. 
-\subsection{Log-likelihood}
+\subsection{Log-likelihood Evaluatoin}
 \begin{table}[tb]
 \centering
 \begin{tabular}{lrr}  
@@ -147,8 +147,10 @@ It is hard to reach best performance in FID, IS and log-likelihood simultaneousl
 	}
 	\label{fig:interpolate}
 \end{figure}
-	
-To validate the \cref{eq:behavior_of_beta}, we calculate the $\E_{p_\lambda(z)}[ D(G(z))]$ (discriminator on generated samples) and $\E_{q_\phi(z)}[ D(G(z))]$ (discriminator on reconstructed samples). For better understanding, the value of discriminator in this section is normalized into $\mathcal{N}(0, 1)$ in training set. They are -12.3467 and -12.2947 respectively on CIFAR-10, which is nearly same as discriminator on reconstructed samples. 
+
+For better understanding, the value of discriminator in this section is normalized into $\mathcal{N}(0, 1)$ in training set.
+
+To validate the \cref{eq:behavior_of_beta}, we calculate the $\E_{p_\lambda(z)}[ D(G(z))]$ (discriminator on generated samples) and $\E_{q_\phi(z)}[ D(G(z))]$ (discriminator on reconstructed samples). They are -12.3467 and -12.2947 respectively on CIFAR-10, which is nearly same as discriminator on reconstructed samples. 
 
 To validate the assumption in \cref{subsec:inference} holds in actual experiment, we calculate $|\E_{p_\theta(x|z)}D(x) - D(G(z))|$ (0.0483) on CIFAR-10, which is acceptable small. To validate the intuition in \cref{subsec:intuition}, we visualize the discriminator of images in \cref{fig:interpolate}. 
 
