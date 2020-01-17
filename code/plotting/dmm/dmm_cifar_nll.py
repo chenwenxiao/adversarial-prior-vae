@@ -1320,6 +1320,8 @@ def main():
                     print('Mean energy is:')
                     print(np.mean(cifar_train_energy), np.mean(cifar_test_energy), np.mean(svhn_train_energy),
                           np.mean(svhn_test_energy))
+                    print(np.std(cifar_train_energy), np.std(cifar_test_energy), np.std(svhn_train_energy),
+                          np.std(svhn_test_energy))
 
                     # Draw the histogram or exrta the data here
 

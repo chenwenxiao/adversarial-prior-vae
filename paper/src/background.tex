@@ -9,19 +9,19 @@ Many generative models aim to minimize the KL-divergence between empirical distr
 \end{align*}
 where $q_\phi(z|x)$ is variational posterior (encoder) and $p_\theta(x|z)$ is true posterior (decoder). The training objective of VAE is $\EEE{p^*(x)}{\mathcal{L}(x; \theta, \phi)}$ and it is optimized by SGVB with re-parameterization trick. In vanilla VAE, prior $p_\theta(z)$ is chosen as the standard Gaussian distribution. 
 
-Recently, some researchers show that the simplistic prior could lead to poor latent representation and many learnable priors are proposed subsequently to improve the representation ability of prior~\cite{tomczak2018vae}. Most of them focus on the aggregated posterior $q_\phi(z)$, which is shown as the optimal prior for ELBO by following decomposition where $p_\lambda(z)$ denotes the learnable prior:
+Recently, some researchers show that the simplistic prior could lead to underfitting and many learnable priors are proposed subsequently to enrich prior~\cite{tomczak2018vae}. Most of them focus on the aggregated posterior $q_\phi(z)$, which is shown as the optimal prior for ELBO by following decomposition where $p_\lambda(z)$ denotes the learnable prior:
 \begin{align*} \label{eq:second-decomposition}
 \mathcal{L}(\theta, \phi, \lambda) = \E_{p^*(x)}\E_{q_\phi(z|x)} [ \ln p_\theta(x|z)] + \\ 
 \E_{p^*(x)}[\mathbb{H}[q_\phi(z|x)]] + \E_{q_\phi(z)} \ln p_\lambda(z) \tag{2}
 \end{align*}
-Notice that $p_\lambda(z)$ only appears in the last term and the optimal solution of $p_\lambda(z)$ is $q_\phi(z)$. However, $q_\phi(z)$ is intractable and \cite{tomczak2018vae,takahashi2019variational} try to obtain an approximation of it as prior. 
+Notice that $p_\lambda(z)$ only appears in the last term and the optimal solution of $p_\lambda(z)$ is $q_\phi(z)$. However, $q_\phi(z)$ is intractable and \cite{tomczak2018vae,takahashi2019variational} tries to approximate it. 
 
 \subsection{GAN and Wasserstein distance}
 
-The key idea of vanilla GAN is to train a generator to generate samples to deceive discriminator, and a discriminator to distinguish the generated samples and real samples. However, vanilla GAN is unstable in training process and WGAN and Wasserstein distance are introduced for tackling this problem. Wasserstein distance is based on the theory of optimal transport and it vastly extend the theory of GAN. 1st Wasserstein distance $W^1(\mu, \nu)$ is used for calculating the distance between two measures $\mu, \nu$. The dual form of Wasserstein distance is following:
+The key idea of vanilla GAN is to train a generator to generate samples to deceive discriminator, and a discriminator to distinguish the generated samples and real samples. However, vanilla GAN is unstable in training process. WGAN introduce Wasserstein distance to tackle this problem. 1st Wasserstein distance $W^1(\mu, \nu)$ is used for calculating the distance between two measures $\mu, \nu$. The dual form of Wasserstein distance is following:
 \begin{align*} \label{eq:Wasserstein-distance}
 W^1(\mu, \nu) = \sup_{Lip(D) \leq 1} \{\E_{\mu(x)} D(x)  - \E_{\nu(x)} D(x)\} \tag{3}
 \end{align*}
 where $Lip(D) \leq 1$ means $D$ is 1-Lipschitz. WGAN is optimized by minimizing $W^1(p^*, p_\theta)$ which can be seen as a min-max optimization, whose parameters are $D$ and $\theta$. 
 
-WGAN makes progress toward stable training but sometimes fails to converge due to the use of weight clipping to enforce the Lipschitz constrain. WGAN-GP~\cite{gulrajani2017improved} pointed out this issue and improved WGAN by gradient penalty technique to implement more stable training and WGAN-div~\cite{wu2018wasserstein} proposed alternative method of gradient penalty. These techniques make WGAN framework become more robust and stable. 
+WGAN makes progress toward stable training but sometimes fails to converge due to the use of weight clipping to enforce the Lipschitz constrain. WGAN-GP~\cite{gulrajani2017improved} and WGAN-div~\cite{wu2018wasserstein} improve WGAN by gradient penalty technique to achieve a more stable training. These techniques make WGAN framework become more robust and stable. 
