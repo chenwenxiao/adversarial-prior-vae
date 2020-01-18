@@ -27,7 +27,7 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 128
+    z_dim = 112
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -1130,7 +1130,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/1e/0c/d434dabfcaec83c161e5/checkpoint/checkpoint/checkpoint.dat-936000' #None
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/60/1c/d434dabfcaecf31612e5/checkpoint/checkpoint/checkpoint.dat-936000' #None
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),

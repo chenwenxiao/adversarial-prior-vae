@@ -1,0 +1,27 @@
+\section{Derivation of Pull-back Prior}~\label{subsec:inference}
+
+Reviewing the inference of aggregated posterior, the optimization $\min_{\theta, \phi, \lambda} \mathcal{L}(\theta, \phi, \lambda)$ could be deformed into $\min_{\theta, \phi} J(\theta, \phi)$, where $J(\theta, \phi) = \min_{\lambda} \mathcal{L}(\theta, \phi, \lambda)$. $J(\theta, \phi)$ means to search the the analytical optimal prior $\lambda$ when $\theta, \phi$ is given. When $\mathcal{L}$ is ELBO, the optimal solution in $J(\theta, \phi)$ is $p_\lambda(z) = q_\phi(z)$. Our idea is to set another objective function $\hat{\mathcal{L}}$ for $J(\theta, \phi)$, \IE search another optimal prior $\lambda$ for $J(\theta, \phi) = \min_{\lambda} \hat{\mathcal{L}}(\theta, \phi, \lambda)$. Because ELBO is derived by $KL(p_\theta, p^*)$, a candidate $\hat{\mathcal{L}}$ could be Wasserstein distance, $W^1(p_\theta, p^*)$. Considering following optimization:
+\begin{align*}\label{eq:direct_2nd_optimization}
+	& J(\theta, \phi) = \min_{\lambda} \hat{\mathcal{L}}(\theta, \phi, \lambda) = \min_{\lambda} W^1(p_\theta, p^*) = \\
+	& \min_{\lambda} \sup_{Lip(D) \leq 1} \{\E_{p_\lambda(z)} \E_{p_\theta(x|z)} D(x)  - \E_{p^*(x)} D(x)\} 
+	\tag{10}
+\end{align*}
+It is hard to get an analytical solution of $\lambda$ directly from \cref{eq:direct_2nd_optimization}, therefore we add an assumptions and an approximation to simplify it. Since $p_\theta(x|z)$ is usually a distribution with small variance, it is rational to assume $\E_{p_\theta(x|z)} D(x) = D(G(z))$ (It is an extension definition when posterior is Bernouli). Even though, the optimization $\sup_{Lip(D) \leq 1}$ is still tough because the optimization of $D$ is independent on $\lambda$. If we restrict $p_\lambda$ near the $p_\mathcal{N}$, an approximation $D$ could be used to replace it, \EG in \cref{subsec:naive_vaepp} or \cref{subsec:improve_of_vaepp}. Consequently, the simplified optimization is following:
+\begin{align*}\label{eq:final_optimization}
+	& \min_{\lambda} \{\E_{p_\lambda(z)} D(G(z))  - \E_{p^*(x)} D(x)\} \tag{11} \\
+	{\textbf{s.t. }} & KL(p_\lambda, p_\mathcal{N}) = \alpha, \qquad \int_{\mathcal{Z}} p_\lambda(z) \dd z = 1
+\end{align*}
+It could be solved by Lagrange multiplier method introduced by calculus of variation~\cite{gelfand2000calculus}. The Lagrange function with Lagrange multiplier $\eta, \gamma$ is following:
+\begin{align*}\label{eq:lagrange_function}
+& F(p_\lambda, \eta, \gamma) = \E_{p_\lambda(z)} D(G(z))  - \E_{p^*(x)} D(x) + \\
+& \eta (\int_{\mathcal{Z}} p_\lambda(z) \dd z - 1) + \gamma(KL(p_\lambda, p_\mathcal{N}) - \alpha) \tag{12}
+\end{align*}
+We solve \cref{eq:lagrange_function} by Euler-Lagrange equation:
+\begin{equation*}\label{eq:euler_lagrange_eqaution}
+	D(G(z)) + \eta + \gamma (\ln p_\lambda(z) + 1 - \ln p_\mathcal{N}(z)) = 0 \tag{13}
+\end{equation*}
+Therefore, $\ln p_\lambda(z) = \frac{1}{\gamma} D(G(z)) + \ln p_\mathcal{N}(z) + (\frac{\eta}{\gamma} - 1)$ is the optimal solution, where $\gamma$ is determined by $\alpha$ and $\eta$ is determined from condition $\int_{\mathcal{Z}} p_\lambda(z) \dd z = 1$.
+
+ Consequently, $\beta$ is determined by $\alpha$, representing how far $p_\lambda$ is from $p_\mathcal{N}$. In \cref{eq:final_optimization}, $\alpha$ is static and should be selected as an appropriate value, \IE $\beta$ should be searched, as \cref{subsec:determine_beta} does. \cref{eq:euler_lagrange_eqaution} holds for any discriminator $D$, and therefore the selection of $D$ plays an important role, which is discussed in \cref{subsec:naive_vaepp} and \cref{subsec:improve_of_vaepp}.
+ 
+ 
