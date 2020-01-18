@@ -12,13 +12,14 @@ where $q_\phi(z|x)$ is variational posterior (encoder) and $p_\theta(x|z)$ is tr
 Recently, some researchers show that the simplistic prior could lead to underfitting and many learnable priors are proposed subsequently to enrich prior~\cite{tomczak2018vae}. Most of them focus on the aggregated posterior $q_\phi(z)$, which is shown as the optimal prior for ELBO by following decomposition where $p_\lambda(z)$ denotes the prior maybe learnable:
 \begin{align*} \label{eq:second-decomposition}
 \mathcal{L}(\theta, \phi, \lambda) = \E_{p^*(x)}\E_{q_\phi(z|x)} [ \ln p_\theta(x|z)] + \\ 
-\E_{p^*(x)}[\mathbb{H}[q_\phi(z|x)]] + \E_{q_\phi(z)} \ln p_\lambda(z) \tag{2}
+\E_{p^*(x)}[\mathbb{H}[q_\phi(z|x)]] + \E_{q_\phi(z)} \ln p_\lambda(z) = \mathcal{I} + \mathcal{J} + \mathcal{K} \tag{2}
 \end{align*}
-Notice that $p_\lambda(z)$ only appears in the last term and the optimal solution of $p_\lambda(z)$ is $q_\phi(z)$. However, $q_\phi(z)$ is intractable and \cite{tomczak2018vae,takahashi2019variational} tries to approximate it. 
+where $\mathcal{I}, \mathcal{J}, \mathcal{K}$ denotes 3 terms respectively. 
+Notice that $p_\lambda(z)$ only appears in the last term $\mathcal{K}$ and the optimal solution of $p_\lambda(z)$ is $q_\phi(z)$. However, $q_\phi(z)$ is intractable. \cite{tomczak2018vae,takahashi2019variational} tries to approximate it but reaches limited performance. 
 
 \subsection{GAN and Wasserstein distance}
 
-The key idea of vanilla GAN is to train a generator to generate samples to deceive discriminator, and a discriminator to distinguish the generated samples and real samples. However, vanilla GAN is unstable in training process. WGAN introduce Wasserstein distance to tackle this problem. 1st Wasserstein distance $W^1(\mu, \nu)$ is used for calculating the distance between two measures $\mu, \nu$. The dual form of Wasserstein distance is following:
+In vanilla GAN, a generator is trained to generate samples for deceiving discriminator, and a discriminator to distinguish the generated samples and real samples. However, vanilla GAN is unstable in training process. WGAN introduce Wasserstein distance to tackle this problem. 1st Wasserstein distance $W^1(\mu, \nu)$ is used for calculating the distance between two measures $\mu, \nu$. The dual form of Wasserstein distance is following:
 \begin{align*} \label{eq:Wasserstein-distance}
 W^1(\mu, \nu) = \sup_{Lip(D) \leq 1} \{\E_{\mu(x)} D(x)  - \E_{\nu(x)} D(x)\} \tag{3}
 \end{align*}
