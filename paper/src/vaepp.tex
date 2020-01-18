@@ -2,11 +2,11 @@
 In this section, we will propose two training methods and a sampling method for VAEPP. The main difference between these two training method is the training method of discriminator. 
 
 \subsection{Naive training for VAEPP} \label{subsec:naive_vaepp}
-By \cref{subsec:inference}, a promised discriminator could be trained by:
+By \cref{subsec:inference}, an approximation discriminator is trained by:
 \begin{equation*}
 	W^1(p^\dag, p^*) = \sup_{Lip(D) \leq 1} \E_{p^\dag} D(x) - \E_{p^*} D(x)
 \end{equation*} 
-where $p^\dag(x) = \E_{p_\mathcal{N}(z)} p_\theta(x|z)$. It is an approximation discriminator to the real discriminator in $W^1(p_\theta, p^*)$. Since it is expensive to sample from $p_\theta$ in training, we use $p^\dag$ to replace. As the result, the discriminator maybe invalid when $p_\lambda$ is too far from $p_\mathcal{N}$. Fortunately, the training for $\beta$ can avoid this: when $D$ becomes invalid, ELBO will be worse and then $\beta$ will decrease. The other parameters is trained by SGVB:
+where $p^\dag(x) = \E_{p_\mathcal{N}(z)} p_\theta(x|z)$. The real discriminator should be obtained by $W^1(p_\theta, p^*)$. However, it is expensive to sample from $p_\theta$ in training and $W^1(p^\dag, p^*)$ is used to obtain an approximation discriminator. Therefore, the approximation discriminator may be invalid when $p_\lambda$ is too far from $p_\mathcal{N}$, \IE $\beta$ is too large. Fortunately, the training for $\beta$ can avoid this: when $\beta$ is too large and $D$ becomes invalid, ELBO will be worse and then $\beta$ will decrease. The other parameters is trained by SGVB:
 \begin{equation*}
 	\max_{\theta, \phi, \beta} \mathcal{L}(\theta, \phi, \beta, \omega)
 \end{equation*}

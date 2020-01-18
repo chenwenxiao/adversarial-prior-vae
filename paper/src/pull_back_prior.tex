@@ -62,9 +62,9 @@ It is given by:
 \end{align*}
 where $f_\lambda(z) = p_\mathcal{N}(z) \exp\{- \beta D(G(z))\}$ and $\hat{q}_\phi(z)$ is a lower-bound of $q_\phi(z)$. It is easy to show that
 \begin{align*}
-	p_\theta(x) &= \int \frac{1}{Z} p_\theta(x|z) f_\lambda(z) \dd z \geq \int \frac{1}{\hat{Z}} p_\theta(x|z) f_\lambda(z) \dd z \\
-\mathcal{K} &= \E_{q_\phi(z)} \frac{1}{Z} \ln f_\lambda(z) \geq \E_{q_\phi(z)} \frac{1}{\hat{Z}}\ln f_\lambda(z) = \mathcal{\hat{K}} \\
-\mathcal{L} &= \mathcal{I} + \mathcal{J} + \mathcal{K} \geq \mathcal{I} + \mathcal{J} + \mathcal{\hat{K}} = \mathcal{\hat{L}}
+	p_\theta(x) = \int \frac{1}{Z} p_\theta(x|z) f_\lambda(z) \dd z &\geq \int \frac{1}{\hat{Z}} p_\theta(x|z) f_\lambda(z) \dd z \\
+\mathcal{K} = \E_{q_\phi(z)} \frac{1}{Z} \ln f_\lambda(z) &\geq \E_{q_\phi(z)} \frac{1}{\hat{Z}}\ln f_\lambda(z) = \mathcal{\hat{K}} \\
+\mathcal{L} = \mathcal{I} + \mathcal{J} + \mathcal{K} &\geq \mathcal{I} + \mathcal{J} + \mathcal{\hat{K}} = \mathcal{\hat{L}}
 \end{align*}
 Above ineqaulities show that, if we replace $Z$ by $\hat{Z}$ we will obtain lower-bound of log-likelihood and ELBO. Such that $\hat{Z}$ could be used in training and evaluation, and it will not over-estimate log-likelihood and ELBO. 
 
