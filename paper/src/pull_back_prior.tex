@@ -74,7 +74,7 @@ The key of \cref{eq:Z_estimator} is the choice of $\hat{q}_\phi(z)$. As we menti
 \end{equation*}
 where $x^{(j)}$ is a real data, $N$ is the size of training set and RHS is the $\hat{q}_\phi(z)$. To reduce the gap between $\hat{q}_\phi(z)$ and $q_\phi(z)$, $q_\phi(z|x^{(j)})$ should be one of the largest in summation. Therefore, we firstly sample $x^{(j)}$ form dataset, and then sample $z$ from $q_\phi(z|x^{(j)})$. By this way, $q_\phi(z|x^{(j)})$ is  large enough. 
 
-In MNIST and other datasets consisting of Bernouli images, $N$ might be very large, because the number of Bernouli images sampled from finite real images might be numerous. We introduce ELBO based on $q_\phi(z|e)$ instead of $q_\phi(z|x)$:
+In MNIST and other Bernouli image datasets, the number of Bernouli images sampled from real images might be numerous and $\hat{q}_\phi(z)$ might be underestimiated. To solve this it, we propose ELBO based on $q_\phi(z|e)$ instead of $q_\phi(z|x)$:
 \begin{align*}~\label{eq:another_elbo}
 	&\E_{p^*(x)} \ln p_\theta(x) \geq \E_{p^*(e)} \E_{p^*(x|e)} \ln \E_{q_\phi(z|e)} \frac{p_\theta(x|z)p_\theta(z)}{q_\phi(z|e)} \\
 	 &= \E_{p^*(e)} \E_{p^*(x|e)} \E_{q_\phi(z|e)} \ln \frac{p_\theta(x|z)p_\theta(z)}{q_\phi(z|e)} \tag{7} \\

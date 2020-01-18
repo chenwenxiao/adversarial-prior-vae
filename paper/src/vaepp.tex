@@ -29,7 +29,7 @@ Above two training process is running alternatively, and it is called Naive trai
 \ENDFOR
 \FOR {$i = 1, \ldots, b$}
 \STATE Sample $e, x \sim p^*$, latent variable $z \sim p_\mathcal{N}$
-\STATE	$\hat{x} = \E_{p_\theta(x|z)}[x]$, get gradient penalty $\zeta \gets R(e, \hat{x})$
+\STATE	$\hat{e} = G(z)$, get gradient penalty $\zeta \gets R(e, \hat{e})$
 \STATE $L^{(i)} \gets D(\hat{x}) - D(x) + \zeta$
 \ENDFOR
 \STATE $\omega \gets $ Adam $(\nabla_{\omega} \frac{1}{b}\sum_{i}^b L^{(i)}, \omega, \tau)$
@@ -78,7 +78,7 @@ Thanks to the stable and efficient gradient penalty regularizer term provided by
 \WHILE{$\theta, \phi, \beta, \omega$ have not converged}
 \FOR {$i = 1, \ldots, b$}
 \STATE Sample $e, x \sim p^*$, $z \sim q_\phi(z|e)$, $\epsilon \sim p_\mathcal{N}$
-\STATE $\hat{x} = \E_{p_\theta(x|\epsilon)}[x]$, get gradient penalty $\zeta \gets R(e, \hat{x})$ 
+\STATE $\hat{e} = G(\epsilon)$, get gradient penalty $\zeta \gets R(e, \hat{e})$ 
 \STATE $Z^{(i)} \gets \frac{1}{2}(\exp\{-\beta D(G(\epsilon))\} + \frac{f_\lambda(z)}{\hat{q}_\phi(z)})$
 \STATE $\mathcal{L}^{(i)} \gets \ln p_\theta(x|z) + \ln f_\lambda(z) - \ln q_\phi(z|e) + \beta \zeta$
 \ENDFOR
@@ -98,7 +98,7 @@ The sampling of VAEPP consists of 3 parts:
 \begin{enumerate}
 	\item generate initial $z_0$ by a GAN modeling $q_\phi(z)$
 	\item generate $z \sim p_\lambda(z)$ from initial $z_0$ by MALA
-	\item generate image $G(z)$ by decoder
+	\item generate image from $z$ by decoder
 \end{enumerate}
 
 This sampling process is similar to 2-Stage VAE~\cite{dai2019diagnosing}. The main difference between them is that VAEPP applies Langevin Dynamics to sample from the explicit prior, but 2-Stage VAE not since the prior of 2-Stage VAE is implicit. In experiments, sampling from the explicit learnable prior improves the quality of sampling and ensures theoretical correctness of prior. 
