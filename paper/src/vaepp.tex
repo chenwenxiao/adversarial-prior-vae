@@ -6,7 +6,7 @@ By \cref{subsec:inference}, a promised discriminator could be trained by:
 \begin{equation*}
 	W^1(p^\dag, p^*) = \sup_{Lip(D) \leq 1} \E_{p^\dag} D(x) - \E_{p^*} D(x)
 \end{equation*} 
-where $p^\dag(x) = \E_{p_\mathcal{N}(z)} p_\theta(x|z)$. It could be trained directly by WGAN-GP or WGAN-div. The other parameters in VAEPP is trained by SGVB:
+where $p^\dag(x) = \E_{p_\mathcal{N}(z)} p_\theta(x|z)$. It is an approximation discriminator to the real discriminator in $W^1(p_\theta, p^*)$. Since it is expensive to sample from $p_\theta$ in training, we use $p^\dag$ to replace. As the result, the discriminator maybe invalid when $p_\lambda$ is too far from $p_\mathcal{N}$. Fortunately, the training for $\beta$ can avoid this: when $D$ becomes invalid, ELBO will be worse and then $\beta$ will decrease. The other parameters is trained by SGVB:
 \begin{equation*}
 	\max_{\theta, \phi, \beta} \mathcal{L}(\theta, \phi, \beta, \omega)
 \end{equation*}
@@ -89,11 +89,21 @@ Thanks to the stable and efficient gradient penalty regularizer term provided by
 \end{algorithm}
 
 \subsection{Sampling from VAEPP}
-It is not easy to sample $z$ from $p_\lambda(z)$ since the formula of $p_\lambda(z)$ is complicated. Accept/Reject Sampling (ARS) is also not useful for $p_\lambda$ because ARS requires that $p_\lambda(z) / p_\mathcal{N}(z)$ is bounded by a constant $M$ (It means $\beta$ is limited to a very small value), such that a sample could be sampled in $M$ times. 
+We apply Langevin Dynamics to sample $z$ from $p_\lambda(z)$. It could generate natural and sharp images and only requires that $\nabla_z \log p_\lambda(z)$ is computable and the initial $z_0$ has an enough high density in $p_\lambda(z)$~\cite{song2019generative}. 
+Moreover, MEG~\cite{kumar2019maximum} have implemented a Metropolis-Adjusted Langevin Algorithm (MALA) for sampling where the formula of density also contains a discriminator term. But the selection of initial $z_0$ whose density is high enough is still a problem. 
 
-Langevin Dynamics may be a useful sampling method because it only requires that $\nabla_z \log p_\lambda(z)$ is computable and the initial $z_0$ has an enough high density~\cite{song2019generative}. Moreover, MEG~\cite{kumar2019maximum} have implemented a Metropolis-Adjusted Langevin Algorithm (MALA) for sampling where the formula of density is similar to $p_\lambda$ and also contains a discriminator term. But the selection of initial $z_0$ whose density is high enough is still a problem. 
+Following the philosophy of VAEPP, \IE using the technique of GAN to assist VAE, it is natural to use GAN to model the distribution $q_\phi(z)$, and use samples of GAN as the initial point of MALA, where $p_\lambda(z)$ may be high enough. 
 
-Following the philosophy of VAEPP, \IE using the technique of GAN to assist VAE, it is natural to use GAN to model the distribution $q_\phi(z)$, and use samples of GAN as the initial point of MALA, which has high enough density in $p_\lambda(z)$. The sampling of VAEPP consists of 3 parts: generate initial $z_0$ by a GAN, then generate $z \sim p_\lambda(z)$ by Langevin Dynamics, and finally generate $x$ by decoder. This sampling process is similar to 2-Stage VAE~\cite{dai2019diagnosing}. The main difference between them is that the prior of VAEPP is explicit, but 2-Stage VAE not. Therefore, Langevin Dynamics is applied in VAEPP to sample from the explicit prior. In experiments, sampling from the explicit learnable prior improves the quality of sampling and ensures theoretical correctness of prior. 
+The sampling of VAEPP consists of 3 parts: 
+\begin{enumerate}
+	\item generate initial $z_0$ by a GAN modeling $q_\phi(z)$
+	\item generate $z \sim p_\lambda(z)$ from initial $z_0$ by MALA
+	\item generate image $G(z)$ by decoder
+\end{enumerate}
+
+This sampling process is similar to 2-Stage VAE~\cite{dai2019diagnosing}. The main difference between them is that VAEPP applies Langevin Dynamics to sample from the explicit prior, but 2-Stage VAE not since the prior of 2-Stage VAE is implicit. In experiments, sampling from the explicit learnable prior improves the quality of sampling and ensures theoretical correctness of prior. 
+
+It is not easy to sample $z$ from $p_\lambda(z)$ since the formula of $p_\lambda(z)$ is complicated. Accept/Reject Sampling (ARS) is also not useful for $p_\lambda$ because ARS requires that $p_\lambda(z) / p_\mathcal{N}(z)$ is bounded by a constant $M$ (It means $\beta$ is limited to a very small value), such that a sample could be sampled in $M$ times.
 
 
  

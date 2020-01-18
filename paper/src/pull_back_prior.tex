@@ -35,7 +35,12 @@ $D$ plays an important role in Pull-back Prior. We propose two way to obtain $D$
 
 \subsection{How to determine $\beta$}\label{subsec:determine_beta}
 
-$\beta$ in \cref{eq:pull_back_prior} represents how far $p_\lambda$ is from $p_\mathcal{N}$, but how to decide the value of $\beta$? When $\beta$ is smaller, the difference between $p_\lambda$ and $p_\mathcal{N}$ is less, \IE the influence of discriminator is severely limited. When $\beta$ is larger, $p_\lambda$ is farther from $p_\mathcal{N}$. Noticing that in \cref{eq:final_optimization}, we simplify the optimization of $D$ by an approximated $D$, if $p_\lambda$ is too far from $p_\mathcal{N}$, this approximation will become invalid. Consequently, $\beta$ should be set to an appropriate value which can't severely limit the influence of discriminator and could ensure that approximated $D$ is valid. It is important to realize that the Pull-back Prior is serving for better ELBO. Whatever the function family of $p_\lambda$ is limited or approximation $D$ is invalid, the ELBO will suffer. Therefore, it is reasonable to search $\beta$ by the optimization for ELBO ($\lambda$ contains $\beta$ and $\omega$, which is the parameters of $D$):
+Theoretically, $\beta$ in \cref{eq:pull_back_prior} represents how far $p_\lambda$ is from $p_\mathcal{N}$, shown in \cref{subsec:inference}.
+%but how to decide the value of $\beta$? When $\beta$ is smaller, the difference between $p_\lambda$ and $p_\mathcal{N}$ is less, \IE the influence of discriminator is severely limited. When $\beta$ is larger, $p_\lambda$ is farther from $p_\mathcal{N}$. Noticing that in \cref{eq:final_optimization}, we simplify the optimization of $D$ by an approximated $D$, if $p_\lambda$ is too far from $p_\mathcal{N}$, this approximation will become invalid. 
+%Consequently, $\beta$ should be set to an appropriate value which can't severely limit the influence of discriminator and could ensure that approximated $D$ is valid. 
+It is important to realize that the Pull-back Prior is serving for better ELBO. 
+%Whatever the function family of $p_\lambda$ is limited or approximation $D$ is invalid, the ELBO will suffer. 
+Therefore, it is reasonable to search $\beta$ by the optimization for ELBO ($\lambda$ contains $\beta$ and $\omega$, which is the parameters of $D$):
 \begin{equation}
 	\beta = \arg \min_{\beta} \mathcal{L}(\theta, \phi, \lambda) = \arg \min_{\beta} \mathcal{L}(\theta, \phi, \beta, \omega) \tag{5}
 \end{equation}
