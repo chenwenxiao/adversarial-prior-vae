@@ -53,41 +53,45 @@ The gradient $\partial \mathcal{L}/\partial \beta$ is:
 \frac{\partial \mathcal{L}}{\partial \beta} &= \E_{q_\phi(z)}[ -D(G(z))] - \frac{\partial \ln Z}{\partial \beta} \\
 &= - \E_{q_\phi(z)}[ D(G(z))] + \E_{p_\lambda(z)}[ D(G(z))]   \tag{6}
 \end{align*}
-The 1st term in \cref{eq:behavior_of_beta} is the mean of the discriminator on the reconstructed data (reconstructed data are nearly same as real data in VAE, after only few epochs in training). 
+The 1st term in \cref{eq:behavior_of_beta} is the mean of the discriminator on reconstructed data (reconstructed data are nearly same as real data in VAE, after only few epochs in training). 
 The 2nd term in \cref{eq:behavior_of_beta} is the mean of the discriminator on data generated from $p_\lambda$. 
-Hence, $\partial \mathcal{L}/\partial \beta = 0$ means that the discriminator can't distinguish the reconstructed data and generated data when training converges, which coincides with the philosophy of GANs that the discriminator can't distinguish the real data and generated data when the generator is well-trained.
+Hence, $\partial \mathcal{L}/\partial \beta = 0$ means that the discriminator can't distinguish reconstructed data and generated data when the training converges. It coincides with the philosophy of GANs that the discriminator can't distinguish the real data and generated data when the generator is well-trained.
 
 \subsection{The lower bound of $Z$}\label{subsec:determine_z}
 
-The extract calculation of partition function $Z$ is difficult. But in VAE domain, it is acceptable to obtain a lower-bound of log-likelihood. Therefore, we propose a feasible evaluation for upper-bound of $Z$, called $\hat{Z}$, which will not over-estimate log-likelihood. 
-It is given by:
+It is difficult to calculate the exact partition function $Z$. Fortunately in VAE domain, it is acceptable to obtain an upper-bound of $Z$, denoted by $\hat{Z}$, which will not over-estimate log-likelihood and ELBO:
 \begin{align*}\label{eq:Z_estimator}
-	Z = \E_{q_\phi(z)}\frac{f_\lambda(z)}{q_\phi(z)} \leq \E_{q_\phi(z)} \frac{f_\lambda(z)}{\hat{q}_\phi(z)} = \hat{Z} \tag{8}
+    \hat{Z} = \E_{q_\phi(z)} \frac{f_\lambda(z)}{\hat{q}_\phi(z)} \geq
+	\E_{q_\phi(z)}\frac{f_\lambda(z)}{q_\phi(z)} = Z \tag{8}
 \end{align*}
-where $f_\lambda(z) = p_\mathcal{N}(z) \exp\{- \beta D(G(z))\}$ and $\hat{q}_\phi(z)$ is a lower-bound of $q_\phi(z)$. It is easy to show that
+where $f_\lambda(z) = p_\mathcal{N}(z) \exp\{- \beta D(G(z))\}$ and $\hat{q}_\phi(z)$ is a lower-bound of $q_\phi(z)$. If we replace $Z$ by $\hat{Z}$ in evaluation and training, we will obtain lower-bounds of log-likelihood and ELBO:
 \begin{align*}
-	p_\theta(x) = \int \frac{1}{Z} p_\theta(x|z) f_\lambda(z) \dd z &\geq \int \frac{1}{\hat{Z}} p_\theta(x|z) f_\lambda(z) \dd z \\
-\mathcal{K} = \E_{q_\phi(z)} \frac{1}{Z} \ln f_\lambda(z) &\geq \E_{q_\phi(z)} \frac{1}{\hat{Z}}\ln f_\lambda(z) = \mathcal{\hat{K}} \\
-\mathcal{L} = \mathcal{I} + \mathcal{J} + \mathcal{K} &\geq \mathcal{I} + \mathcal{J} + \mathcal{\hat{K}} = \mathcal{\hat{L}}
+	\hat{p}_\theta(x) = \int \frac{p_\theta(x|z) f_\lambda(z)}{\hat{Z}}  \dd z &\leq \int \frac{p_\theta(x|z) f_\lambda(z)}{Z} \dd z = p_\theta(x)  \\
+	\mathcal{\hat{K}} = \E_{q_\phi(z)} \frac{1}{\hat{Z}}\ln f_\lambda(z) &\leq \E_{q_\phi(z)} \frac{1}{Z} \ln f_\lambda(z) = \mathcal{K}   \\
+    \mathcal{\hat{L}} =  \mathcal{I} + \mathcal{J} + \mathcal{\hat{K}} &\leq \mathcal{I} + \mathcal{J} + \mathcal{K} = \mathcal{L}
 \end{align*}
-Above inequalities show that, if we replace $Z$ by $\hat{Z}$ we will obtain lower-bounds of log-likelihood and ELBO. Such that $\hat{Z}$ could be used in training and evaluation, and it will not over-estimate log-likelihood and ELBO. 
+Therefore, $\hat{Z}$ could be used in training and evaluation, which will not over-estimate log-likelihood and ELBO. 
 
-The key of \cref{eq:Z_estimator} is the choice of $\hat{q}_\phi(z)$. As we mentioned before, $q_\phi(z)$ is intractable to compute the exact density, but $q_\phi(z|x)$ is feasible. We introduce a lower-bound of  $q_\phi(z)$:
+The key of \cref{eq:Z_estimator} is the choice of $\hat{q}_\phi(z)$. $q_\phi(z)$ is intractable to compute the exact density, but $q_\phi(z|x)$ is feasible. We introduce a lower-bound of  $q_\phi(z)$:
 \begin{equation*}
 	q_\phi(z) = \E_{p^*(x)} q_\phi(z|x) \approx \frac{1}{N}\sum_{i=1}^N q_\phi(z|x^{(i)}) \geq \frac{1}{N} q_\phi(z|x^{(j)})
 \end{equation*}
-where $x^{(j)}$ is a real data, $N$ is the size of training set and RHS is the $\hat{q}_\phi(z)$. To reduce the gap between $\hat{q}_\phi(z)$ and $q_\phi(z)$, $q_\phi(z|x^{(j)})$ should be one of the largest in the summation. Therefore, we firstly sample $x^{(j)}$ form dataset, and then sample $z$ from $q_\phi(z|x^{(j)})$. By this way, $q_\phi(z|x^{(j)})$ is  large enough. 
+where RHS is $\hat{q}_\phi(z)$, $x^{(j)}$ is the a data and $N$ is the size of training set. $x^{(j)}$ plays an important role here. Considering the sampling process of $q_\phi(z)$, where $z$ is sampled from a real data $x^{(k)}$, $x^{(j)}$ is chosen as the $x^{(k)}$. 
+%To reduce the gap between $\hat{q}_\phi(z)$ and $q_\phi(z)$, $q_\phi(z|x^{(j)})$ should be one of the largest in the summation. Therefore, we firstly sample $x^{(j)}$ form dataset, and then sample $z$ from $q_\phi(z|x^{(j)})$. By this way, $q_\phi(z|x^{(j)})$ is large enough. 
 
-In MNIST and other Bernouli image datasets, the number of Bernouli images sampled from real images might be numerous and $\hat{q}_\phi(z)$ might be underestimiated. To solve this it, we propose ELBO based on $q_\phi(z|e)$ instead of $q_\phi(z|x)$:
+In MNIST and other Bernouli image datasets, the number of Bernouli images might be numerous and $\hat{q}_\phi(z)$ might be underestimiated due to the large $N$. 
+Since the size of real images is much less than the size of Bernouli images, we use $q_\phi(z|e)$ instead of $q_\phi(z|x)$ to estimate $\hat{q}_\phi(z)$, where $e$ means the real image and $x$ means the Bernouli image. If we have $q_\phi(z|e)$, we could easily obtain $\hat{q}_\phi(z)$ by $\frac{1}{N} q_\phi(z|e^{(j)})$. 
+
+We propose ELBO to train a VAE based on $q_\phi(z|e)$:
 \begin{align*}~\label{eq:another_elbo}
 	&\E_{p^*(x)} \ln p_\theta(x) \geq \E_{p^*(e)} \E_{p^*(x|e)} \ln \E_{q_\phi(z|e)} \frac{p_\theta(x|z)p_\theta(z)}{q_\phi(z|e)} \\
 	 &= \E_{p^*(e)} \E_{p^*(x|e)} \E_{q_\phi(z|e)} \ln \frac{p_\theta(x|z)p_\theta(z)}{q_\phi(z|e)} \tag{7} \\
 	 &= \E_{p^*(x)} \ln p^*(x) - \E_{p^*(e)} \E_{p^*(x|e)} KL(q_\phi(z|e), p_\theta(z|x))
 \end{align*} 
-where $p^*(x)$ is sampled from $p^*(e)$, and $p^*(x|e)$ means the sampling process from $e$. \cref{eq:another_elbo} is similar to the original ELBO~\cref{eq:ELBO}, and the above conclusion about learnable prior holds for \cref{eq:another_elbo} by repeating above inference. Moreover, the situation without Bernouli images is a special case where $p^*(x|e) = \delta(x - e)$. % Additionally, when $p_\theta(x|z)$ and $p^*(x|e)$ is both Bernouli, term $\E_{p^*(x|e)} \ln p_\theta(x|z)$ has analytical solution $x\log e+(1-x)\log(1-e)$, which could make the training and evaluation more stable (don't need sample $x$). 
-Since $q_\phi(z|e)$ is known, $\hat{q}_\phi(z)$ is feasible by $\frac{1}{N} q_\phi(z|e^{(j)})$. 
+where $p^*(e)$ denotes the distribution of real images and $p^*(x|e)$ means the Bernouli sampling process from $e$. 
+\cref{eq:another_elbo} is similar to the original ELBO~\cref{eq:ELBO}, and the above conclusions about learnable prior holds for \cref{eq:another_elbo} by repeating above derivations. Moreover, the situation without Bernouli images is a special case where $p^*(x|e) = \delta(x - e)$. % Additionally, when $p_\theta(x|z)$ and $p^*(x|e)$ is both Bernouli, term $\E_{p^*(x|e)} \ln p_\theta(x|z)$ has analytical solution $x\log e+(1-x)\log(1-e)$, which could make the training and evaluation more stable (don't need sample $x$). 
 
-By the theory of importance sampling, $p_\lambda$ is the optimal choice for the proposal distribution in estimation of $Z$ but it is expensive to sample from $p_\lambda$. 
-\cite{bauer2019resampled} uses $p_\mathcal{N}$ as proposal distribution to estimate $Z$ but when $KL(p_\mathcal{N}, p_\lambda)$ is high, the variance of this estimation will be large. In experiment, $KL(q_\phi, p_\lambda)$ is much less than $KL(q_\phi, p_\mathcal{N})$ in trained model. Therefore, we choose $q_\phi(z)$ as proposal distribution and use a feasible $\hat{q}_\phi(z)$ to replace $q_\phi(z)$ in \cref{eq:Z_estimator}. The variance of $\hat{Z}$ is acceptable in experiment.  
+Review the estimation of $Z$. By the theory of importance sampling, $p_\lambda$ is the optimal choice for the proposal distribution in estimation of $Z$. However, it is expensive to sample from $p_\lambda$. 
+\cite{bauer2019resampled} uses $p_\mathcal{N}$ as the proposal distribution to estimate $Z$ but when $KL(p_\mathcal{N}, p_\lambda)$ is high, the variance of this estimation will be large. In experiment, $KL(q_\phi, p_\lambda)$ is much less than $KL(q_\phi, p_\mathcal{N})$. Therefore, we choose $q_\phi(z)$ as the proposal distribution and use a feasible $\hat{q}_\phi(z)$ to replace $q_\phi(z)$ to obtain the lower-bound of $\hat{Z}$ in \cref{eq:Z_estimator}. The variance of $\hat{Z}$ is acceptable in experiment.  
 
-In training, $\beta$ is trained from small to large and $KL(p_\mathcal{N}, p_\lambda)$ is so. Therefore, $p_\mathcal{N}$ is also used as proposal distribution in training. 
+In training, $\beta$ is from small to large and $KL(p_\mathcal{N}, p_\lambda)$ is so. Therefore, $p_\mathcal{N}$ is also used as the proposal distribution in training. 
