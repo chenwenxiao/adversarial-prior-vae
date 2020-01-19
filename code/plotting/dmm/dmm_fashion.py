@@ -50,7 +50,7 @@ class ExpConfig(spt.Config):
     max_step = None
     batch_size = 128
     noise_len = 8
-    smallest_step = 1e-6
+    smallest_step = 5e-6
     initial_lr = 0.0001
     lr_anneal_factor = 0.5
     lr_anneal_epoch_freq = [100, 200, 300, 400, 800, 1200, 1600, 2000]
