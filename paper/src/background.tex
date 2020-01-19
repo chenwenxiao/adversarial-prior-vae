@@ -2,27 +2,27 @@
 
 \subsection{VAEs and learnable priors}
 
-Many generative models aim to minimize the KL-divergence between the empirical distribution $p^*(x)$ and the model distribution $p_\theta(x)$, which leads to maximization likelihood estimation. The vanilla VAE~\cite{kingma2014auto} models the joint distribution $p_\theta(x, z)$ and the marginal distribution is $p_\theta(x) = \int p_\theta(x, z) \dd z$. VAE apply variational inference to obtain the evidence lower bound objective (ELBO): 
+Many generative models aim to minimize the KL-divergence between the empirical distribution $p^*(x)$ and the model distribution $p_\theta(x)$, which leads to maximization likelihood estimation. The vanilla VAE~\cite{kingma2014auto} models the joint distribution $p_\theta(x, z)$ and the marginal distribution by $p_\theta(x) = \int p_\theta(x, z) \dd z$. VAE apply variational inference to obtain the evidence lower bound objective (ELBO): 
 \begin{align*} \label{eq:ELBO}
 \ln p_\theta(x) \geq \E_{q_\phi(z|x)} [  &  \ln p_\theta(x|z) + \ln p_\theta(z) - \\ & \ln q_\phi(z|x) ] 
 \triangleq \mathcal{L}(x; \theta, \phi) \tag{1}
 \end{align*}
-where $q_\phi(z|x)$ is the variational posterior (encoder) and $p_\theta(x|z)$ is the true posterior (decoder). The training objective of VAE is $\EEE{p^*(x)}{\mathcal{L}(x; \theta, \phi)}$ and it is optimized by SGVB with the re-parameterization trick. In vanilla VAE, the prior $p_\theta(z)$ is chosen as the standard Gaussian distribution. 
+where $q_\phi(z|x)$ is the variational posterior and $p_\theta(x|z)$ is the true posterior. The training objective of VAE is $\EEE{p^*(x)}{\mathcal{L}(x; \theta, \phi)}$ and it is optimized by SGVB with the re-parameterization trick. In vanilla VAE, the prior $p_\theta(z)$ is chosen as the standard Gaussian distribution. 
 
-Recently, \cite{tomczak2018vae} showed that the simplistic prior could lead to underfitting and many learnable priors are proposed subsequently to enrich the prior. Most of them focus on the aggregated posterior $q_\phi(z)$, which is shown as the optimal prior for ELBO by following decomposition~\cite{tomczak2018vae} where $p_\lambda(z)$ denotes the learnable prior:
+Recently, \cite{tomczak2018vae} showed that the simplistic prior could lead to underfitting. Since then many learnable priors are proposed to enrich the prior. Most of them focused on the aggregated posterior $q_\phi(z)$, which was shown to be the optimal prior that maximizes ELBO according to~\cite{tomczak2018vae} where $p_\lambda(z)$ denotes the learnable prior:
 \begin{align*} \label{eq:second-decomposition}
 \mathcal{L}(\theta, \phi, \lambda) = \E_{p^*(x)}\E_{q_\phi(z|x)} [ \ln p_\theta(x|z)] + \\ 
 \E_{p^*(x)}[\mathbb{H}[q_\phi(z|x)]] + \E_{q_\phi(z)} \ln p_\lambda(z) = \mathcal{I} + \mathcal{J} + \mathcal{K} \tag{2}
 \end{align*}
-where $\mathcal{I}, \mathcal{J}, \mathcal{K}$ denotes 3 terms respectively. 
-Notice that $p_\lambda(z)$ only appears in the last term $\mathcal{K}$ and the optimal solution of $p_\lambda(z)$ is $q_\phi(z)$. However, $q_\phi(z)$ is intractable. \cite{tomczak2018vae,takahashi2019variational} obtains an approximation of it but reaches limited performance. 
+We use $\mathcal{I}, \mathcal{J}, \mathcal{K}$ to denote 3 terms respectively for short thereafter. 
+Notice that $p_\lambda(z)$ only appears in the last term $\mathcal{K}$ and the optimal solution of $p_\lambda(z)$ is $q_\phi(z)$. \cite{tomczak2018vae,takahashi2019variational} obtained an approximation of $q_\phi(z)$ with their proposed prior, but reached limited performance. 
 
 \subsection{GANs and Wasserstein distance}
 
-In vanilla GAN, a generator is trained to generate samples for deceiving the discriminator, and a discriminator to distinguish generated samples and real samples. However, vanilla GAN is unstable during the training process. WGAN introduces Wasserstein distance to tackle this problem. 1st Wasserstein distance $W^1(\mu, \nu)$ is used for calculating the distance between two measures $\mu, \nu$. The dual form of Wasserstein distance is the following:
+In vanilla GAN~\cite{goodfellow2014generative}, a generator is trained to generate samples for deceiving the discriminator, and a discriminator is trained to distinguish generated samples and real samples. However, vanilla GAN is unstable during the training process. To tackle this problem, Wasserstein distance is introduced by WGAN~\cite{arjovsky2017wasserstein}. Wasserstein distance $W^1(\mu, \nu)$ between measures $\mu, \nu$ is:
 \begin{align*} \label{eq:Wasserstein-distance}
 W^1(\mu, \nu) = \sup_{Lip(D) \leq 1} \{\E_{\mu(x)} D(x)  - \E_{\nu(x)} D(x)\} \tag{3}
 \end{align*}
-where $Lip(D) \leq 1$ means $D$ is 1-Lipschitz. WGAN is optimized by minimizing $W^1(p^*, p_\theta)$ which can be seen as a min-max optimization, whose parameters are $D$ and $\theta$. 
+where $Lip(D) \leq 1$ means that $D$ is 1-Lipschitz. WGAN is optimized by minimizing $W^1(p^*, p_\theta)$ which can be seen as a min-max optimization. 
 
-WGAN makes progress toward stable training but sometimes fails to converge due to the use of weight clipping to enforce the Lipschitz constrain. WGAN-GP~\cite{gulrajani2017improved} and WGAN-div~\cite{wu2018wasserstein} improve WGAN by gradient penalty technique to achieve a more stable training. These techniques make WGAN framework become more robust and stable. 
+WGAN makes progress toward stable training but sometimes fails to converge since it uses weight clipping to enforce the Lipschitz constrain. WGAN-GP~\cite{gulrajani2017improved} and WGAN-div~\cite{wu2018wasserstein} improved WGAN by gradient penalty techniques, to achieve a more stable training.

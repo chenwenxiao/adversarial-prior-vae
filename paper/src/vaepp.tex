@@ -6,7 +6,7 @@ By \cref{subsec:inference}, an approximation discriminator is trained by:
 \begin{equation*}
 	W^1(p^\dag, p^*) = \sup_{Lip(D) \leq 1} \E_{p^\dag} D(x) - \E_{p^*} D(x)
 \end{equation*} 
-where $p^\dag(x) = \E_{p_\mathcal{N}(z)} p_\theta(x|z)$. The real discriminator should be obtained by $W^1(p_\theta, p^*)$, but it is expensive to sample from $p_\theta$ in the training and $W^1(p^\dag, p^*)$ is used to obtain an approximation discriminator. Therefore, the approximation discriminator may be invalid when $p_\lambda$ is too far from $p_\mathcal{N}$, \IE $\beta$ is too large. Fortunately, the training for $\beta$ can avoid this: when $\beta$ becomes too large and $D$ becomes invalid, ELBO will be worse and then $\beta$ will decrease. The other parameters is trained by SGVB:
+where $p^\dag(x) = \E_{p_\mathcal{N}(z)} p_\theta(x|z)$. The real discriminator should be obtained by $W^1(p_\theta, p^*)$, but it is expensive to sample from $p_\theta$ in training and $W^1(p^\dag, p^*)$ is used to obtain an approximation discriminator. Therefore, the approximation discriminator may be invalid when $p_\lambda$ is too far from $p_\mathcal{N}$, \IE $\beta$ is too large. Fortunately, the training for $\beta$ can avoid this: when $\beta$ becomes too large and $D$ becomes invalid, ELBO will be worse and then $\beta$ will decrease. The other parameters is trained by SGVB:
 \begin{equation*}
 	\max_{\theta, \phi, \beta} \mathcal{L}(\theta, \phi, \beta, \omega)
 \end{equation*}
@@ -62,7 +62,7 @@ $\max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$ indeed finds a s
 	&= \beta W^1(p^\dag, p_r) \approx \beta W^1(p^\dag, p^*) 
 \end{align*}
 where $p_r$ denotes $p_r(x) = \E_{q_\phi(z)} p_\theta(x|z)$, consisting of reconstructed data. 
-The last approximation sign is from the fact that $p_r \rightarrow p^*$ after a few epoch in the training of VAE. \cref{eq:improve_vaepp} also uses the assumption $D(G(z)) = \E_{p_\theta(x|z)} D(x)$ introduced in \cref{subsec:inference} to simplify equation. The inequality of $\ln Z$ is in the following:
+The last approximation sign is from the fact that $p_r \rightarrow p^*$ after a few epoch in training of VAE. \cref{eq:improve_vaepp} also uses the assumption $D(G(z)) = \E_{p_\theta(x|z)} D(x)$ introduced in \cref{subsec:inference} to simplify equation. The inequality of $\ln Z$ is in the following:
 \begin{equation*}
 	\ln Z = \ln \E_{p_\mathcal{N}(z)} e^{- \beta * D(G(z))} \geq \E_{p_\mathcal{N}(z)} [- \beta * D(G(z))]
 \end{equation*}
