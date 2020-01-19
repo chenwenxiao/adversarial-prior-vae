@@ -1,5 +1,5 @@
 \section{Experiments}
-VAEPP is evaluated in vast common datasets including MNIST, Fashion-MNIST~\cite{xiao2017/online}, Omniglot~\cite{lake2015human}, CIFAR-10~\cite{krizhevsky2009learning} and CelebA~\cite{liu2015deep} with metrics log-likelihood, FID~\cite{heusel2017gans} and IS~\cite{salimans2016improved} to show the performance of VAEPP.
+VAEPP is evaluated in vast common datasets including MNIST, Static-MNIST\cite{larochelle2011neural}, Fashion-MNIST~\cite{xiao2017/online}, Omniglot~\cite{lake2015human}, and CIFAR-10~\cite{krizhevsky2009learning} using log-likelihood. The quality of sampling of VAEPP is evaluated in MNIST, Fashion-MNIST~\cite{xiao2017/online}, CIFAR-10~\cite{krizhevsky2009learning} and CelebA~\cite{liu2015deep}, using FID~\cite{heusel2017gans}.
 \subsection{Log-likelihood Evaluatoin}
 \begin{table}[tb]
 \centering
@@ -29,9 +29,9 @@ BIVA            &  78.59      &    3.08    \\
 \bottomrule
 \end{tabular}
 \caption{Test NLL on MNIST and Bits/dim on CIFAR-10. Bits/dim means $-\log p_\theta(x|z) / (3072 * \ln(2))$. The data is from \protect\cite{maaloe2019biva},  \protect\cite{chen2018pixelsnail}, \protect\cite{tomczak2018vae}, \protect\cite{bauer2019resampled} and \protect\cite{takahashi2019variational}. 
-%The learnable prior is indeed more useful on MNIST since the reconstruction loss is not hard to optimize on MNIST and the improvement by autoregressive component is limited. On CIFAR-10, the image is more complex and reconstruction loss is hard to optimize. Therefore, autoregressive component improve the VAEPP significantly and the improvement of learnable prior is limited. 
-VAEPP+Flow means VAEPP with a normalization flow on encoder, to enhance the ability of encoder. 
-Additional, we compare VAE based on $q_\phi(z|x)$ and $q_\phi(z|e)$ on MNIST, whose NLL are 81.10 and 83.30 respectively. Moreover, evaluation using importance sampling based on $q_\phi(z|e)$ has small enough variance (0.01) with $10^3$ samples from $q_\phi(z|e)$ and 10 samples for $p^*(x|e)$. It validates that using $q_\phi(z|e)$ is stable for evaluation and don't improve the performance. VAEPP reaches the state of art, and is competitive to the models with autoregressive component. }
+%The learnable prior is indeed more useful on MNIST since the reconstruction loss is not hard to optimize on MNIST and the improvement by autoregressive component is limited. On CIFAR-10, the image is more complex and reconstruction loss is hard to optimize. Therefore, autoregressive component improve VAEPP significantly and the improvement of learnable prior is limited. 
+VAEPP+Flow means VAEPP with a normalization flow on encoder, to enrich  encoder. 
+Additional, we compare VAE based on $q_\phi(z|x)$ and $q_\phi(z|e)$ on MNIST, whose NLL are 81.10 and 83.30 respectively. Moreover, evaluation using importance sampling based on $q_\phi(z|e)$ has enough small variance (0.01) with $10^3$ samples from $q_\phi(z|e)$ and 10 samples for $p^*(x|e)$. It validates that using $q_\phi(z|e)$ is stable for evaluation and doesn't improve the performance. VAEPP reaches SOTA without autoregressive component, and is comparable to the models with autoregressive component. }
 \label{tab:mnist-nll}
 \end{table}
 \begin{table}[tb]
@@ -51,7 +51,13 @@ VAEPP+Flow     &   77.66   &  213.19  &   89.24  \\
 \caption{Test NLL on Static MNIST, Fashion-MNIST and Omniglot.  }
 \label{tab:cifar-nll}
 \end{table}
-We evaluate and compare the performance of VAEPP trained by \cref{alg:vaepp} and \cref{alg:improved_vaepp} on CIFAR10, as the gradient penalty algorithm is selected from 3 strategies: WGAN-GP, WGAN-div-1  (sampling the linear combination of two real or two fake data points) and WGAN-div-2 (sampling both real or fake data points), as shown in \cref{tab:compare_nD_over_R}. Our conclusion is that \cref{alg:improved_vaepp} outperforms \cref{alg:vaepp} under all of settings in CIFAR-10 and we select WGAN-div-1 as default setting.
+We compare our algorithms with other models based on log-likelihood, on MNIST and CIFAR-10 as shown in \cref{tab:mnist-nll}, and on Static-MNIST, Fashion-MNIST, and Omniglot, as shown in \cref{tab:cifar-nll}. Because the improvement of auto-regressive components is significant, we separate models by whether they use an auto-regressive component. VAEPP outperforms most of the models without autoregressive component and is comparable to the models with autoregressive component. The reason of why VAEPP doesn't use an auto-regressive component is that VAEPP is time-consuming in training,  evaluation and sampling due to the huge structure (need additional discriminator) and Langevin Dynamics. It is not easy to apply an auto-regressive component on VAEPP since auto-regressive component is also time-consuming. 
+% Concretely, a whole process including training, evaluation and sampling on CIFAR10 will cost roughly one week on single Nvidia 2080Ti GPU card. 
+%On the other hand, we expect that the pure improvement on learnable prior could improve the performance of VAE rather than the careful design on encoder or decoder, since it is clearer and easier to develop in theory. 
+Therefore, how to apply an autoregressive component on VAEPP is a valuable and challenging practical work and we leave it for future work.
+
+We evaluate and compare the performance of VAEPP trained by \cref{alg:vaepp} and the Naive VAEPP trained by \cref{alg:improved_vaepp} on CIFAR10, as the gradient penalty algorithm is chosen from 3 strategies: WGAN-GP, WGAN-div-1 (sampling the linear interpolation of  real data and generated data) and WGAN-div-2 (sampling real data and generated data), as shown in \cref{tab:compare_nD_over_R}. 
+%Our conclusion is that \cref{alg:improved_vaepp} outperforms \cref{alg:vaepp} under all  settings in CIFAR-10 and we select WGAN-div-1 as the default setting.
 \begin{table}[tb]
 \centering
 \begin{tabular}{lrr}  
@@ -63,27 +69,22 @@ WGAN-div-1   &  3.20   & 2.91      \\
 WGAN-div-2   &  4.47   & 2.99      \\
 \bottomrule
 \end{tabular}
-\caption{Comparation between VAEPP and Improved VAEPP when gradient penalty strategy varies on CIFAR-10 with dim $\mathcal{Z} = 1024$. For any gradient penalty strategy in the table, VAEPP outperforms Naive VAEPP, which validates the our intuition of design of \cref{alg:improved_vaepp}. We select WGAN-div-1 as our default gradient penalty strategy since it reaches best performance in VAEPP. 
+\caption{Comparation between VAEPP and Improved VAEPP when gradient penalty strategy varies on CIFAR-10 with dim $\mathcal{Z} = 1024$. For any gradient penalty strategy in the table, VAEPP outperforms Naive VAEPP, which validates the our intuition of design of \cref{alg:improved_vaepp}.  WGAN-div-1 is chosen as our default gradient penalty strategy since it reaches best performance in VAEPP. 
 %Although WGAN-GP outperforms WGAN-div-1 in Naive VAEPP, the difference is acceptable (3.20 and 3.15 is both not good enough) and Naive VAEPP is not the final algorithm. 
 }
 \label{tab:compare_nD_over_R}
 \end{table}
 
-We compare our algorithms with other log-likelihood based model on MNIST and CIFAR-10 as shown in \cref{tab:mnist-nll}, and another	\cref{tab:cifar-nll}. Because the improvement of auto-regressive components is significant, we separate models by whether use auto-regressive component as \cite{maaloe2019biva} did. VAEPP outperforms most of the models without autoregressive component and is competitive to the models with autoregressive component. The reason of why VAEPP don't use auto-regressive component is that VAEPP is time-consuming in training,  evaluation and sampling due to the huge structure (need additional discriminator) and Langevin Dynamics. It is not easy to apply auto-regressive component on VAEPP considering auto-regressive component is also time-consuming. 
-% Concretely, a whole process including training, evaluation and sampling on CIFAR10 will cost roughly one week on single Nvidia 2080Ti GPU card. 
-%On the other hand, we expect that the pure improvement on learnable prior could improve the performance of VAE rather than the careful design on encoder or decoder, since it is clearer and easier to develop in theory. 
-Therefore, how to apply autoregressive component on VAEPP is a valuable and challenging practical work. We leave it as a future work.
+To validate that it is better to use $q_\phi(z)$ to evaluate $Z$ than $p_\mathcal{N}(z)$ in \cref{subsec:determine_z}, we calculate the $KL(q_\phi(z)||p_\lambda(z))$ and $KL(p_\mathcal{N}(z)||p_\lambda(z))$ on CIFAR-10 and MNIST. The former is less than $\mathcal{L}-\mathcal{I}$~\cite{hoffman2016elbo}(180.3 on CIFAR-10 and 12.497 on MNIST), and the latter can be evaluated directly (1011.30 on CIFAR-10 and 57.45 on MNIST). Consequently, $q_\phi(z)$ is much closer to $p_\lambda(z)$ than $p_\mathcal{N}(z)$. 
 
-To validate that it is better to use $q_\phi(z)$ to evaluate $Z$ than $p_\mathcal{N}(z)$ in ~\cref{subsec:determine_z}, we calculate the $KL(q_\phi(z)||p_\lambda(z))$ and $KL(p_\mathcal{N}(z)||p_\lambda(z))$ on CIFAR-10 and MNIST. The former is less than the difference (180.3 on CIFAR-10 and 12.497 on MNIST) between reconstruction term and ELBO~\cite{hoffman2016elbo}, and the latter one can be evaluated directly (1011.30 on CIFAR-10 and 57.45 on MNIST). Consequently, $q_\phi(z)$ is much closer to $p_\lambda(z)$ than $p_\mathcal{N}(z)$. 
-
-To ensure the variance of estimation $\hat{Z}$ is small enough, the $q_\phi(z|e)$ is selected as truncated normal distribution (drop the sample whose magnitude is more than 2 standard deviation form the mean) instead of normal distribution. In \cref{eq:Z_estimator}, $\hat{q}_\phi(z)$ estimated by $\frac{1}{N}q_\phi(z|e^{(j)})$ is the denominator and if it becomes too small sometimes, the estimation will become unstable. If $q_\phi(z|e^{(j)})$ is selected as normal distribution, the probability of $z$ in tail will be larger when the number of samples become larger, which will lead to huge variance to the estimation $\hat{Z}$. With $10^9$ samples, the variance of these two method are $0.809260$ (normal) and $0.000967$ (truncated normal) in MNIST. Therefore, truncated normal is selected as default setting. 
+To ensure the variance of estimation $\hat{Z}$ is small enough, the $q_\phi(z|e)$ is chosen as truncated normal distribution (drop the sample whose magnitude is more than 2 standard deviation form the mean) instead of normal distribution. In \cref{eq:Z_estimator}, $\hat{q}_\phi(z)$ estimated by $\frac{1}{N}q_\phi(z|e^{(j)})$ is the denominator and if it becomes too small sometimes, the estimation will become unstable. If $q_\phi(z|e^{(j)})$ is chosen as normal distribution, the probability of $z$ in tail will be larger when the number of samples become larger, which will lead to huge variance to the estimation $\hat{Z}$. With $10^9$ samples, the variance of these two method are $0.809260$ (normal) and $0.000967$ (truncated normal) in MNIST. Therefore, truncated normal is chosen as default setting. 
 
 %To validate that VAEPP is more stable and efficient than Naive VAEPP in \cref{subsec:improve_of_vaepp}, we draw the training loss of VAEPP and Naive VAEPP on CIFAR-10, shown in \cref{fig:loss_curves}.
 % We ensure the variance of results shown in \cref{tab:cifar-nll} and \cref{tab:mnist-nll} are less than 0.05. 
 %We evaluate $Z$ by two ways mentioned in \cref{subsec:determine_z} and compare the variance of them in 10 times on CIFAR-10. The variance of estimation based on $q_\phi(z)$ (4.82), is much less than the variance of estimation based on $p_\mathcal{N}$ (TODO), which supports our proposition in \cref{subsec:determine_z}. Since the variance of $Z$ also influence the variance of log-likelihood, we also evaluate the variance of log-likelihood in 10 times on CIFAR-10 (4.82) to ensure the stability of evaluation. 
 
 \subsection{Quality of Sampling}
-As common sense, the quality of samples of VAE is worse than GAN, and it is indeed a reason that we involve the techniques of GAN to improve the VAE model: We use discriminator to adjust learnable prior and GAN to sample the initial $z_0$ for Langevin Dynamics. These techniques will help VAEPP improve the quality of samples. The samples of VAEPP gets good FID and IS, competitive to GANs and 2-Stage VAE (which is the SOTA of VAE in FID), as shown in \cref{tab:compare_FID}. Some generated images is shown in \cref{fig:show_images}.
+As common sense, the quality of sampling of VAEs is worse than GANs', and it is indeed a reason that we involve the techniques of GAN to improve VAE model: We use the discriminator to adjust learnable prior and a GAN to sample the initial $z_0$ for Langevin Dynamics. These techniques will help VAEPP improve the quality of samples. The samples of VAEPP gets good FID, comparable to GANs and 2-Stage VAE (which is the SOTA of VAE in FID), as shown in \cref{tab:compare_FID}. Some generated images are shown in \cref{fig:show_images}.
 \begin{figure}[tb]
 	\centering
 	\includegraphics[width=1.0\columnwidth]{../figures/celeba}
@@ -107,31 +108,31 @@ GAN-VAEPP  & $12.7$  & $26.7$  & $74.1$ & $53.4$ \\
 VAEPP      & $12.0$  & $26.7$  & $71.0$ & $53.4$ \\
 \bottomrule
 \end{tabular} 
-\caption{FID comparasons to GAN-based models and other VAEs. Best GAN indicates the best FID on each dataset across all GAN models when trained using settings suggested by original authors. VAEPP uses Bernouli as posterior on MNIST and Discretized Logistic~\protect\cite{salimans2017pixelcnn++} on others. GAN-VAEPP indicates that image is directly sampled from $z_0$, generated by GAN without Langevin Dynamics. The data of Best GAN and other VAEs is from \protect\cite{dai2019diagnosing}. The FID of VAEPP is usually better than GAN-VAEPP 
+\caption{FID comparison of GAN-based models and other VAEs. Best GAN indicates the best FID on each dataset across all GAN models when trained using settings suggested by original authors. VAEPP uses Bernouli as posterior on MNIST and Discretized Logistic~\protect\cite{salimans2017pixelcnn++} on others. GAN-VAEPP indicates that image is directly sampled from $z_0$, generated by GAN without Langevin Dynamics. The data of Best GAN and other VAEs is from \protect\cite{dai2019diagnosing}. The FID of VAEPP is usually better than GAN-VAEPP 
 %(except Fashion, the texture is hard to reconstruct, which leads to the reconstruction is much different to real image. It will misguide the Langevin Dynamics since we have assumed that)
 , which validates that the explicit prior and Langevin Dynamics are useful for improving the quality of sampling.
 }\label{tab:compare_FID}
 \end{table}
 
-It is hard to reach best performance in FID, IS and log-likelihood simultaneously by same setting. We observe this fact that when dimension of latent space is increasing, the trend of FID, IS is different to the trend of log-likelihood, as shown in \cref{fig:fid_different_dim}. As diagnosis in \cite{dai2019diagnosing}, the variance of $p_\theta(x|z)$ is chosen as a learnable scalar, and the dimension of latent space is selected as a number that little larger than the dimension of real data manifold, $\dim \mathcal{Z} = 128$, as our experimental result.  
+It is hard to reach best FID, IS~\cite{salimans2016improved} and log-likelihood simultaneously with the same setting. We observe the fact that when $\dim \mathcal{Z}$ (the dimension of latent space) increases, the trends of FID and IS are greatly different to log-likelihood's, as shown in \cref{fig:fid_different_dim}. As diagnosis in \cite{dai2019diagnosing}, the variance of $p_\theta(x|z)$ is chosen as a learnable scalar $\gamma$, and the $\dim \mathcal{Z}$ is chosen as a number, a little larger than the dimension of real data manifold, $\dim \mathcal{Z} = 128$, as our experimental result.  
 
 \begin{figure}[tb]
 	\centering
 	\includegraphics[width=0.9\columnwidth]{../dist.strip/z_dim}
 	\caption{
-	Comparation of VAEPP with learnable scalar variance of $p_\theta(x|z)$, as the dimension of latent space varies on CIFAR-10, with metrics BPD, FID and IS. FID and BPD is better when it is smaller and IS is better when it is larger. When $\dim \mathcal{Z}$ is greater than 128, the quality of sampling becomes worse and BPD becomes better as $\dim \mathcal{Z}$ increases. It validates the proposition that $\dim \mathcal{Z}$ should be selected as a minimal number of active latent dimensions in \protect\cite{dai2019diagnosing}. The reconstruction term is optimized more as $\dim \mathcal{Z}$ increases, because larger latent space could remain more information. Meanwhile, the $KL(q_\phi(z)||p_\lambda(z))$ (Bounded by the difference between ELBO and reconstruction term) increases not much since learnable prior relieves the increase. It also shows a phenomenon that the  trend of FID, IS are not always same as BPD, maybe greatly different. 
+	Comparison of VAEPP with a learnable scalar $\gamma$ (variance of $p_\theta(x|z)$), as the dimension of latent space varies on CIFAR-10, with metrics BPD, FID and IS. FID and BPD is better when it is smaller and IS is better when it is larger. When $\dim \mathcal{Z}$ is greater than 128, the quality of sampling becomes worse and BPD becomes better as $\dim \mathcal{Z}$ increases. It validates the proposition that $\dim \mathcal{Z}$ should be chosen as a minimal number of active latent dimensions in \protect\cite{dai2019diagnosing}. The reconstruction term is optimized more as $\dim \mathcal{Z}$ increases, because larger latent space could keep more information. Meanwhile, the $KL(q_\phi(z)||p_\lambda(z))$ (Bounded by the difference between ELBO and reconstruction term) increases not much since the learnable prior could relieve the increasing of it. It also shows an interesting phenomenon that the  trends of FID and IS, are not always same as BPD, maybe greatly different. 
 	}
 	\label{fig:fid_different_dim}
 \end{figure}
 
 For better understanding, the value of discriminator in this section is normalized into $\mathcal{N}(0, 1)$ in training set.
 
-To validate the \cref{eq:behavior_of_beta}, we calculate the $\E_{p_\lambda(z)}[ D(G(z))]$ (discriminator on generated samples) and $\E_{q_\phi(z)}[ D(G(z))]$ (discriminator on reconstructed samples). They are 0.092 and 0.015 respectively on CIFAR-10, which means discriminator on generated samples and reconstructed samples are nearly same as discriminator on real data. 
+To validate the \cref{eq:behavior_of_beta}, we calculate the $\E_{p_\lambda(z)}[ D(G(z))]$ (discriminator on generated samples) and $\E_{q_\phi(z)}[ D(G(z))]$ (discriminator on reconstructed samples). They are 0.092 and 0.015 respectively on CIFAR-10, which means discriminator on generated samples and reconstructed samples are nearly same as the discriminator on real data. 
 % The mean and std of energy in training set is -19.986605, 2.5140648
 % The discriminator on generated samples is -19.75406244, std is 0.3330956099129594
 % The discriminator on reconstructed samples is -19.9492;
 
-To validate the assumption in \cref{subsec:inference} holds in actual experiment, we calculate $|\E_{p_\theta(x|z)}D(x) - D(G(z))|$ (0.019) on CIFAR-10, which is acceptable small. 
+To validate the assumption introduced in \cref{subsec:inference} indeed holds in practical experiment, $|\E_{p_\theta(x|z)}D(x) - D(G(z))|$ is an acceptable value (0.019) on CIFAR-10. 
 
 % CIFAR [-12.352115, -12.347757, -12.345433, -12.345455, -12.3524475, 
 % -12.345604, -12.345031, -12.348698, -12.346703, -12.350895, -12.353839,

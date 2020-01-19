@@ -10,7 +10,7 @@ We apply an assumption $\E_{p_\theta(x|z)} D(x) = D(G(z))$ (it indeed extends th
 	& \min_{\lambda} \{\E_{p_\lambda(z)} D(G(z))  - \E_{p^*(x)} D(x)\} \tag{11} \\
 	{\textbf{s.t. }} & KL(p_\lambda, p_\mathcal{N}) = \alpha, \qquad \int_{\mathcal{Z}} p_\lambda(z) \dd z = 1
 \end{align*}
-It could be solved by Lagrange multiplier method introduced by calculus of variation~\cite{gelfand2000calculus}. The Lagrange function with Lagrange multiplier $\eta, \gamma$ is following:
+It could be solved by Lagrange multiplier method introduced by calculus of variation~\cite{gelfand2000calculus}. The Lagrange function with Lagrange multiplier $\eta, \gamma$ is:
 \begin{align*}\label{eq:lagrange_function}
 & F(p_\lambda, \eta, \gamma) = \E_{p_\lambda(z)} D(G(z))  - \E_{p^*(x)} D(x) + \\
 & \eta (\int_{\mathcal{Z}} p_\lambda(z) \dd z - 1) + \gamma(KL(p_\lambda, p_\mathcal{N}) - \alpha) \tag{12}
