@@ -27,7 +27,7 @@ from tfsnippet.preprocessing import UniformNoiseSampler
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 128
+    z_dim = 112
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
