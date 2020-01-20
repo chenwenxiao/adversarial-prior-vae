@@ -4,12 +4,20 @@ In this section, we will propose two training methods and a sampling method for 
 \subsection{2-step training for VAEPP} \label{subsec:naive_vaepp}
 Note the discriminator should be obtained by $W^1(p_\theta, p^*)$, as WGAN~\cite{arjovsky2017wasserstein} did. However in VAEPP, $p_\theta$ is intractable for sampling, since $p_\theta(x) = \E_{p_\lambda(z)} p_\theta(x|z)$ and $p_\lambda(z)$ is intractable for sampling. 
 
-When $\beta$ is small enough, $p_\lambda(z)$ is near to $p_\mathcal{N}(z)$ which is feasible for sampling. Then, $p_\theta(x)$ is near to $p^\dag(x)$, where $p^\dag(x) = \E_{p_\mathcal{N}(z)} p_\theta(x|z)$. We suspect that $W^1(p_\theta, p^*)$ could be replace by $W^1(p^\dag, p^*)$. To ensure $\beta$ is small, $\beta$ is limited by a hyper-parameter. 
+When $\beta$ is small enough, $p_\lambda(z)$ is near to $p_\mathcal{N}(z)$ which is feasible for sampling. Then, $p_\theta(x)$ is near to $p^\dag(x)$, where $p^\dag(x) = \E_{p_\mathcal{N}(z)} p_\theta(x|z)$ and $p^\dag(x)$ is feasible for sampling. Therefore, we suspect that $W^1(p_\theta, p^*)$ could be replace by $W^1(p^\dag, p^*)$, which is feasible since $p^\dag(x), p^*(x)$ are feasible for sampling. To ensure $\beta$ is small, $\beta$ is limited by a hyper-parameter. 
 In this way, an discriminator $D$ is trained by:
 \begin{equation*}
 	W^1(p^\dag, p^*) = \sup_{Lip(D) \leq 1} \E_{p^\dag(x)} D(x) - \E_{p^*(x)} D(x)
 \end{equation*} 
 
+\begin{figure}[tb]
+	\centering
+	\includegraphics[width=0.9\columnwidth]{../dist.strip/loss_curves}
+	\caption{
+	Training loss of Naive VAEPP and VAEPP on CIFAR-10. Naive VAEPP is more unstable and nearly crashes at 80 epoch while VAEPP has a little acceptable gap. From global view, the training loss of VAEPP is more smooth than Naive VAEPP and is better than Naive VAEPP's over almost all training process, which validates the motivation in \cref{subsec:improve_of_vaepp}. There are little gaps at per 200 epoch because learning rate is reduced to half at every 200 epoch. 
+	}
+	\label{fig:loss_curves}
+\end{figure}
 %When $\beta$ is too large, the discriminator could not assess the quality of data as we expect, since $W^1(p_\theta, p^*)$ might be greatly different to $W^1(p^\dag, p^*)$. 
 %Fortunately, the training for $\beta$ can avoid that $\beta$ becomes too large. 
 %When $\beta$ becomes too large, the discriminator could not assess the quality of data as we expect. Therefore, ELBO will be worse and then $\beta$ will decrease. 
@@ -45,15 +53,6 @@ Above two training process run alternatively, which is called the 2-step trainin
 \end{algorithm}
 
 \subsection{1-step training for VAEPP} \label{subsec:improve_of_vaepp}
-
-\begin{figure}[tb]
-	\centering
-	\includegraphics[width=0.9\columnwidth]{../dist.strip/loss_curves}
-	\caption{
-	Training loss of Naive VAEPP and VAEPP on CIFAR-10. Naive VAEPP is more unstable and nearly crashes at 80 epoch while VAEPP has a little acceptable gap. From global view, the training loss of VAEPP is more smooth than Naive VAEPP and is better than Naive VAEPP's over almost all training process, which validates the motivation in \cref{subsec:improve_of_vaepp}. There are little gaps at per 200 epoch because learning rate is reduced to half at every 200 epoch. 
-	}
-	\label{fig:loss_curves}
-\end{figure}
 
 However, the training process of \cref{alg:vaepp} is unstable and inefficient, as shown in \cref{fig:loss_curves}. 
 We suspect that the two independent optimizations instead of one whole optimization, may lower the log-likelihood and stability. Therefore, we try to combine the training for $\theta, \phi, \beta, \omega$ into a whole optimization. 
