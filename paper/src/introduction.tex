@@ -9,14 +9,14 @@ Firstly, a discriminator $D(x)$ is trained for assessing the quality of images. 
 %The inference of pull-back prior is similar to the proof that shows aggregated posterior as optimal prior. 
 %The key difference is that we search the prior that minimizes the Wasserstein distance between empirical distribution and model distribution instead of ELBO (if so, we will obtain aggregated posterior). 
 
-We propose a training algorithm for VAE with Pull-back Prior (VAEPP), based on SGVB~\cite{kingma2014auto} with gradient penalty terms, which mix the discriminator and the gradient penalty term into VAE. We extend it to a more general VAE framework. We also use Langevin Dynamics to improve the quality of sampling. 
+We propose a training algorithm for VAE with Pull-back Prior (VAEPP), based on SGVB~\cite{kingma2014auto} with gradient penalty terms, which mix the discriminator and the gradient penalty term into VAE. We extend it to a more general VAE framework. We also use Langevin dynamics to improve the quality of sampling. 
 Thanks to the gradient penalty term of WGAN-GP~\cite{gulrajani2017improved} and WGAN-div~\cite{wu2018wasserstein}, and the practical implementation of Langevin dynamics in MEG~\cite{kumar2019maximum}, we enjoy stable efficient training and sampling process. 
 % In these years, out-of-distribution (OoD) is noticed by some researchers, and \cite{nalisnick2018deep} has shown that the model log-likelihood from flow-based models, VAEs, and PixelCNN assign higher density to the images of SVHN~\cite{netzer2011reading} when these models are trained on CIFAR-10 and such peculiar behavior of these models also act on other dataset. It challenges the assumption of generative models that the density of in-distribution is higher and the density of out-of-distribution is lower. In this paper, we will show that the discriminator and the norm of its gradient are as our expectation in VAEPP. It reminds us to use these indicators to help VAE to outcome the OoD problem, and it reaches a powerful performance in OoD testing.
 
 The main contributions of this paper are in the following:
 \begin{itemize}
 	\item We propose a novel and powerful learnable prior, Pull-back Prior, which is adjusted by a discriminator that can assess the quality of data. 
-	\item We propose VAEPP framework to use existing techniques of VAE, \EG flow posterior, and WGAN, \EG gradient penalty strategy, and Langevin Dynamics to improve the log-likelihood, quality of sampling and stability of training. 
+	\item We propose VAEPP framework to use existing techniques of VAE, \EG flow posterior, and WGAN, \EG gradient penalty strategy, and Langevin dynamics to improve the log-likelihood, quality of sampling and stability of training. 
 	\item In MNIST and CIFAR-10, the log-likelihood of VAEPP outperforms models without autoregressive components and is comparable to autoregressive models. In MNIST, Fashion-MNIST, CIFAR-10 and CelebA,  the FID of VAEPP is comparable to GANs and SOTA of VAEs. 
 	% \item The combination indicator of VAEPP which involves the log-likelihood and discriminator outperforms other existing OoD detector in OoD testing.
 \end{itemize}

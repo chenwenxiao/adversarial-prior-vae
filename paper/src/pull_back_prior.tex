@@ -7,7 +7,7 @@ The formula of Pull-back Prior is given by:
 \begin{equation}\label{eq:pull_back_prior}
 	p_\lambda(z) = \frac{1}{Z} p_\mathcal{N}(z) \cdot e^{- \beta D(G(z))} \tag{4}
 \end{equation}
-where $p_\mathcal{N}$ is a simple prior, $D$ is a discriminator, $G$ is a generator, $Z$ is the partition function $Z = \int_{\mathcal{Z}} p_\mathcal{N}(z) e^{- \beta * D(G(z))} \dd z$ and $\beta$ is a learnable scalar.
+where $p_\mathcal{N}$ is a simple prior, $D$ is a discriminator, $G$ is a generator, $f_\lambda(z)$ denotes $p_\mathcal{N}(z) e^{- \beta D(G(z))}$, $Z$ is the partition function $Z = \int_{\mathcal{Z}} f_\lambda(z) \dd z$ and $\beta$ is a learnable scalar.
 
 A design proposition of Pull-back Prior is that we increase $p_\lambda(z)$ where $z$ generates better data and decrease $p_\lambda(z)$ where $z$ generates worse data. In Pull-back Prior, 
 $D$ is a discriminator to assess the quality of $x$, where smaller $D(x)$ indicates $x$ being more similar to real data, as shown in \cref{fig:interpolate}. Such discriminator $D(x)$ is defined on $x$, and the pull-back discriminator on $z$ is defined by $D(G(z))$, representing the ability of $z$ that could generate data with high quality. To improve the density at the better $z$ and decrease the density at the worse $z$, we modify $p_\mathcal{N}(z)$ by $\beta D(G(z))$ and then normalize it by $Z$. 
@@ -66,7 +66,7 @@ It is difficult to calculate the exact partition function $Z$. Fortunately in VA
     \hat{Z} = \E_{q_\phi(z)} \frac{f_\lambda(z)}{\hat{q}_\phi(z)} \geq
 	\E_{q_\phi(z)}\frac{f_\lambda(z)}{q_\phi(z)} = Z \tag{8}
 \end{align*}
-where $f_\lambda(z) = p_\mathcal{N}(z) e^{- \beta D(G(z))}$ and $\hat{q}_\phi(z)$ is a lower-bound of $q_\phi(z)$. If we replace $Z$ by $\hat{Z}$ in evaluation and training, we will obtain lower-bounds of log-likelihood and ELBO:
+where $\hat{q}_\phi(z)$ is a lower-bound of $q_\phi(z)$. If we replace $Z$ by $\hat{Z}$ in evaluation and training, we will obtain lower-bounds of log-likelihood and ELBO:
 \begin{align*}
 	\hat{p}_\theta(x) = \int \frac{p_\theta(x|z) f_\lambda(z)}{\hat{Z}}  \dd z &\leq \int \frac{p_\theta(x|z) f_\lambda(z)}{Z} \dd z = p_\theta(x)  \\
 	\mathcal{\hat{K}} = \E_{q_\phi(z)} \frac{1}{\hat{Z}}\ln f_\lambda(z) &\leq \E_{q_\phi(z)} \frac{1}{Z} \ln f_\lambda(z) = \mathcal{K}   \\
@@ -82,7 +82,7 @@ where RHS is $\hat{q}_\phi(z)$, $x^{(j)}$ is the a data and $N$ is the size of t
 %To reduce the gap between $\hat{q}_\phi(z)$ and $q_\phi(z)$, $q_\phi(z|x^{(j)})$ should be one of the largest in the summation. Therefore, we firstly sample $x^{(j)}$ form dataset, and then sample $z$ from $q_\phi(z|x^{(j)})$. By this way, $q_\phi(z|x^{(j)})$ is large enough. 
 
 In MNIST and other Bernouli image datasets, the number of Bernouli images might be numerous and $\hat{q}_\phi(z)$ might be underestimiated due to the large $N$. 
-Since the size of real images is much less than the size of Bernouli images, we use $q_\phi(z|e)$ instead of $q_\phi(z|x)$ to estimate $\hat{q}_\phi(z)$, where $e$ means the real image and $x$ means the Bernouli image. If we have $q_\phi(z|e)$, we could easily obtain $\hat{q}_\phi(z)$ by $\frac{1}{N} q_\phi(z|e^{(j)})$. 
+Since the size of real images is much smaller than the size of Bernouli images, we use $q_\phi(z|e)$ instead of $q_\phi(z|x)$ to estimate $\hat{q}_\phi(z)$, where $e$ means the real image and $x$ means the Bernouli image. If we have $q_\phi(z|e)$, we could easily obtain $\hat{q}_\phi(z)$ by $\frac{1}{N} q_\phi(z|e^{(j)})$. 
 
 We propose ELBO to train a VAE based on $q_\phi(z|e)$:
 \begin{align*}~\label{eq:another_elbo}
@@ -96,7 +96,7 @@ where $p^*(e)$ denotes the distribution of real images and $p^*(x|e)$ means the 
 Review the estimation of $Z$. By the theory of importance sampling, $p_\lambda$ is the optimal choice for the proposal distribution in estimation of $Z$. However, it is expensive to sample from $p_\lambda$. 
 \cite{bauer2019resampled} uses $p_\mathcal{N}$ as the proposal distribution to estimate $Z$ but when $KL(p_\mathcal{N}, p_\lambda)$ is high, the variance of this estimation will be large. 
 
-After training, $KL(q_\phi, p_\lambda)$ is much less than $KL(p_\mathcal{N}, p_\lambda)$. Therefore, we choose $q_\phi(z)$ as the proposal distribution and use a feasible $\hat{q}_\phi(z)$ to replace $q_\phi(z)$ to obtain the lower-bound of $\hat{Z}$ in \cref{eq:Z_estimator}. The variance of $\hat{Z}$ is acceptable in experiments.  
+After training, $KL(q_\phi, p_\lambda)$ is much smaller than $KL(p_\mathcal{N}, p_\lambda)$. Therefore, we choose $q_\phi(z)$ as the proposal distribution and use a feasible $\hat{q}_\phi(z)$ to replace $q_\phi(z)$ to obtain the lower-bound of $\hat{Z}$ in \cref{eq:Z_estimator}. The variance of $\hat{Z}$ is acceptable in experiments.  
 
 At the begin of training, $\beta$ is small and then $KL(p_\mathcal{N}, p_\lambda)$ is small. Therefore, $p_\mathcal{N}(z)$ could be used together with $q_\phi(z)$, as the proposal distributions in training.
  
