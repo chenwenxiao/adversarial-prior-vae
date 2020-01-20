@@ -56,7 +56,7 @@ We compare our algorithms with other models based on log-likelihood, on MNIST an
 %On the other hand, we expect that the pure improvement on learnable prior could improve the performance of VAE rather than the careful design on encoder or decoder, since it is clearer and easier to develop in theory. 
 Therefore, how to apply an autoregressive component on VAEPP is a valuable and challenging practical work and we leave it for future work.
 
-We evaluate and compare the performance of VAEPP trained by \cref{alg:vaepp} and the Naive VAEPP trained by \cref{alg:improved_vaepp} on CIFAR10, as the gradient penalty algorithm is chosen from 3 strategies: WGAN-GP, WGAN-div-1 (sampling the linear interpolation of  real data and generated data) and WGAN-div-2 (sampling real data and generated data), as shown in \cref{tab:compare_nD_over_R}. 
+We evaluate and compare the performance of Naive VAEPP trained by \cref{alg:vaepp} and VAEPP trained by \cref{alg:improved_vaepp} on CIFAR-10, as the gradient penalty algorithm is chosen from 3 strategies: WGAN-GP, WGAN-div-1 (sampling the linear interpolation of  real data and generated data) and WGAN-div-2 (sampling real data and generated data), as shown in \cref{tab:compare_nD_over_R}. 
 %Our conclusion is that \cref{alg:improved_vaepp} outperforms \cref{alg:vaepp} under all  settings in CIFAR-10 and we select WGAN-div-1 as the default setting.
 \begin{table}[tb]
 \centering
@@ -77,7 +77,7 @@ WGAN-div-2   &  4.47   & 2.99      \\
 
 To validate that it is better to use $q_\phi(z)$ to evaluate $Z$ than $p_\mathcal{N}(z)$ in \cref{subsec:determine_z}, we calculate the $KL(q_\phi(z)||p_\lambda(z))$ and $KL(p_\mathcal{N}(z)||p_\lambda(z))$ on CIFAR-10 and MNIST. The former is less than $\mathcal{L}-\mathcal{I}$~\cite{hoffman2016elbo}(180.3 on CIFAR-10 and 12.497 on MNIST), and the latter can be evaluated directly (1011.30 on CIFAR-10 and 57.45 on MNIST). Consequently, $q_\phi(z)$ is much closer to $p_\lambda(z)$ than $p_\mathcal{N}(z)$. 
 
-To ensure the variance of estimation $\hat{Z}$ is small enough, the $q_\phi(z|e)$ is chosen as truncated normal distribution (drop the sample whose magnitude is more than 2 standard deviation form the mean) instead of normal distribution. 
+To ensure the variance of estimation $\hat{Z}$ is small enough, the $q_\phi(z|e)$ is chosen as truncated normal distribution (drop the sample whose magnitude is more than 2 standard deviation form the mean) instead of normal distribution, which may reduce the gap between $q_\phi(z)$ and $\hat{q}_\phi(z)$. 
 %In \cref{eq:Z_estimator}, $\hat{q}_\phi(z)$ estimated by $\frac{1}{N}q_\phi(z|e^{(j)})$ is the denominator and if it becomes too small sometimes, the estimation will become unstable. 
 %If $q_\phi(z|e^{(j)})$ is chosen as normal distribution, the probability of $z$ in tail will be larger when the number of samples become larger, which will lead to huge variance to the estimation $\hat{Z}$. 
 With $10^9$ samples, the variance of $\hat{Z}$ with truncated normal and normal are $0.000967$ (truncated normal) and $0.809260$ (normal) respectively in MNIST. Therefore, truncated normal is chosen as default setting. 
@@ -87,7 +87,7 @@ With $10^9$ samples, the variance of $\hat{Z}$ with truncated normal and normal 
 %We evaluate $Z$ by two ways mentioned in \cref{subsec:determine_z} and compare the variance of them in 10 times on CIFAR-10. The variance of estimation based on $q_\phi(z)$ (4.82), is much less than the variance of estimation based on $p_\mathcal{N}$ (TODO), which supports our proposition in \cref{subsec:determine_z}. Since the variance of $Z$ also influence the variance of log-likelihood, we also evaluate the variance of log-likelihood in 10 times on CIFAR-10 (4.82) to ensure the stability of evaluation. 
 
 \subsection{Quality of Sampling}
-As common sense, the quality of sampling of VAEs is worse than GANs, and it is indeed a reason that we involve the techniques of GAN to improve VAE model: We use the discriminator to adjust learnable prior and a GAN to sample the initial $z_0$ for Langevin Dynamics. These techniques will help VAEPP improve the quality of samples. The samples of VAEPP gets good FID, comparable to GANs and 2-Stage VAE (which is the SOTA of VAE in FID), as shown in \cref{tab:compare_FID}. Some generated images are shown in \cref{fig:show_images}.
+As a common sense, the quality of sampling of VAEs is worse than GANs, and it is indeed a reason that we involve the techniques of GAN to improve VAE model: We use the discriminator to adjust learnable prior and a GAN to sample the initial $z_0$ for Langevin Dynamics. These techniques will help VAEPP improve the quality of samples. The samples of VAEPP gets good FID, comparable to GANs and 2-Stage VAE (which is the SOTA of VAE in FID), as shown in \cref{tab:compare_FID}. Some generated images are shown in \cref{fig:show_images}.
 \begin{figure}[tb]
 	\centering
 	\includegraphics[width=1.0\columnwidth]{../figures/celeba}
