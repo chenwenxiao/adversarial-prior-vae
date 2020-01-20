@@ -62,15 +62,15 @@ $\max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$ indeed finds a s
 	&= \beta W^1(p^\dag, p_r) \approx \beta W^1(p^\dag, p^*) 
 \end{align*}
 where $p_r$ denotes $p_r(x) = \E_{q_\phi(z)} p_\theta(x|z)$, consisting of reconstructed data. 
-The last approximation sign is from the fact that $p_r \rightarrow p^*$ after a few epoch in training of VAE. \cref{eq:improve_vaepp} also uses the assumption $D(G(z)) = \E_{p_\theta(x|z)} D(x)$ introduced in \cref{subsec:inference} to simplify equation. The inequality of $\ln Z$ is in the following:
+The last approximation sign is from the fact that $p_r \rightarrow p^*$ after  few epochs in training of VAE. \cref{eq:improve_vaepp} also uses the assumption $D(G(z)) = \E_{p_\theta(x|z)} D(x)$ introduced in \cref{subsec:inference} to simplify equation. The inequality of $\ln Z$ is:
 \begin{equation*}
 	\ln Z = \ln \E_{p_\mathcal{N}(z)} e^{- \beta * D(G(z))} \geq \E_{p_\mathcal{N}(z)} [- \beta * D(G(z))]
 \end{equation*}
 
-\cref{eq:improve_vaepp} indicates that it is reasonable to obtain a suboptimal discriminator $D$ by optimizing $\mathcal{L}$ with the gradient penalty term, and the gradient penalty term should be multiplied by $\beta$. In this way, the optimizations for $\theta, \phi, \beta$ and $\omega$ are combined into one, which is provided in \cref{alg:improved_vaepp}. 
-Moreover, the discriminator trained by \cref{alg:vaepp} and in \cref{alg:improved_vaepp}, are both approximation to the real discriminator in $W^1(p_\theta, p^*)$. 
+\cref{eq:improve_vaepp} indicates that it is reasonable to obtain a suboptimal discriminator $D$ by optimizing $\mathcal{L}$ with the gradient penalty term, and the gradient penalty term should be multiplied by $\beta$. In this way, the optimizations for $\theta, \phi, \beta$ and $\omega$ are combined into one, as shown in \cref{alg:improved_vaepp}. 
+Moreover, the discriminator trained by \cref{alg:vaepp} and in \cref{alg:improved_vaepp}, are both approximations to the real discriminator in $W^1(p_\theta, p^*)$. 
 
-Thanks to the gradient penalty regularizer term provided by WGAN-GP and WGAN-div, we enjoy stable and efficient training. The model trained by \cref{alg:vaepp} is called Naive VAEPP and the model trained by \cref{alg:improved_vaepp} is called VAEPP. 
+Thanks to the gradient penalty terms provided by WGAN-GP and WGAN-div, we enjoy stable and efficient training. The model trained by \cref{alg:vaepp} is called Naive VAEPP and the model trained by \cref{alg:improved_vaepp} is called VAEPP. 
 \begin{algorithm}[tb]
 \caption{The combing training algorithm for VAEPP}
 \label{alg:improved_vaepp}

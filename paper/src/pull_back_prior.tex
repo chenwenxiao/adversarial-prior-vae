@@ -49,7 +49,7 @@ To maximize ELBO, we can obtain the optimal $\beta$ by:
 The gradient $\partial \mathcal{L}/\partial \beta$ is:
 \begin{align*}\label{eq:behavior_of_beta}
 \frac{\partial \ln Z}{\partial \beta} &= \frac{1}{Z} \int p_\mathcal{N}(z) e^{-\beta D(G(z))} \cdot (-D(G(z))) \dd z \\
-&=  \E_{p_\lambda(z)} - D(G(z))  \\
+&=  \E_{p_\lambda(z)} [- D(G(z))]  \\
 \frac{\partial \mathcal{L}}{\partial \beta} &= \E_{q_\phi(z)}[ -D(G(z))] - \frac{\partial \ln Z}{\partial \beta} \\
 &= - \E_{q_\phi(z)}[ D(G(z))] + \E_{p_\lambda(z)}[ D(G(z))]   \tag{6}
 \end{align*}
