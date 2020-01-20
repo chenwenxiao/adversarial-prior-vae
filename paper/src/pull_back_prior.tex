@@ -96,6 +96,7 @@ where $p^*(e)$ denotes the distribution of real images and $p^*(x|e)$ means the 
 Review the estimation of $Z$. By the theory of importance sampling, $p_\lambda$ is the optimal choice for the proposal distribution in estimation of $Z$. However, it is expensive to sample from $p_\lambda$. 
 \cite{bauer2019resampled} uses $p_\mathcal{N}$ as the proposal distribution to estimate $Z$ but when $KL(p_\mathcal{N}, p_\lambda)$ is high, the variance of this estimation will be large. 
 
-In trained model, $KL(q_\phi, p_\lambda)$ is much less than $KL(q_\phi, p_\mathcal{N})$. Therefore, we choose $q_\phi(z)$ as the proposal distribution and use a feasible $\hat{q}_\phi(z)$ to replace $q_\phi(z)$ to obtain the lower-bound of $\hat{Z}$ in \cref{eq:Z_estimator}. The variance of $\hat{Z}$ is acceptable in experiment.  
+After training, $KL(q_\phi, p_\lambda)$ is much less than $KL(p_\mathcal{N}, p_\lambda)$. Therefore, we choose $q_\phi(z)$ as the proposal distribution and use a feasible $\hat{q}_\phi(z)$ to replace $q_\phi(z)$ to obtain the lower-bound of $\hat{Z}$ in \cref{eq:Z_estimator}. The variance of $\hat{Z}$ is acceptable in experiments.  
 
-In the begin of training, $\beta$ is small and then $KL(p_\mathcal{N}, p_\lambda)$ is small. Therefore, $p_\mathcal{N}$ could be used as the proposal distribution in training. 
+At the begin of training, $\beta$ is small and then $KL(p_\mathcal{N}, p_\lambda)$ is small. Therefore, $p_\mathcal{N}(z)$ could be used together with $q_\phi(z)$, as the proposal distributions in training.
+ 

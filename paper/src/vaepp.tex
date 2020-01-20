@@ -6,7 +6,7 @@ By \cref{subsec:inference}, an approximation discriminator is trained by:
 \begin{equation*}
 	W^1(p^\dag, p^*) = \sup_{Lip(D) \leq 1} \E_{p^\dag} D(x) - \E_{p^*} D(x)
 \end{equation*} 
-where $p^\dag(x) = \E_{p_\mathcal{N}(z)} p_\theta(x|z)$. The real discriminator should be obtained by $W^1(p_\theta, p^*)$, but it is expensive to sample from $p_\theta$ in training and $W^1(p^\dag, p^*)$ is used to obtain an approximation discriminator. Therefore, the approximation discriminator may be invalid when $p_\lambda$ is too far from $p_\mathcal{N}$, \IE $\beta$ is too large. Fortunately, the training for $\beta$ can avoid this: when $\beta$ becomes too large and $D$ becomes invalid, ELBO will be worse and then $\beta$ will decrease. The other parameters is trained by SGVB:
+where $p^\dag(x) = \E_{p_\mathcal{N}(z)} p_\theta(x|z)$. The real discriminator should be obtained by $W^1(p_\theta, p^*)$, but it is expensive to sample from $p_\theta$ in training and then $W^1(p^\dag, p^*)$ is used to obtain an approximation discriminator. As the result, the approximation discriminator may be invalid when $p_\lambda$ is too far from $p_\mathcal{N}$, \IE $\beta$ is too large. Fortunately, the training for $\beta$ can avoid this: when $\beta$ becomes too large and $D$ becomes invalid, ELBO will be worse and then $\beta$ will decrease. The other parameters is trained by SGVB:
 \begin{equation*}
 	\max_{\theta, \phi, \beta} \mathcal{L}(\theta, \phi, \beta, \omega)
 \end{equation*}
@@ -43,13 +43,13 @@ Above two training process run alternatively, which is called the naive training
 	\centering
 	\includegraphics[width=0.9\columnwidth]{../dist.strip/loss_curves}
 	\caption{
-	Training process of Naive VAEPP and VAEPP on CIFAR-10. Naive VAEPP is more unstable and nearly crashes at 80 epoch while VAEPP has a little acceptable gap. From global view, the training loss of VAEPP is more smooth than Naive VAEPP and is better than Naive VAEPP over almost all training process, which validates the motivation in \cref{subsec:improve_of_vaepp}. There are little gaps at per 200 epoch because learning rate is reduced to half at every 200 epoch. 
+	Training loss of Naive VAEPP and VAEPP on CIFAR-10. Naive VAEPP is more unstable and nearly crashes at 80 epoch while VAEPP has a little acceptable gap. From global view, the training loss of VAEPP is more smooth than Naive VAEPP and is better than Naive VAEPP's over almost all training process, which validates the motivation in \cref{subsec:improve_of_vaepp}. There are little gaps at per 200 epoch because learning rate is reduced to half at every 200 epoch. 
 	}
 	\label{fig:loss_curves}
 \end{figure}
 
 However, the training process of \cref{alg:vaepp} is unstable and inefficient, as shown in \cref{fig:loss_curves}. 
-We suspect that the two independent optimization instead of one whole optimization, may lower the log-likelihood and stability. Therefore, we try to combine the training for $\theta, \phi, \beta, \omega$ into a whole optimization. 
+We suspect that the two independent optimizations instead of one whole optimization, may lower the log-likelihood and stability. Therefore, we try to combine the training for $\theta, \phi, \beta, \omega$ into a whole optimization. 
 Our solution is to use SGVB with gradient penalty regularizer to train VAEPP:
 \begin{equation*}
 	\max_{\theta, \phi, \beta} \max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega) 
@@ -68,6 +68,8 @@ The last approximation sign is from the fact that $p_r \rightarrow p^*$ after a 
 \end{equation*}
 
 \cref{eq:improve_vaepp} indicates that it is reasonable to obtain a suboptimal discriminator $D$ by optimizing $\mathcal{L}$ with the gradient penalty term, and the gradient penalty term should be multiplied by $\beta$. In this way, the optimizations for $\theta, \phi, \beta$ and $\omega$ are combined into one, which is provided in \cref{alg:improved_vaepp}. 
+Moreover, the discriminator trained by \cref{alg:vaepp} and in \cref{alg:improved_vaepp}, are both approximation to the real discriminator in $W^1(p_\theta, p^*)$. 
+
 Thanks to the gradient penalty regularizer term provided by WGAN-GP and WGAN-div, we enjoy stable and efficient training. The model trained by \cref{alg:vaepp} is called Naive VAEPP and the model trained by \cref{alg:improved_vaepp} is called VAEPP. 
 \begin{algorithm}[tb]
 \caption{The combing training algorithm for VAEPP}
@@ -101,7 +103,7 @@ The sampling of VAEPP consists of 3 parts:
 	\item generate image from $z$ with a decoder
 \end{enumerate}
 
-This sampling process is similar to 2-Stage VAE~\cite{dai2019diagnosing}. The main difference between them is that VAEPP applies Langevin Dynamics to sample from the explicit prior but 2-Stage VAE doesn't, since the prior of 2-Stage VAE is implicit. In experiments, sampling from the explicit learnable prior improves the quality of sampling and ensures the theoretical correctness of the prior. 
+This sampling process is similar to 2-Stage VAE~\cite{dai2019diagnosing}. The main difference between them is that VAEPP applies Langevin Dynamics to sample from the explicit prior but 2-Stage VAE doesn't, since the prior of 2-Stage VAE is implicit. In experiments, we found that sampling from the explicit learnable prior might improve the quality of sampling in some datasets. 
 
 It is hard to sample $z$ from $p_\lambda(z)$ since it is complicated. Accept/Reject Sampling (ARS)~\cite{bauer2019resampled} is unuseful for $p_\lambda$ because ARS requires that $p_\lambda(z) / p_\mathcal{N}(z)$ is bounded by a constant $M$, such that a sample could be sampled in $M$ times. It means $\beta$ is nearly 0, but not in fact.
  
