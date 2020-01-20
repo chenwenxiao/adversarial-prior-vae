@@ -12,7 +12,7 @@ In this way, an discriminator $D$ is trained by:
 
 \begin{figure}[tb]
 	\centering
-	\includegraphics[width=0.9\columnwidth]{../dist.strip/loss_curves}
+	\includegraphics[width=1.0\columnwidth]{../dist.strip/loss_curves}
 	\caption{
 	Training loss of Naive VAEPP and VAEPP on CIFAR-10. Naive VAEPP is more unstable and nearly crashes at 80 epoch while VAEPP has a little acceptable gap. From global view, the training loss of VAEPP is more smooth than Naive VAEPP and is better than Naive VAEPP's over almost all training process, which validates the motivation in \cref{subsec:improve_of_vaepp}. There are little gaps at per 200 epoch because learning rate is reduced to half at every 200 epoch. 
 	}
@@ -67,11 +67,10 @@ The optimization $\max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$
 	&= \beta \max_{Lip(D) \leq 1} \{ \E_{p^\dag(x)} D(x) - E_{p_r(x)} D(x) \} \\
 	&= \beta W^1(p^\dag, p_r) \approx \beta W^1(p^\dag, p^*) \tag{9} 
 \end{align*}
-where the inequality of $\ln Z$ is:
+where $p_r(x) = \E_{q_\phi(z)} p_\theta(x|z)$ and the inequality of $\ln Z$ is:
 \begin{equation*}
 	\ln Z = \ln \E_{p_\mathcal{N}(z)} e^{- \beta * D(G(z))} \geq \E_{p_\mathcal{N}(z)} [- \beta * D(G(z))]
 \end{equation*}
-$p_r(x) = \E_{q_\phi(z)} p_\theta(x|z)$. 
 The last approximation sign in \cref{eq:improve_vaepp} is from our expectation that $p_r \rightarrow p^*$, which is also observed in experiments, after few epochs in training. \cref{eq:improve_vaepp} also uses the assumption $\E_{p_\theta(x|z)} D(x) = D(G(z))$ introduced in \cref{subsec:inference} to simplify equation at the 2nd column. 
 
 \cref{eq:improve_vaepp} indicates that it is reasonable to obtain  discriminator $D$ during optimizing \cref{eq:1_step_optimization}. \cref{eq:improve_vaepp} also indicates that the gradient penalty term should be multiplied by $\beta$. Finally, the optimizations for $\theta, \phi, \beta$ and $\omega$ are combined into one, as shown in \cref{alg:improved_vaepp}. 
@@ -114,6 +113,6 @@ The sampling of VAEPP consists of 3 parts:
 This sampling process is similar to 2-Stage VAE~\cite{dai2019diagnosing}. The main difference between them is that VAEPP applies Langevin dynamics to sample from the explicit prior but 2-Stage VAE doesn't, since the prior of 2-Stage VAE is implicit. In experiments, we found that sampling from the explicit learnable prior might improve the quality of sampling in some datasets. 
 
 %It is hard to sample $z$ from $p_\lambda(z)$ since it is complicated. 
-Accept/Reject Sampling (ARS)~\cite{bauer2019resampled} is useless for $p_\lambda$ because ARS requires that $p_\lambda(z) / p_\mathcal{N}(z)$ is bounded by a constant $M$, such that a sample could be sampled in $M$ times. It means $\beta$ is nearly 0, but not in fact.
+Accept/Reject Sampling (ARS)~\cite{bauer2019resampled} is useless for $p_\lambda$ because ARS requires that $p_\lambda(z) / p_\mathcal{N}(z)$ is bounded by a constant $M$ for any $z$, such that a sample could be sampled in $M$ times. But it is hard to ensure that there exists an enough small $M$ in VAEPP.
  
  

@@ -119,7 +119,7 @@ It is hard to reach best FID, IS~\cite{salimans2016improved} and log-likelihood 
 
 \begin{figure}[tb]
 	\centering
-	\includegraphics[width=0.9\columnwidth]{../dist.strip/z_dim}
+	\includegraphics[width=1.0\columnwidth]{../dist.strip/z_dim}
 	\caption{
 	Comparison of VAEPP with a learnable scalar $\gamma$ (variance of $p_\theta(x|z)$), as the dimension of latent space varies on CIFAR-10, with metrics BPD, FID and IS. FID and BPD is better when it is smaller and IS is better when it is larger. When $\dim \mathcal{Z}$ is greater than 128, the quality of sampling becomes worse and BPD becomes better as $\dim \mathcal{Z}$ increases. It validates the proposition that $\dim \mathcal{Z}$ should be chosen as a minimal number of active latent dimensions in \protect\cite{dai2019diagnosing}. The reconstruction term is optimized more as $\dim \mathcal{Z}$ increases, because larger latent space could keep more information. Meanwhile, the $KL(q_\phi(z)||p_\lambda(z))$ (Bounded by the difference between ELBO and reconstruction term) increases not much since the learnable prior could relieve the increasing of it. It also shows an interesting phenomenon that the  trends of FID and IS, are not always same as BPD, maybe greatly different. 
 	}

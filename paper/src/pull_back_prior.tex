@@ -100,10 +100,9 @@ We propose ELBO to train a VAE based on $q_\phi(z|e)$:
 \cref{eq:another_elbo} is similar to the original ELBO, and the conclusions in this paper hold for \cref{eq:another_elbo} by repeating above derivations. $\mathcal{L}(\theta, \phi, \lambda)$ denotes \cref{eq:another_elbo} in Bernouli image datasets.  %Moreover, the situation without Bernouli images is a special case where $p^*(x|e) = \delta(x - e)$. % Additionally, when $p_\theta(x|z)$ and $p^*(x|e)$ is both Bernouli, term $\E_{p^*(x|e)} \ln p_\theta(x|z)$ has analytical solution $x\log e+(1-x)\log(1-e)$, which could make the training and evaluation more stable (don't need sample $x$). 
 The dataset without Bernouli images, is seen as a special case where $p^*(x|e) = \delta(x - e)$. 
 
-Review the estimation of $Z$. By the theory of importance sampling, $p_\lambda$ is the optimal choice for the proposal distribution in estimation of $Z$. However, it is expensive to sample from $p_\lambda$. 
+Review the estimation of $Z$. By the theory of importance sampling, $p_\lambda$ is the optimal choice for the proposal distribution in the estimation of $Z$. However, it is intractable to sample from $p_\lambda$. 
 \cite{bauer2019resampled} uses $p_\mathcal{N}$ as the proposal distribution to estimate $Z$ but when $KL(p_\mathcal{N}, p_\lambda)$ is high, the variance of this estimation will be large. 
 
-After training, $KL(q_\phi, p_\lambda)$ is much smaller than $KL(p_\mathcal{N}, p_\lambda)$. Therefore, we choose $q_\phi(z)$ as the proposal distribution and replace $q_\phi(z)$ by $\hat{q}_\phi(z|x)$, to obtain the lower-bound of $\hat{Z}$ in \cref{eq:Z_estimator}. The variance of $\hat{Z}$ is acceptable in experiments.  
-
-At the begin of training, $\beta$ is small and then $KL(p_\mathcal{N}, p_\lambda)$ is small. Therefore, $p_\mathcal{N}(z)$ could be used together with $q_\phi(z)$, as the proposal distributions in training.
+In our experiments, $KL(q_\phi, p_\lambda)$ is much smaller than $KL(p_\mathcal{N}, p_\lambda)$. Therefore, we choose $q_\phi(z)$ as the proposal distribution and replace $q_\phi(z)$ by $\hat{q}_\phi(z|x)$, to obtain the lower-bound of $\hat{Z}$ in \cref{eq:Z_estimator}. The variance of $\hat{Z}$ is acceptable in experiments.  
+In training, $p_\mathcal{N}(z)$ could be used together with $q_\phi(z)$, as the proposal distributions.
  
