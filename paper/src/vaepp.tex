@@ -21,7 +21,7 @@ Above two training process run alternatively, which is called the naive training
 \FOR {$k = 1, \ldots n_c$}
 \FOR {$i = 1, \ldots, b$}
 \STATE Sample $e, x \sim p^*$, $z \sim q_\phi(z|e)$, $\epsilon \sim p_\mathcal{N}$
-\STATE $Z^{(i)} \gets \frac{1}{2}(\exp\{-\beta D(G(\epsilon))\} + \frac{f_\lambda(z)}{\hat{q}_\phi(z)})$
+\STATE $Z^{(i)} \gets \frac{1}{2}(e^{-\beta D(G(\epsilon))} + \frac{f_\lambda(z)}{\hat{q}_\phi(z)})$
 \STATE $\mathcal{L}^{(i)} \gets \ln p_\theta(x|z) + \ln f_\lambda(z) - \ln q_\phi(z|e)$
 \ENDFOR
 \STATE $\mathcal{L} \gets \frac{1}{b}\sum_{i}^b \mathcal{L}^{(i)} - \ln (\frac{1}{b}\sum_{i}^b Z^{(i)})$
@@ -81,7 +81,7 @@ Thanks to the gradient penalty terms provided by WGAN-GP and WGAN-div, we enjoy 
 \FOR {$i = 1, \ldots, b$}
 \STATE Sample $e, x \sim p^*$, $z \sim q_\phi(z|e)$, $\epsilon \sim p_\mathcal{N}$
 \STATE $\hat{e} = G(\epsilon)$, get gradient penalty $\zeta \gets R(e, \hat{e})$ 
-\STATE $Z^{(i)} \gets \frac{1}{2}(\exp\{-\beta D(G(\epsilon))\} + \frac{f_\lambda(z)}{\hat{q}_\phi(z)})$
+\STATE $Z^{(i)} \gets \frac{1}{2}(e^{-\beta D(G(\epsilon))} + \frac{f_\lambda(z)}{\hat{q}_\phi(z)})$
 \STATE $\mathcal{L}^{(i)} \gets \ln p_\theta(x|z) + \ln f_\lambda(z) - \ln q_\phi(z|e) + \beta \zeta$
 \ENDFOR
 \STATE $\mathcal{L} \gets \frac{1}{b}\sum_{i}^b \mathcal{L}^{(i)} - \ln (\frac{1}{b}\sum_{i}^b Z^{(i)})$
@@ -91,8 +91,9 @@ Thanks to the gradient penalty terms provided by WGAN-GP and WGAN-div, we enjoy 
 \end{algorithm}
 
 \subsection{Sampling from VAEPP}
-We apply Langevin Dynamics to sample $z$ from $p_\lambda(z)$. It could generate natural and sharp images and only requires that $\nabla_z \log p_\lambda(z)$ is computable and the initial $z_0$ has an enough high density in $p_\lambda(z)$~\cite{song2019generative}. 
-Moreover, MEG~\cite{kumar2019maximum} have implemented a Metropolis-Adjusted Langevin Algorithm (MALA) for sampling where the formula of density also contains a discriminator term. But how to obtain the initial $z_0$ whose density is high enough is still a problem. 
+We apply Langevin Dynamics to sample $z$ from $p_\lambda(z)$. It could generate natural and sharp images and only requires that $\nabla_z \log p_\lambda(z)$ is computable and $p_\lambda(z_0)$ is high enough where $z_0$ is the initial point of Langevin Dynamics~\cite{song2019generative}. 
+Moreover, MEG~\cite{kumar2019maximum} has implemented a Metropolis-Adjusted Langevin Algorithm (MALA) for sampling, where the formula of density also contains a discriminator term. 
+But how to obtain the initial $z_0$ whose density is high enough is still a problem. 
 
 Following the philosophy of VAEPP, \IE using the technique of GANs to assist VAEs, it is natural to use a GAN to model the distribution $q_\phi(z)$, and use samples of the GAN as the initial $z_0$ for MALA. 
 
@@ -105,6 +106,7 @@ The sampling of VAEPP consists of 3 parts:
 
 This sampling process is similar to 2-Stage VAE~\cite{dai2019diagnosing}. The main difference between them is that VAEPP applies Langevin Dynamics to sample from the explicit prior but 2-Stage VAE doesn't, since the prior of 2-Stage VAE is implicit. In experiments, we found that sampling from the explicit learnable prior might improve the quality of sampling in some datasets. 
 
-It is hard to sample $z$ from $p_\lambda(z)$ since it is complicated. Accept/Reject Sampling (ARS)~\cite{bauer2019resampled} is unuseful for $p_\lambda$ because ARS requires that $p_\lambda(z) / p_\mathcal{N}(z)$ is bounded by a constant $M$, such that a sample could be sampled in $M$ times. It means $\beta$ is nearly 0, but not in fact.
+%It is hard to sample $z$ from $p_\lambda(z)$ since it is complicated. 
+Accept/Reject Sampling (ARS)~\cite{bauer2019resampled} is unuseful for $p_\lambda$ because ARS requires that $p_\lambda(z) / p_\mathcal{N}(z)$ is bounded by a constant $M$, such that a sample could be sampled in $M$ times. It means $\beta$ is nearly 0, but not in fact.
  
  

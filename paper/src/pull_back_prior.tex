@@ -7,7 +7,7 @@ The formula of Pull-back Prior is given by:
 \begin{equation}\label{eq:pull_back_prior}
 	p_\lambda(z) = \frac{1}{Z} p_\mathcal{N}(z) \cdot e^{- \beta D(G(z))} \tag{4}
 \end{equation}
-where $p_\mathcal{N}$ is a simple prior, $D$ is a discriminator, $G$ is a generator, $Z$ is the partition function $Z = \int_{\mathcal{Z}} p_\mathcal{N}(z) \exp\{- \beta * D(G(z))\} \dd z$ and $\beta$ is a learnable scalar.
+where $p_\mathcal{N}$ is a simple prior, $D$ is a discriminator, $G$ is a generator, $Z$ is the partition function $Z = \int_{\mathcal{Z}} p_\mathcal{N}(z) e^{- \beta * D(G(z))} \dd z$ and $\beta$ is a learnable scalar.
 
 A design proposition of Pull-back Prior is that we increase $p_\lambda(z)$ where $z$ generates better data and decrease $p_\lambda(z)$ where $z$ generates worse data. In Pull-back Prior, 
 $D$ is a discriminator to assess the quality of $x$, where smaller $D(x)$ indicates $x$ being more similar to real data, as shown in \cref{fig:interpolate}. Such discriminator $D(x)$ is defined on $x$, and the pull-back discriminator on $z$ is defined by $D(G(z))$, representing the ability of $z$ that could generate data with high quality. To improve the density at the better $z$ and decrease the density at the worse $z$, we modify $p_\mathcal{N}(z)$ by $\beta D(G(z))$ and then normalize it by $Z$. 
@@ -57,7 +57,7 @@ The 1st term in \cref{eq:behavior_of_beta} is the mean of the discriminator on r
 The 2nd term in \cref{eq:behavior_of_beta} is the mean of the discriminator on data generated from $p_\lambda$. 
 Hence, $\partial \mathcal{L}/\partial \beta = 0$ means that the discriminator can't distinguish reconstructed data and generated data when the training converges. It coincides with the philosophy of GANs that the discriminator can't distinguish the real data and generated data when the generator is well-trained.	
 
-Noticing that $p_\mathcal{N}$ is a special case of $p_\lambda$ where $\beta = 0$, it is natural that $p_\lambda$ could lead to better ELBO than $p_\mathcal{N}$.
+Noticing that $p_\mathcal{N}$ is a special case of $p_\lambda$ where $\beta = 0$, it is natural that $p_\lambda$ could lead to better ELBO than $p_\mathcal{N}$. It is quite hard to compare the ELBO between VAEPP and other VAEs with a learnable prior theoretically. Therefore, we shall compare them in experiments.  
 
 \subsection{The lower bound of $Z$}\label{subsec:determine_z}
 
@@ -66,7 +66,7 @@ It is difficult to calculate the exact partition function $Z$. Fortunately in VA
     \hat{Z} = \E_{q_\phi(z)} \frac{f_\lambda(z)}{\hat{q}_\phi(z)} \geq
 	\E_{q_\phi(z)}\frac{f_\lambda(z)}{q_\phi(z)} = Z \tag{8}
 \end{align*}
-where $f_\lambda(z) = p_\mathcal{N}(z) \exp\{- \beta D(G(z))\}$ and $\hat{q}_\phi(z)$ is a lower-bound of $q_\phi(z)$. If we replace $Z$ by $\hat{Z}$ in evaluation and training, we will obtain lower-bounds of log-likelihood and ELBO:
+where $f_\lambda(z) = p_\mathcal{N}(z) e^{- \beta D(G(z))}$ and $\hat{q}_\phi(z)$ is a lower-bound of $q_\phi(z)$. If we replace $Z$ by $\hat{Z}$ in evaluation and training, we will obtain lower-bounds of log-likelihood and ELBO:
 \begin{align*}
 	\hat{p}_\theta(x) = \int \frac{p_\theta(x|z) f_\lambda(z)}{\hat{Z}}  \dd z &\leq \int \frac{p_\theta(x|z) f_\lambda(z)}{Z} \dd z = p_\theta(x)  \\
 	\mathcal{\hat{K}} = \E_{q_\phi(z)} \frac{1}{\hat{Z}}\ln f_\lambda(z) &\leq \E_{q_\phi(z)} \frac{1}{Z} \ln f_\lambda(z) = \mathcal{K}   \\
