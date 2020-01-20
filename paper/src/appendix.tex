@@ -1,6 +1,6 @@
 \section{Derivation of Pull-back Prior}~\label{subsec:inference}
 
-Given $\theta, \phi$, search the optimal prior that minimizes the Wasserstein distance between $p_\theta$ and $p^*$:
+For any given $\theta, \phi$, search the optimal prior that minimizes the Wasserstein distance between $p_\theta$ and $p^*$:
 \begin{align*}\label{eq:direct_2nd_optimization}
 	& \min_{\lambda} \sup_{Lip(D) \leq 1} \{\E_{p_\lambda(z)} \E_{p_\theta(x|z)} D(x)  - \E_{p^*(x)} D(x)\} 
 	\tag{10}
@@ -20,6 +20,7 @@ We solve \cref{eq:lagrange_function} by Euler-Lagrange equation:
 	\ln p_\lambda(z) = \frac{1}{\gamma} D(G(z)) + \ln p_\mathcal{N}(z) + (\frac{\eta}{\gamma} - 1) \tag{13}
 \end{equation*}
 where $\gamma$ is determined by $\alpha$ and $\eta$ is determined from condition $\int_{\mathcal{Z}} p_\lambda(z) \dd z = 1$.
-Consequently, $\beta$ is determined by $\alpha$, representing how far $p_\lambda$ is from $p_\mathcal{N}$. In \cref{eq:final_optimization}, $\alpha$ is static and should be searched as an appropriate value, \IE $\beta$ should be searched, as \cref{subsec:determine_beta} does. It is an interesting trade-off: if $\beta$ is too large, the approximation $D$ may be invalid; if $\beta$ too small, $p_\lambda$ has no difference to $p_\mathcal{N}$. 
+Consequently, $\beta$ is determined by $\alpha$, representing how far $p_\lambda$ is from $p_\mathcal{N}$. In \cref{eq:final_optimization}, $\alpha$ is static and should be searched as an appropriate value, \IE $\beta$ should be searched, as \cref{subsec:determine_beta} does. 
+% It is an interesting trade-off: if $\beta$ is too large, the approximation $D$ may be invalid; if $\beta$ too small, $p_\lambda$ has no difference to $p_\mathcal{N}$. 
  
  
