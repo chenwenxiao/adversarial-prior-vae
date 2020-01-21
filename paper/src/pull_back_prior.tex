@@ -61,14 +61,14 @@ Noticing that $p_\mathcal{N}$ is a special case of $p_\lambda$ where $\beta = 0$
 
 \subsection{The upper-bound of $Z$}\label{subsec:determine_z}
 
-It is difficult to calculate the exact partition function $Z$. Fortunately for VAE, it is acceptable to obtain an upper-bound of $Z$, denoted by $\hat{Z}$. Using the upper-bound $\hat{Z}$ in training and evaluation, we can obtain lower-bounds of log-likelihood and ELBO (notice $\hat{p}_\theta(x) \leq p_\theta(x)$ means $\ln \hat{p}_\theta(x) \leq \ln p_\theta(x)$):
+It is difficult to calculate the exact partition function $Z$. Fortunately for VAE, it is acceptable to obtain an upper-bound of $Z$, denoted by $\hat{Z}$. Using the upper-bound $\hat{Z}$ in training and evaluation, we can obtain lower-bounds of log-likelihood and ELBO (note, $\hat{p}_\theta(x) \leq p_\theta(x)$ indicates $\ln \hat{p}_\theta(x) \leq \ln p_\theta(x)$):
 \begin{align*}
 	\hat{p}_\theta(x) = \int \frac{p_\theta(x|z) f_\lambda(z)}{\hat{Z}}  \dd z &\leq \int \frac{p_\theta(x|z) f_\lambda(z)}{Z} \dd z = p_\theta(x)  \\
 	\mathcal{\hat{K}} = \E_{q_\phi(z)} \ln \frac{1}{\hat{Z}} f_\lambda(z) &\leq \E_{q_\phi(z)} \ln \frac{1}{Z}  f_\lambda(z) = \mathcal{K}   \\
     \mathcal{\hat{L}} =  \mathcal{I} + \mathcal{J} + \mathcal{\hat{K}} &\leq \mathcal{I} + \mathcal{J} + \mathcal{K} = \mathcal{L}
 \end{align*}
 
-The upper-bound $\hat{Z}$ is derived as follows:
+The upper-bound $\hat{Z}$ in our model is derived as follows:
 \begin{align*}\label{eq:Z_estimator}
     \hat{Z} = \E_{p^*(x)}\E_{q_\phi(z|x)} \frac{f_\lambda(z)}{\frac{1}{N}q_\phi(z|x)} \geq
 	\E_{q_\phi(z)}\frac{f_\lambda(z)}{q_\phi(z)} = Z \tag{7}
