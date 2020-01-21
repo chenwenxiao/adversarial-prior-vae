@@ -10,9 +10,9 @@ The formula of Pull-back Prior is given by:
 where $p_\mathcal{N}$ is a simple prior, $D$ is a discriminator, $G$ is a generator, $f_\lambda(z)$ denotes $p_\mathcal{N}(z) e^{- \beta D(G(z))}$, $Z$ is the partition function $Z = \int_{\mathcal{Z}} f_\lambda(z) \dd z$ and $\beta$ is a learnable scalar.
 
 A design proposition of Pull-back Prior is that we increase $p_\lambda(z)$ where $z$ generates better data and decrease $p_\lambda(z)$ where $z$ generates worse data. In Pull-back Prior, 
-$D$ is a discriminator to assess the quality of $x$, where smaller $D(x)$ indicates $x$ being more similar to real data, as shown in \cref{fig:interpolate}. Such discriminator $D(x)$ is defined on $x$, and the pull-back discriminator on $z$ is defined by $D(G(z))$, representing the ability of $z$ that could generate data with high quality. To improve the density at the better $z$ and decrease the density at the worse $z$, we modify $p_\mathcal{N}(z)$ by $\beta D(G(z))$ and then normalize it by $Z$. 
+$D$ is a discriminator to assess the quality of $x$, where smaller $D(x)$ indicates $x$ being more similar to real data, as shown in \cref{fig:interpolate}. Such discriminator $D(x)$ is defined on $x$, and the pull-back discriminator on $z$ is defined by $D(G(z))$, where $D(G(z))$ represents the ability of $z$ that can generate data with high quality. To increase $p_\lambda(z)$ at the better $z$ and decrease $p_\lambda(z)$ at the worse $z$, we modify $p_\mathcal{N}(z)$ by $\beta D(G(z))$, and then normalize it by $Z$. Finally, we obtain the basic formula of Pull-back Prior. 
 
-We obtain the basic formula of Pull-back Prior. The theoretical derivation for Pull-back Prior is provided in \cref{subsec:inference}. However, it remains questions about how to obtain $D$ and $G$, determine $\beta$, and calculate $Z$. 
+The theoretical derivation for Pull-back Prior is provided in \cref{subsec:inference}. However, it remains questions about how to obtain $D$ and $G$, determine $\beta$, and calculate $Z$. 
 
 \begin{figure}[tb]
 	\centering
@@ -59,7 +59,7 @@ Hence, $\partial \mathcal{L}/\partial \beta = 0$ means that the discriminator ca
 
 Noticing that $p_\mathcal{N}$ is a special case of $p_\lambda$ where $\beta = 0$, we shall compare them in experiments.  
 
-\subsection{The lower bound of $Z$}\label{subsec:determine_z}
+\subsection{The upper-bound of $Z$}\label{subsec:determine_z}
 
 It is difficult to calculate the exact partition function $Z$. Fortunately for VAE, it is acceptable to obtain an upper-bound of $Z$, denoted by $\hat{Z}$. Using the upper-bound $\hat{Z}$ in training and evaluation, we can obtain lower-bounds of log-likelihood and ELBO (notice $\hat{p}_\theta(x) \leq p_\theta(x)$ means $\ln \hat{p}_\theta(x) \leq \ln p_\theta(x)$):
 \begin{align*}
@@ -100,7 +100,7 @@ The fact that $\hat{Z}$ is an upper-bound of $Z$ comes from:
 %\cref{eq:another_elbo} is similar to the original ELBO, and the conclusions in this paper hold for \cref{eq:another_elbo} by repeating derivations for \cref{eq:another_elbo}. $\mathcal{L}(\theta, \phi, \lambda)$ denotes \cref{eq:another_elbo} in Bernouli image datasets.  %Moreover, the situation without Bernouli images is a special case where $p^*(x|e) = \delta(x - e)$. % Additionally, when $p_\theta(x|z)$ and $p^*(x|e)$ is both Bernouli, term $\E_{p^*(x|e)} \ln p_\theta(x|z)$ has analytical solution $x\log e+(1-x)\log(1-e)$, which could make the training and evaluation more stable (don't need sample $x$). 
 %In the dataset without Bernouli image, $e, x$ both means real image, and $p^*(x|e) = \delta(x - e)$ where $\delta$ is Dirac delta function. 
 
-In previous VAE literatures and our paper, it is a common practice to dynamically sample 0/1 binary images (which is exactly the $x$ of our VAE and may other paper's) from real-value grayscale images (whose distribution is denoted by $p^*(e)$). Each pixel value of $e$ is normalized to $[0, 1]$, and is used as the probability of the corresponding pixel of $x$ being 1 (denoted by $p^*(x|e)$. In such situation, even when the size $M$ of original grayscale image dataset is moderate, the size $N$ of the sampled images dataset is exponentially large. Hence, we shall severely underestimate $q_\phi(z)$ if directly using \cref{eq:Z_estimator}. Because of this, we consider to use $p^*(e)$ instead of $p^*(x)$ to estimate $q_\phi(z)$ in such datasets (called Bernouli datasets in our paper). Given that $p^*(x) = \E_{p^*(e)} p^*(x|e)$, we shall have:
+In previous VAE literatures and our paper, it is a common practice to dynamically sample 0/1 binary images (which is exactly the $x$ of our VAE and may other paper's) from real-value grayscale images (whose distribution is denoted by $p^*(e)$). Each pixel value of $e$ is normalized to $[0, 1]$, and is used as the probability of the corresponding pixel of $x$ being 1 (denoted by $p^*(x|e)$). In such situation, even when the size $M$ of original grayscale image dataset is moderate, the size $N$ of the sampled images dataset is exponentially large. Hence, we shall severely underestimate $q_\phi(z)$ if directly using \cref{eq:Z_estimator}. Because of this, we consider to use $p^*(e)$ instead of $p^*(x)$ to estimate $q_\phi(z)$ in such datasets (called Bernouli datasets in our paper). Given that $p^*(x) = \E_{p^*(e)} p^*(x|e)$, we shall have:
 \begin{align*}~\label{eq:another_q_z}
 	q_\phi(z) = \E_{p^*(e)} \E_{p^*(x|e)} q_\phi(z|x) = \E_{p^*(e)}q_\phi(z|e) \tag{8}
 \end{align*}
@@ -118,7 +118,7 @@ Based on this idea, we then derive $\hat{Z}$ and ELBO as:
     &= \E_{p^*(x)} \ln p^*(x) - \E_{p^*(e)} \E_{p^*(x|e)} KL(q_\phi(z|e), p_\theta(z|x)) 
 \end{align*}
 \cref{eq:another_elbo} is similar to the original ELBO, and the conclusions in this paper hold for \cref{eq:another_elbo} by repeating derivations for \cref{eq:another_elbo}. $\mathcal{L}(\theta, \phi, \lambda)$ denotes \cref{eq:another_elbo} in Bernouli datasets. 
-For other datasets, the distribution $p^*(e)$ and $p^*(x)$ is same, and we shall use $p^*(x|e) = \delta(x - e)$, where $\delta$ is Dirac delta function, for convenience of algorithm descriptoin.  
+For other datasets, the distribution $p^*(e)$ and $p^*(x)$ is same, and we shall use $p^*(x|e) = \delta(x - e)$, where $\delta$ is Dirac delta function.%, for convenience of algorithm descriptoin.  
 
 Review the estimation of $Z$. By the theory of importance sampling, $p_\lambda$ is the optimal choice for the proposal distribution in the estimation of $Z$. However, it is intractable to sample from $p_\lambda$. 
 \cite{bauer2019resampled} uses $p_\mathcal{N}$ as the proposal distribution to estimate $Z$ but when $KL(p_\mathcal{N}, p_\lambda)$ is high, the variance of this estimation will be large. 

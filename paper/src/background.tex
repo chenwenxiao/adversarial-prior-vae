@@ -2,7 +2,7 @@
 
 \subsection{VAEs and learnable priors}
 
-Many generative models aim to minimize the KL-divergence between the empirical distribution $p^*(x)$ and the model distribution $p_\theta(x)$, which leads to maximization likelihood estimation. The vanilla VAE~\cite{kingma2014auto} models the joint distribution $p_\theta(x, z)$ and the marginal distribution by $p_\theta(x) = \int p_\theta(x, z) \dd z$. VAE apply variational inference to obtain the evidence lower bound objective (ELBO): 
+Many generative models aim to minimize the KL-divergence between the empirical distribution $p^*(x)$ and the model distribution $p_\theta(x)$, which leads to maximization likelihood estimation. The vanilla VAE~\cite{kingma2014auto} models the joint distribution $p_\theta(x, z)$ and the marginal distribution by $p_\theta(x) = \int p_\theta(x, z) \dd z$. VAE applies variational inference to obtain the evidence lower bound objective (ELBO): 
 \begin{align*} \label{eq:ELBO}
 \ln p_\theta(x) \geq \E_{q_\phi(z|x)} [  &  \ln p_\theta(x|z) + \ln p_\theta(z) - \\ & \ln q_\phi(z|x) ] 
 \triangleq \mathcal{L}(x; \theta, \phi) \tag{1}
@@ -25,4 +25,4 @@ W^1(\mu, \nu) = \sup_{Lip(D) \leq 1} \{\E_{\mu(x)} D(x)  - \E_{\nu(x)} D(x)\} \t
 \end{align*}
 where $Lip(D) \leq 1$ means that $D$ is 1-Lipschitz. WGAN is optimized by minimizing $W^1(p^*, p_\theta)$ which can be seen as a min-max optimization. 
 
-WGAN makes progress toward stable training but sometimes fails to converge since it uses weight clipping to enforce the Lipschitz constrain. WGAN-GP~\cite{gulrajani2017improved} and WGAN-div~\cite{wu2018wasserstein} improved WGAN by gradient penalty techniques, to achieve a more stable training.
+WGAN makes progress toward stable training but sometimes fails to converge since it uses weight clipping to achieve the Lipschitz constraint. WGAN-GP~\cite{gulrajani2017improved} and WGAN-div~\cite{wu2018wasserstein} improved WGAN by gradient penalty techniques, to achieve a more stable training.

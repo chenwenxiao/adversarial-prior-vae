@@ -60,7 +60,8 @@ Our solution is to use SGVB with the gradient penalty term to train VAEPP:
 \begin{equation*}~\label{eq:1_step_optimization}
 	\max_{\theta, \phi, \beta} \max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega) 
 \end{equation*} 
-The optimization $\max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$ is equivalent to optimization $\max_{Lip(D) \leq 1} \{ -\E_{q_\phi(z)} \beta*D(G(z)) - \ln Z \}$. The latter is a lower-bound of $\beta W^1(p^\dag, p^*)$:
+The optimization $\max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$ is equivalent to optimization $\max_{Lip(D) \leq 1} \{ -\E_{q_\phi(z)} \beta*D(G(z)) - \ln Z \}$. 
+The latter is a lower-bound of $\beta W^1(p^\dag, p^*)$:
 \begin{align*}\label{eq:improve_vaepp}
 	&\max_{Lip(D) \leq 1} \{ -\E_{q_\phi(z)} \beta*D(G(z)) - \ln Z \}\\ 
 	&\leq \beta \max_{Lip(D) \leq 1} \{ \E_{p_\mathcal{N}(z)} D(G(z)) - E_{q_\phi(z)} D(G(z)) \} \\

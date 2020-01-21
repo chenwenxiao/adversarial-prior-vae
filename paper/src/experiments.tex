@@ -121,12 +121,12 @@ It is hard to reach best FID, IS~\cite{salimans2016improved} and log-likelihood 
 	\centering
 	\includegraphics[width=1.0\columnwidth]{../dist.strip/z_dim}
 	\caption{
-	Comparison of VAEPP with a learnable scalar $\gamma$ (variance of $p_\theta(x|z)$), as the dimension of latent space varies on CIFAR-10, with metrics BPD, FID and IS. FID and BPD is better when it is smaller and IS is better when it is larger. When $\dim \mathcal{Z}$ is greater than 128, the quality of sampling becomes worse and BPD becomes better as $\dim \mathcal{Z}$ increases. It validates the proposition that $\dim \mathcal{Z}$ should be chosen as a minimal number of active latent dimensions in \protect\cite{dai2019diagnosing}. The reconstruction term is optimized more as $\dim \mathcal{Z}$ increases, because larger latent space could keep more information. Meanwhile, the $KL(q_\phi(z)||p_\lambda(z))$ (Bounded by the difference between ELBO and reconstruction term) increases not much since the learnable prior could relieve the increasing of it. It also shows an interesting phenomenon that the  trends of FID and IS, are not always same as BPD, maybe greatly different. 
+	Comparison of VAEPP with a learnable scalar $\gamma$ (variance of $p_\theta(x|z)$), as the dimension of latent space varies on CIFAR-10, with metrics BPD, FID and IS. FID and BPD is better when it is smaller and IS is better when it is larger. When $\dim \mathcal{Z}$ is greater than 128, the quality of sampling becomes worse and BPD becomes better as $\dim \mathcal{Z}$ increases. It validates the proposition that $\dim \mathcal{Z}$ should be chosen as a minimal number of active latent dimensions in \protect\cite{dai2019diagnosing}. The reconstruction term is optimized more as $\dim \mathcal{Z}$ increases, because larger latent space could keep more information. Meanwhile, the $KL(q_\phi(z)||p_\lambda(z))$ (Bounded by the difference between ELBO and reconstruction term) increases not much. It also shows an interesting phenomenon that the  trends of FID and IS, are not always same as BPD, maybe greatly different. 
 	}
 	\label{fig:fid_different_dim}
 \end{figure}
 
-In this section, for better understanding, the values of discriminator in training dataset, is normalized into $\mathcal{N}(0, 1)$.
+In this section, for better understanding, the values of discriminator in training dataset are normalized into $\mathcal{N}(0, 1)$.
 
 To validate the \cref{eq:behavior_of_beta}, we calculate the $\E_{p_\lambda(z)}[ D(G(z))]$ (discriminator on generated samples) and $\E_{q_\phi(z)}[ D(G(z))]$ (discriminator on reconstructed samples). They are 0.092 and 0.015 respectively on CIFAR-10, which means discriminator on generated samples and reconstructed samples are nearly same as the discriminator on real data. 
 % The mean and std of energy in training set is -19.986605, 2.5140648
