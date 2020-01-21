@@ -7,7 +7,7 @@ Many generative models aim to minimize the KL-divergence between the empirical d
 \ln p_\theta(x) \geq \E_{q_\phi(z|x)} [  &  \ln p_\theta(x|z) + \ln p_\theta(z) - \\ & \ln q_\phi(z|x) ] 
 \triangleq \mathcal{L}(x; \theta, \phi) \tag{1}
 \end{align*}
-where $q_\phi(z|x)$ is the variational posterior and $p_\theta(x|z)$ is the true posterior. The training objective of VAE is $\EEE{p^*(x)}{\mathcal{L}(x; \theta, \phi)}$ and it is optimized by SGVB with the re-parameterization trick. In vanilla VAE, the prior $p_\theta(z)$ is chosen as the standard Gaussian distribution. 
+where $q_\phi(z|x)$ is the variational encoder and $p_\theta(x|z)$ is the generative decoder. The training objective of VAE is $\EEE{p^*(x)}{\mathcal{L}(x; \theta, \phi)}$ and it is optimized by SGVB with the re-parameterization trick. In vanilla VAE, the prior $p_\theta(z)$ is chosen as the standard Gaussian distribution. 
 
 Recently, \cite{tomczak2018vae} showed that the simplistic prior could lead to underfitting. Since then many learnable priors are proposed to enrich the prior. Most of them focused on the aggregated posterior $q_\phi(z)$, which was shown to be the optimal prior that maximizes ELBO according to~\cite{tomczak2018vae} where $p_\lambda(z)$ denotes the learnable prior:
 \begin{align*} \label{eq:second-decomposition}

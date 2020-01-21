@@ -1,8 +1,8 @@
 \section{Training and Sampling}\label{sec:vaepp}
-In this section, we will propose two training methods and a sampling method for VAEPP. The main difference between these two trainings method is the training method of the discriminator. 
+In this section, we will propose two training methods and a sampling method for VAEPP. The main difference between these two trainings method is how to train the discriminator. 
 
 \subsection{2-step training for VAEPP} \label{subsec:naive_vaepp}
-Note the discriminator should be obtained by $W^1(p_\theta, p^*)$, as WGAN~\cite{arjovsky2017wasserstein} did. However in VAEPP, $p_\theta$ is intractable for sampling, since $p_\theta(x) = \E_{p_\lambda(z)} p_\theta(x|z)$ and $p_\lambda(z)$ is intractable for sampling. 
+The discriminator should be obtained by $W^1(p_\theta, p^*)$, as WGAN~\cite{arjovsky2017wasserstein} did. However in VAEPP, $p_\theta$ is intractable for sampling, since $p_\theta(x) = \E_{p_\lambda(z)} p_\theta(x|z)$ and $p_\lambda(z)$ is intractable for sampling. 
 
 When $\beta$ is small enough, $p_\lambda(z)$ is near to $p_\mathcal{N}(z)$ which is feasible for sampling. Then, $p_\theta(x)$ is near to $p^\dag(x)$, where $p^\dag(x) = \E_{p_\mathcal{N}(z)} p_\theta(x|z)$ and $p^\dag(x)$ is feasible for sampling. Therefore, we suspect that $W^1(p_\theta, p^*)$ could be replace by $W^1(p^\dag, p^*)$, which is feasible since $p^\dag(x), p^*(x)$ are feasible for sampling. To ensure $\beta$ is small, $\beta$ is limited by a hyper-parameter. 
 In this way, an discriminator $D$ is trained by:
@@ -36,7 +36,7 @@ Above two training process run alternatively, which is called the 2-step trainin
 \FOR {$k = 1, \ldots n_c$}
 \FOR {$i = 1, \ldots, b$}
 \STATE Sample $e, x \sim p^*$, $z \sim q_\phi(z|e)$, $\epsilon \sim p_\mathcal{N}$
-\STATE $Z^{(i)} \gets \frac{1}{2}(e^{-\beta D(G(\epsilon))} + \frac{f_\lambda(z)}{\hat{q}_\phi(z)})$
+\STATE $Z^{(i)} \gets \frac{1}{2}(e^{-\beta D(G(\epsilon))} + \frac{f_\lambda(z)}{\frac{1}{M} q_\phi(z|e)})$
 \STATE $\mathcal{L}^{(i)} \gets \ln p_\theta(x|z) + \ln f_\lambda(z) - \ln q_\phi(z|e)$
 \ENDFOR
 \STATE $\mathcal{L} \gets \frac{1}{b}\sum_{i}^b \mathcal{L}^{(i)} - \ln (\frac{1}{b}\sum_{i}^b Z^{(i)})$
@@ -44,7 +44,7 @@ Above two training process run alternatively, which is called the 2-step trainin
 \ENDFOR
 \FOR {$i = 1, \ldots, b$}
 \STATE Sample $e, x \sim p^*$, latent variable $z \sim p_\mathcal{N}$
-\STATE	$\hat{e} = G(z)$, get gradient penalty $\zeta \gets R(e, \hat{e})$
+\STATE	$\hat{e} = G(z)$, get gradient penalty term $\zeta \gets R(e, \hat{e})$
 \STATE $L^{(i)} \gets D(\hat{x}) - D(x) + \zeta$
 \ENDFOR
 \STATE $\omega \gets $ Adam $(\nabla_{\omega} \frac{1}{b}\sum_{i}^b L^{(i)}, \omega, \tau)$
@@ -56,7 +56,7 @@ Above two training process run alternatively, which is called the 2-step trainin
 
 However, the training process of \cref{alg:vaepp} is unstable and inefficient, as shown in \cref{fig:loss_curves}. 
 We suspect that the two independent optimizations instead of one whole optimization, may lower the log-likelihood and stability. Therefore, we try to combine the training for $\theta, \phi, \beta, \omega$ into a whole optimization. 
-Our solution is to use SGVB with gradient penalty term to train VAEPP:
+Our solution is to use SGVB with the gradient penalty term to train VAEPP:
 \begin{equation*}~\label{eq:1_step_optimization}
 	\max_{\theta, \phi, \beta} \max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega) 
 \end{equation*} 
@@ -65,13 +65,13 @@ The optimization $\max_{Lip(D) \leq 1} \mathcal{L}(\theta, \phi, \beta, \omega)$
 	&\max_{Lip(D) \leq 1} \{ -\E_{q_\phi(z)} \beta*D(G(z)) - \ln Z \}\\ 
 	&\leq \beta \max_{Lip(D) \leq 1} \{ \E_{p_\mathcal{N}(z)} D(G(z)) - E_{q_\phi(z)} D(G(z)) \} \\
 	&= \beta \max_{Lip(D) \leq 1} \{ \E_{p^\dag(x)} D(x) - E_{p_r(x)} D(x) \} \\
-	&= \beta W^1(p^\dag, p_r) \approx \beta W^1(p^\dag, p^*) \tag{9} 
+	&= \beta W^1(p^\dag, p_r) \approx \beta W^1(p^\dag, p^*) \tag{10} 
 \end{align*}
 where $p_r(x) = \E_{q_\phi(z)} p_\theta(x|z)$ and the inequality of $\ln Z$ is:
 \begin{equation*}
 	\ln Z = \ln \E_{p_\mathcal{N}(z)} e^{- \beta * D(G(z))} \geq \E_{p_\mathcal{N}(z)} [- \beta * D(G(z))]
 \end{equation*}
-The last approximation sign in \cref{eq:improve_vaepp} is from our expectation that $p_r \rightarrow p^*$, which is also observed in experiments, after few epochs in training. \cref{eq:improve_vaepp} also uses the assumption $\E_{p_\theta(x|z)} D(x) = D(G(z))$ introduced in \cref{subsec:inference} to simplify equation at the 2nd column. 
+The last approximation sign in \cref{eq:improve_vaepp} is from our expectation that $p_r \rightarrow p^*$, which is also observed in experiments, after few epochs in training. \cref{eq:improve_vaepp} also uses the assumption $\E_{p_\theta(x|z)} D(x) = D(\E_{p_\theta(x|z)} x) = D(G(z))$ introduced in \cref{subsec:inference} to simplify equation at the 2nd column. 
 
 \cref{eq:improve_vaepp} indicates that it is reasonable to obtain  discriminator $D$ during optimizing \cref{eq:1_step_optimization}. \cref{eq:improve_vaepp} also indicates that the gradient penalty term should be multiplied by $\beta$. Finally, the optimizations for $\theta, \phi, \beta$ and $\omega$ are combined into one, which is called the 1-step training algorithm for VAEPP, in \cref{alg:improved_vaepp}. The model trained by 1-step training algorithm is called VAEPP. 
 %Moreover, the discriminator trained by \cref{alg:vaepp} and in \cref{alg:improved_vaepp}, are both approximations to the real discriminator in $W^1(p_\theta, p^*)$. 
@@ -86,8 +86,8 @@ The last approximation sign in \cref{eq:improve_vaepp} is from our expectation t
 \WHILE{$\theta, \phi, \beta, \omega$ have not converged}
 \FOR {$i = 1, \ldots, b$}
 \STATE Sample $e, x \sim p^*$, $z \sim q_\phi(z|e)$, $\epsilon \sim p_\mathcal{N}$
-\STATE $\hat{e} = G(\epsilon)$, get gradient penalty $\zeta \gets R(e, \hat{e})$ 
-\STATE $Z^{(i)} \gets \frac{1}{2}(e^{-\beta D(G(\epsilon))} + \frac{f_\lambda(z)}{\hat{q}_\phi(z)})$
+\STATE $\hat{e} = G(\epsilon)$, get gradient penalty term $\zeta \gets R(e, \hat{e})$ 
+\STATE $Z^{(i)} \gets \frac{1}{2}(e^{-\beta D(G(\epsilon))} + \frac{f_\lambda(z)}{\frac{1}{M} q_\phi(z|e)})$
 \STATE $\mathcal{L}^{(i)} \gets \ln p_\theta(x|z) + \ln f_\lambda(z) - \ln q_\phi(z|e) + \beta \zeta$
 \ENDFOR
 \STATE $\mathcal{L} \gets \frac{1}{b}\sum_{i}^b \mathcal{L}^{(i)} - \ln (\frac{1}{b}\sum_{i}^b Z^{(i)})$
@@ -98,7 +98,7 @@ The last approximation sign in \cref{eq:improve_vaepp} is from our expectation t
 
 \subsection{Sampling from VAEPP}
 We apply Langevin dynamics to sample $z$ from $p_\lambda(z)$. It could generate natural and sharp images and only requires that $\nabla_z \log p_\lambda(z)$ is computable and $p_\lambda(z_0)$ is high enough where $z_0$ is the initial point of Langevin dynamics~\cite{song2019generative}. 
-Moreover, MEG~\cite{kumar2019maximum} has implemented a Metropolis-Adjusted Langevin Algorithm (MALA) for sampling, where the formula of density also contains a discriminator term. 
+Moreover, \cite{kumar2019maximum} has implemented a Metropolis-Adjusted Langevin Algorithm (MALA) for sampling, where the formula of density also contains a discriminator term. 
 But how to obtain the initial $z_0$ whose density is high enough is still a problem. 
 
 Following the philosophy of VAEPP, \IE using the technique of GANs to assist VAEs, it is natural to use a GAN to model the distribution $q_\phi(z)$, and use samples of the GAN as the initial $z_0$ for MALA. 

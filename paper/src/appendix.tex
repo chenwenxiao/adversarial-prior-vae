@@ -3,21 +3,21 @@
 For any given $\theta, \phi$, search the optimal prior that minimizes the Wasserstein distance between $p_\theta$ and $p^*$:
 \begin{align*}\label{eq:direct_2nd_optimization}
 	& \min_{\lambda} \sup_{Lip(D) \leq 1} \{\E_{p_\lambda(z)} \E_{p_\theta(x|z)} D(x)  - \E_{p^*(x)} D(x)\} 
-	\tag{10}
+	\tag{11}
 \end{align*}
-We apply an assumption $\E_{p_\theta(x|z)} D(x) = D(G(z))$ (it indeed defines a discriminator on $e$ by $D(e) = \E_{p*(x|e)} D(x)$ in Bernouli image dataset) and an approximation $D$ to simplify it. The $D$ in \cref{eq:direct_2nd_optimization} could be replaced by an approximation $D$ in $W^1(p^\dag, p^*)$, if $p_\lambda$ is near $p_\mathcal{N}$, as \cref{subsec:naive_vaepp} and \cref{subsec:improve_of_vaepp} does. The simplified optimization is:
+We apply an assumption $\E_{p_\theta(x|z)} D(x) = D(G(z))$ (it indeed defines a discriminator on $e$ by $D(e) = \E_{p*(x|e)} D(x)$ in Bernouli  dataset) and an approximation $D$ to simplify it. The $D$ in \cref{eq:direct_2nd_optimization} could be replaced by an approximation $D$ in $W^1(p^\dag, p^*)$, if $p_\lambda$ is near $p_\mathcal{N}$, as \cref{subsec:naive_vaepp} and \cref{subsec:improve_of_vaepp} does. The simplified optimization is:
 \begin{align*}\label{eq:final_optimization}
-	& \min_{\lambda} \{\E_{p_\lambda(z)} D(G(z))  - \E_{p^*(x)} D(x)\} \tag{11} \\
+	& \min_{\lambda} \{\E_{p_\lambda(z)} D(G(z))  - \E_{p^*(x)} D(x)\} \tag{12} \\
 	{\textbf{s.t. }} & KL(p_\lambda, p_\mathcal{N}) = \alpha, \qquad \int_{\mathcal{Z}} p_\lambda(z) \dd z = 1
 \end{align*}
 It could be solved by Lagrange multiplier method introduced by calculus of variation~\cite{gelfand2000calculus}. The Lagrange function with Lagrange multiplier $\eta, \gamma$ is:
 \begin{align*}\label{eq:lagrange_function}
 & F(p_\lambda, \eta, \gamma) = \E_{p_\lambda(z)} D(G(z))  - \E_{p^*(x)} D(x) + \\
-& \eta (\int_{\mathcal{Z}} p_\lambda(z) \dd z - 1) + \gamma(KL(p_\lambda, p_\mathcal{N}) - \alpha) \tag{12}
+& \eta (\int_{\mathcal{Z}} p_\lambda(z) \dd z - 1) + \gamma(KL(p_\lambda, p_\mathcal{N}) - \alpha) \tag{13}
 \end{align*}
 We solve \cref{eq:lagrange_function} by Euler-Lagrange equation:
 \begin{equation*}\label{eq:euler_lagrange_eqaution}
-	\ln p_\lambda(z) = \frac{1}{\gamma} D(G(z)) + \ln p_\mathcal{N}(z) + (\frac{\eta}{\gamma} - 1) \tag{13}
+	\ln p_\lambda(z) = \frac{1}{\gamma} D(G(z)) + \ln p_\mathcal{N}(z) + (\frac{\eta}{\gamma} - 1) \tag{14}
 \end{equation*}
 where $\gamma$ is determined by $\alpha$ and $\eta$ is determined from condition $\int_{\mathcal{Z}} p_\lambda(z) \dd z = 1$.
 Consequently, $\beta$ is determined by $\alpha$, representing how far $p_\lambda$ is from $p_\mathcal{N}$. In \cref{eq:final_optimization}, $\alpha$ is static and should be searched as an appropriate value, \IE $\beta$ should be searched, as \cref{subsec:determine_beta} does. 
