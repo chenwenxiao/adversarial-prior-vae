@@ -67,7 +67,6 @@ It is difficult to calculate the exact partition function $Z$. Fortunately for V
 	\mathcal{\hat{K}} = \E_{q_\phi(z)} \ln \frac{1}{\hat{Z}} f_\lambda(z) &\leq \E_{q_\phi(z)} \ln \frac{1}{Z}  f_\lambda(z) = \mathcal{K}   \\
     \mathcal{\hat{L}} =  \mathcal{I} + \mathcal{J} + \mathcal{\hat{K}} &\leq \mathcal{I} + \mathcal{J} + \mathcal{K} = \mathcal{L}
 \end{align*}
-
 The upper-bound $\hat{Z}$ in our model is derived as follows:
 \begin{align*}\label{eq:Z_estimator}
     \hat{Z} = \E_{p^*(x)}\E_{q_\phi(z|x)} \frac{f_\lambda(z)}{\frac{1}{N}q_\phi(z|x)} \geq
@@ -100,11 +99,11 @@ The fact that $\hat{Z}$ is an upper-bound of $Z$ comes from:
 %\cref{eq:another_elbo} is similar to the original ELBO, and the conclusions in this paper hold for \cref{eq:another_elbo} by repeating derivations for \cref{eq:another_elbo}. $\mathcal{L}(\theta, \phi, \lambda)$ denotes \cref{eq:another_elbo} in Bernouli image datasets.  %Moreover, the situation without Bernouli images is a special case where $p^*(x|e) = \delta(x - e)$. % Additionally, when $p_\theta(x|z)$ and $p^*(x|e)$ is both Bernouli, term $\E_{p^*(x|e)} \ln p_\theta(x|z)$ has analytical solution $x\log e+(1-x)\log(1-e)$, which could make the training and evaluation more stable (don't need sample $x$). 
 %In the dataset without Bernouli image, $e, x$ both means real image, and $p^*(x|e) = \delta(x - e)$ where $\delta$ is Dirac delta function. 
 
-In previous VAE literatures and our paper, it is a common practice to dynamically sample 0/1 binary images (which is exactly the $x$ of our VAE and may other paper's) from real-value grayscale images (whose distribution is denoted by $p^*(e)$). Each pixel value of $e$ is normalized to $[0, 1]$, and is used as the probability of the corresponding pixel of $x$ being 1 (denoted by $p^*(x|e)$). In such situation, even when the size $M$ of original grayscale image dataset is moderate, the size $N$ of the sampled images dataset is exponentially large. Hence, we shall severely underestimate $q_\phi(z)$ if directly using \cref{eq:Z_estimator}. Because of this, we consider to use $p^*(e)$ instead of $p^*(x)$ to estimate $q_\phi(z)$ in such datasets (called Bernouli datasets in our paper). Given that $p^*(x) = \E_{p^*(e)} p^*(x|e)$, we shall have:
+In previous VAE literatures and our paper, it is a common practice to dynamically sample 0/1 binary images (which is exactly the $x$ of our VAE and many other paper's) from real-value grayscale images (whose distribution is denoted by $p^*(e)$). Each pixel value of $e$ is normalized into $[0, 1]$, and then is used as the probability of the corresponding pixel of $x$ being 1 (denoted by $p^*(x|e)$). In such situation, even when the size $M$ of original grayscale image dataset is moderate, the size $N$ of the sampled images dataset is exponentially large. Hence, we shall severely underestimate $q_\phi(z)$ if directly using \cref{eq:Z_estimator}. Because of this, we consider to use $p^*(e)$ instead of $p^*(x)$ to estimate $q_\phi(z)$ in such datasets (called Bernouli datasets in our paper). Given that $p^*(x) = \E_{p^*(e)} p^*(x|e)$, we shall have:
 \begin{align*}~\label{eq:another_q_z}
 	q_\phi(z) = \E_{p^*(e)} \E_{p^*(x|e)} q_\phi(z|x) = \E_{p^*(e)}q_\phi(z|e) \tag{8}
 \end{align*}
-where $q_\phi(z|e)$ denotes $\E_{p^*(x|e)} q_\phi(z|x)$. \cref{eq:another_q_z} suggests that we may train a variational encoder $q_\phi(z|e)$ instead of $q_\phi(z|x)$ along with a generative decoder $p_\theta(x|z)$, while the log-likelihood estimator is still correct:
+where $q_\phi(z|e)$ denotes $\E_{p^*(x|e)} q_\phi(z|x)$. \cref{eq:another_q_z} suggests that we may train a variational encoder $q_\phi(z|e)$ instead of $q_\phi(z|x)$, along with a generative decoder $p_\theta(x|z)$, while the log-likelihood estimator is still correct:
 \begin{align*}
 	\E_{p^*(x)} \log p_\theta(x) &= \E_{p^*(e)} \E_{p^*(x|e)} \log p_\theta(x) \\
 	&= \E_{p^*(e)} \E_{p^*(x|e)} \log \E_{q_\phi(z|e)} \frac{p_\theta(x, z)}{q_\phi(z|e)}
@@ -118,11 +117,11 @@ Based on this idea, we then derive $\hat{Z}$ and ELBO as:
     &= \E_{p^*(x)} \ln p^*(x) - \E_{p^*(e)} \E_{p^*(x|e)} KL(q_\phi(z|e), p_\theta(z|x)) 
 \end{align*}
 \cref{eq:another_elbo} is similar to the original ELBO, and the conclusions in this paper hold for \cref{eq:another_elbo} by repeating derivations for \cref{eq:another_elbo}. $\mathcal{L}(\theta, \phi, \lambda)$ denotes \cref{eq:another_elbo} in Bernouli datasets. 
-For other datasets, the distribution $p^*(e)$ and $p^*(x)$ is same, and we shall use $p^*(x|e) = \delta(x - e)$, where $\delta$ is Dirac delta function.%, for convenience of algorithm descriptoin.  
+For other datasets (\EG CIFAR-10 and CelebA), $p^*(e)$ means the same distribution as $p^*(x)$. In such situation, $p^*(x|e) = \delta(x - e)$ and $N = M$, where $\delta$ is Dirac delta function.%, for convenience of algorithm descriptoin.  
 
 Review the estimation of $Z$. By the theory of importance sampling, $p_\lambda$ is the optimal choice for the proposal distribution in the estimation of $Z$. However, it is intractable to sample from $p_\lambda$. 
 \cite{bauer2019resampled} uses $p_\mathcal{N}$ as the proposal distribution to estimate $Z$ but when $KL(p_\mathcal{N}, p_\lambda)$ is high, the variance of this estimation will be large. 
 
-In our experiments, $KL(q_\phi, p_\lambda)$ is much smaller than $KL(p_\mathcal{N}, p_\lambda)$. Therefore, we choose $q_\phi(z)$ as the proposal distribution and replace $q_\phi(z)$ by $\hat{q}_\phi(z|x)$, to obtain the lower-bound of $\hat{Z}$ in \cref{eq:Z_estimator}. The variance of $\hat{Z}$ is acceptable in experiments.  
+In our experiments, $KL(q_\phi, p_\lambda)$ is much smaller than $KL(p_\mathcal{N}, p_\lambda)$. Therefore, we choose $q_\phi(z)$ as the proposal distribution and replace $q_\phi(z)$ by $\frac{1}{M}q_\phi(z|x)$, to obtain the lower-bound of $\hat{Z}$ in \cref{eq:Z_estimator}. The variance of $\hat{Z}$ is acceptable in experiments.  
 In training, $p_\mathcal{N}(z)$ could be used together with $q_\phi(z)$, as the proposal distributions, since $KL(p_\mathcal{N}, p_\lambda)$ is small in the beginning of training.
  
