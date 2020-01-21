@@ -114,6 +114,6 @@ The sampling of VAEPP consists of 3 parts:
 This sampling process is similar to 2-Stage VAE~\cite{dai2019diagnosing}. The main difference between them is that VAEPP applies Langevin dynamics to sample from the explicit prior but 2-Stage VAE doesn't, since the prior of 2-Stage VAE is implicit. In experiments, we found that sampling from the explicit learnable prior might improve the quality of sampling in some datasets. 
 
 %It is hard to sample $z$ from $p_\lambda(z)$ since it is complicated. 
-Accept-Reject Sampling (ARS)~\cite{bauer2019resampled} is useless for $p_\lambda$ since ARS requires that $p_\lambda(z) / p_\mathcal{N}(z)$ is bounded by a constant $M$ for any $z$ on the support of $p_\lambda$. But it is hard to ensure that there exists an enough small $M$ in VAEPP.
+Accept-Reject Sampling (ARS)~\cite{bauer2019resampled} is useless for $p_\lambda$ since ARS requires that $p_\lambda(z) / p_\mathcal{N}(z)$ is bounded by a constant $M$ on the support of $p_\lambda$, such that a sample could be accepted in expected $M$ times. But it is hard to ensure that there exists an enough small $M$ in VAEPP.
  
  
