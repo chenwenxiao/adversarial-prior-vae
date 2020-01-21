@@ -25,7 +25,7 @@ The other parameters of VAEPP are trained by SGVB:
 \begin{equation*}
 	\max_{\theta, \phi, \beta} \mathcal{L}(\theta, \phi, \beta, \omega)
 \end{equation*}
-Above two training process run alternatively, which is called the 2-step training algorithm for VAEPP, in \cref{alg:vaepp}. The model trained by 2-step training algorithm is called Naive VAEPP. 
+Above two optimizations run alternatively, which is called the 2-step training algorithm for VAEPP, shown in \cref{alg:vaepp}. The model trained by 2-step training algorithm is called Naive VAEPP. 
 \begin{algorithm}[tb]
 \caption{2-step training algorithm for VAEPP}
 \label{alg:vaepp}
@@ -74,7 +74,7 @@ where $p_r(x) = \E_{q_\phi(z)} p_\theta(x|z)$ and the inequality of $\ln Z$ is:
 \end{equation*}
 The last approximation sign in \cref{eq:improve_vaepp} is from our expectation that $p_r \rightarrow p^*$, which is also observed in experiments, after few epochs in training. \cref{eq:improve_vaepp} also uses the assumption $\E_{p_\theta(x|z)} D(x) = D(\E_{p_\theta(x|z)} x) = D(G(z))$ introduced in \cref{subsec:inference} to simplify equation at the 2nd column. 
 
-\cref{eq:improve_vaepp} indicates that it is reasonable to obtain  discriminator $D$ during optimizing \cref{eq:1_step_optimization}. \cref{eq:improve_vaepp} also indicates that the gradient penalty term should be multiplied by $\beta$. Finally, the optimizations for $\theta, \phi, \beta$ and $\omega$ are combined into one, which is called the 1-step training algorithm for VAEPP, in \cref{alg:improved_vaepp}. The model trained by 1-step training algorithm is called VAEPP. 
+\cref{eq:improve_vaepp} indicates that it is reasonable to obtain  discriminator $D$ during optimizing \cref{eq:1_step_optimization}. \cref{eq:improve_vaepp} also indicates that the gradient penalty term should be multiplied by $\beta$. Finally, the optimizations for $\theta, \phi, \beta$ and $\omega$ are combined into one, which is called the 1-step training algorithm for VAEPP, shown in \cref{alg:improved_vaepp}. The model trained by 1-step training algorithm is called VAEPP. 
 %Moreover, the discriminator trained by \cref{alg:vaepp} and in \cref{alg:improved_vaepp}, are both approximations to the real discriminator in $W^1(p_\theta, p^*)$. 
 
 %Thanks to the gradient penalty terms provided by WGAN-GP and WGAN-div, we enjoy stable and efficient training. The model trained by \cref{alg:vaepp} is called Naive VAEPP and the model trained by \cref{alg:improved_vaepp} is called VAEPP. 
@@ -108,12 +108,12 @@ The sampling of VAEPP consists of 3 parts:
 \begin{enumerate}
 	\item generate initial $z_0$ by a GAN modeling $q_\phi(z)$
 	\item generate $z \sim p_\lambda(z)$ from initial $z_0$ by MALA
-	\item generate image from $z$ with a decoder
+	\item generate image from $z$ with the decoder
 \end{enumerate}
 
 This sampling process is similar to 2-Stage VAE~\cite{dai2019diagnosing}. The main difference between them is that VAEPP applies Langevin dynamics to sample from the explicit prior but 2-Stage VAE doesn't, since the prior of 2-Stage VAE is implicit. In experiments, we found that sampling from the explicit learnable prior might improve the quality of sampling in some datasets. 
 
 %It is hard to sample $z$ from $p_\lambda(z)$ since it is complicated. 
-Accept/Reject Sampling (ARS)~\cite{bauer2019resampled} is useless for $p_\lambda$ because ARS requires that $p_\lambda(z) / p_\mathcal{N}(z)$ is bounded by a constant $M$ for any $z$, such that a sample could be sampled in $M$ times. But it is hard to ensure that there exists an enough small $M$ in VAEPP.
+Accept-Reject Sampling (ARS)~\cite{bauer2019resampled} is useless for $p_\lambda$ since ARS requires that $p_\lambda(z) / p_\mathcal{N}(z)$ is bounded by a constant $M$ for any $z$ on the support of $p_\lambda$. But it is hard to ensure that there exists an enough small $M$ in VAEPP.
  
  
