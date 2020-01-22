@@ -88,7 +88,7 @@ With $10^9$ samples, the variance of $\hat{Z}$ with truncated normal and normal 
 
 \subsection{Quality of Sampling}
 As a common sense, the quality of sampling of VAEs is worse than GANs, and it is indeed a reason that we involve the techniques of GAN to improve VAE model: We use the discriminator to adjust learnable prior and a GAN to sample the initial $z_0$ for Langevin dynamics. These techniques will help VAEPP improve the quality of samples. The samples of VAEPP gets good FID, comparable to GANs and 2-Stage VAE (which is the SOTA of VAE in FID), as shown in \cref{tab:compare_FID}. Some generated images of VAEPP are shown in \cref{fig:show_images}. 
-It is important to notice that the GAN in VAEPP only plays the role that generates $z_0$ with high $p_\lambda(z_0)$, in latent space with small dimension, instead of image. The ability of VAEPP that generates images from $z$ is depend on the decoder. 
+It is important to notice that the GAN in VAEPP only plays the role that generates $z_0$ with high $p_\lambda(z_0)$, in latent space with small dimension, instead of image. The ability of VAEPP that generates image from $z$ is totally depend on the decoder. 
 \begin{figure}[tb]
 	\centering
 	\includegraphics[width=1.0\columnwidth]{../figures/celeba}
