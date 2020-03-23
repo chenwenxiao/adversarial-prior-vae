@@ -70,7 +70,7 @@ class ExpConfig(spt.Config):
     test_n_pz = 1000
     test_n_qz = 10
     test_batch_size = 64
-    test_epoch_freq = 100
+    test_epoch_freq = 400
     plot_epoch_freq = 20
     grad_epoch_freq = 10
 
@@ -81,8 +81,7 @@ class ExpConfig(spt.Config):
 
     len_train = 162770
     sample_n_z = 100
-    fid_samples = 50000
-    fid_test_times = 10
+    fid_samples = 5000
 
     epsilon = -20.0
     min_logstd_of_q = -3.0
@@ -1095,7 +1094,6 @@ def main():
                         print(e)
 
                     mala_images = None
-                    ori_images = None
                     if loop.epoch >= config.max_epoch:
 
                         step_length = config.smallest_step
@@ -1123,30 +1121,11 @@ def main():
                                         print(e)
 
                         mala_images = images
-                        # batch_z = batch_reconstruct_z
-                        # batch_z = np.expand_dims(batch_z, axis=1)
-                        # for i in range(0, 101):
-                        #     [images, batch_history_e_z, batch_history_z, batch_history_pure_e_z,
-                        #      batch_history_ratio] = session.run(
-                        #         [x_plots, plot_history_e_z, plot_history_z, plot_history_pure_e_z, plot_history_ratio],
-                        #         feed_dict={
-                        #             initial_z: batch_z,
-                        #         })
-                        #     batch_z = batch_history_z[-1]
-                        #     if i % 100 == 0:
-                        #         print(np.mean(batch_history_pure_e_z[-1]), np.mean(batch_history_e_z[-1]))
-                        #         try:
-                        #             save_images_collection(
-                        #                 images=np.round(images),
-                        #                 filename='plotting/sample/{}-ORI-{}.png'.format(extra_index, i),
-                        #                 grid_size=(10, 10),
-                        #                 results=results,
-                        #             )
-                        #         except Exception as e:
-                        #             print(e)
-                        ori_images = mala_images
+                    else:
+                        mala_images = gan_images
 
-                    return gan_images, mala_images, ori_images
+                    return mala_images
+                return images
 
     with spt.utils.create_session().as_default() as session, \
             train_flow.threaded(5) as train_flow:
@@ -1161,12 +1140,12 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/aa/1c/d445f4f80a9f167ee0e5/checkpoint/checkpoint/checkpoint.dat-2542000'
+        restore_checkpoint = None #'/mnt/mfs/mlstorage-experiments/cwx17/9a/0c/d434dabfcaec0ad890e5/checkpoint/checkpoint/checkpoint.dat-508400'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
                            var_groups=['q_net', 'p_net', 'posterior_flow', 'G_theta', 'D_psi', 'G_omega', 'D_kappa'],
-                           max_epoch=config.max_epoch + 1,
+                           max_epoch=config.max_epoch,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
@@ -1198,42 +1177,79 @@ def main():
             n_critical = config.n_critical
             # adversarial training
             for epoch in epoch_iterator:
-                dataset_img = _x_train
-                gan_img = []
-                mala_img = []
-                ori_img = []
-                for i in range(config.fid_samples // config.sample_n_z):
-                    gan_images, mala_images, ori_images = plot_samples(loop, 10000 + i)
-                    gan_img.append(gan_images)
-                    mala_img.append(mala_images)
-                    ori_img.append(ori_images)
-                    print('{}-th sample finished...'.format(i))
+                if epoch <= config.warm_up_start:
+                    step_iterator = MyIterator(train_flow)
+                    while step_iterator.has_next:
+                        for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
+                            # vae training
+                            [_, batch_VAE_loss, beta_value, xi_value, batch_train_recon, batch_train_recon_energy,
+                             batch_train_recon_pure_energy, batch_train_kl,
+                             batch_train_grad_penalty, batch_D_loss, batch_D_real, batch_G_loss] = session.run(
+                                [VAE_train_op, VAE_loss,
+                                 beta, xi_node, train_recon, train_recon_energy,
+                                 train_recon_pure_energy,
+                                 train_kl, train_grad_penalty, VAE_D_loss, VAE_D_real, VAE_G_loss],
+                                feed_dict={
+                                    input_x: x,
+                                    input_origin_x: origin_x
+                                })
+                            loop.collect_metrics(batch_VAE_loss=batch_VAE_loss)
+                            loop.collect_metrics(xi=xi_value)
+                            loop.collect_metrics(beta=beta_value)
+                            loop.collect_metrics(train_recon=batch_train_recon)
+                            loop.collect_metrics(train_recon_pure_energy=batch_train_recon_pure_energy)
+                            loop.collect_metrics(train_recon_energy=batch_train_recon_energy)
+                            loop.collect_metrics(train_kl=batch_train_kl)
+                            loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
+                            loop.collect_metrics(VAE_D_loss=batch_D_loss)
+                            loop.collect_metrics(VAE_D_real=batch_D_real)
+                            loop.collect_metrics(VAE_G_loss=batch_G_loss)
+                else:
+                    step_iterator = MyIterator(train_flow)
+                    while step_iterator.has_next:
+                        for step, [x, origin_x] in loop.iter_steps(limited(step_iterator, n_critical)):
+                            # discriminator training
+                            [_, batch_D_loss, batch_D_real] = session.run(
+                                [D_train_op, D_loss, D_real], feed_dict={
+                                    input_x: x,
+                                    input_origin_x: origin_x,
+                                })
+                            loop.collect_metrics(D_loss=batch_D_loss)
+                            loop.collect_metrics(D_real=batch_D_real)
 
-                gan_img = np.concatenate(gan_img, axis=0).astype('uint8')
-                gan_img = np.asarray(gan_img)
-                mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
-                mala_img = np.asarray(mala_img)
-                np.savez('sample_store', gan_img=gan_img, ori_img=ori_img, mala_img=mala_img)
-                for i in range(config.fid_test_times):
-                    FID = get_fid(gan_img, dataset_img)
-                    IS_mean, IS_std = get_inception_score(gan_img)
-                    loop.collect_metrics(FID_gan=FID)
-                    loop.collect_metrics(IS_gan=IS_mean)
+                        # generator training x
+                        [_, batch_G_loss] = session.run(
+                            [G_train_op, G_loss], feed_dict={
+                            })
+                        loop.collect_metrics(G_loss=batch_G_loss)
 
+                if epoch in config.lr_anneal_epoch_freq:
+                    learning_rate.anneal()
+
+                if epoch == config.warm_up_start:
+                    learning_rate.set(config.initial_lr)
+
+                if epoch % config.plot_epoch_freq == 0:
+                    plot_samples(loop)
+
+                if epoch % config.test_epoch_freq == 0:
+                # if epoch == config.max_epoch:
+                    dataset_img = _x_train
+                    mala_img = []
+                    for i in range(config.fid_samples // config.sample_n_z):
+                        mala_images = plot_samples(loop, 10000 + i)
+                        mala_img.append(mala_images)
+                        print('{}-th sample finished...'.format(i))
+
+                    mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
+                    mala_img = np.asarray(mala_img)
                     FID = get_fid(mala_img, dataset_img)
                     IS_mean, IS_std = get_inception_score(mala_img)
                     loop.collect_metrics(FID=FID)
                     loop.collect_metrics(IS=IS_mean)
 
-                    # ori_img = np.concatenate(ori_img, axis=0).astype('uint8')
-                    # ori_img = np.asarray(ori_img)
-                    # FID = get_fid(ori_img, dataset_img)
-                    # IS_mean, IS_std = get_inception_score(ori_img)
-                    # loop.collect_metrics(FID_ori=FID)
-                    # loop.collect_metrics(IS_ori=IS_mean)
-
-                    loop.collect_metrics(lr=learning_rate.get())
-                    loop.print_logs()
+                loop.collect_metrics(lr=learning_rate.get())
+                loop.print_logs()
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')

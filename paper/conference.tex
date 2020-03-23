@@ -41,8 +41,8 @@
 \newtheorem{proposition}{Proposition}
 \newtheorem{corollary}{Corollary}
 
-\newcommand{\IE}{\textit{i.e.}}
-\newcommand{\EG}{\textit{e.g.}}
+\newcommand{\IE}{\textit{i.e.}, }
+\newcommand{\EG}{\textit{e.g.}, }
 \newcommand{\ET}{\textit{et al.}}
 \newcommand{\ST}{\textit{s.t.}}
 
@@ -77,7 +77,7 @@
 % page charge instructions.
 % Put where the files are available in the appropriate places.
 
-\title{VAEPP: Variational Auto Encoder with a Pull-back Prior}
+\title{VAEPP: Variational Autoencoder with a Pull-back Prior}
 
 % Single author syntax
 %\author{
@@ -97,6 +97,9 @@
 
 \maketitle
 
+
+%\pagestyle{plain}
+
 \input{src/abstract}
 \input{src/introduction}
 \input{src/background}
@@ -109,8 +112,9 @@
 %\section*{Acknowledgments}
 
 \appendix
+\input{src/appendix}
 
-\newpage
+\clearpage
 
 %% The file named.bst is a bibliography style file for BibTeX 0.99c
 \bibliographystyle{named}

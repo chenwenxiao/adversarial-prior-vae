@@ -17,9 +17,9 @@ from tfsnippet.examples.utils import (MLResults,
                                       bernoulli_flow,
                                       bernoulli_flow,
                                       print_with_title)
-from code.experiments.utils import get_inception_score, get_fid
+from code.experiment.utils import get_inception_score, get_fid
 import numpy as np
-from scipy.misc import logsumexp
+from scipy.special import logsumexp
 
 from tfsnippet.preprocessing import UniformNoiseSampler, BernoulliSampler
 

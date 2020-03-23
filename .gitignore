@@ -1,8 +1,8 @@
 .idea/
 .DS_Store
 */.DS_Store
+**/.DS_Store
 *.pyc
-*.pdf
 code/experiments/datasets/scripts_process_celeba.py
 code/experiments/pg/z_dim.png
 **/.DS_Store
