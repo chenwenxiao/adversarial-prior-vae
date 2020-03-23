@@ -425,7 +425,7 @@ if __name__ == '__main__':
 
     (train_x, train_y), (test_x, test_y) = spt.datasets.load_cifar10(channels_last=True)
     from code.experiment.datasets import celeba
-    train_x, validate_x, test_x = load_celeba()
+    train_x, validate_x, test_x = celeba.load_celeba()
 
     x1 = train_x
     x2 = train_x
