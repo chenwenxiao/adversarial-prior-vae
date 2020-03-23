@@ -10,6 +10,7 @@ from matplotlib import pyplot
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
+from code.experiment.truncated_normal import TruncatedNormal
 from tfsnippet import DiscretizedLogistic
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
@@ -19,6 +20,7 @@ from tfsnippet.examples.utils import (MLResults,
                                       print_with_title)
 from code.experiment.utils import get_inception_score, get_fid
 import numpy as np
+from scipy.misc import logsumexp
 
 from tfsnippet.preprocessing import UniformNoiseSampler, BernoulliSampler
 
@@ -36,7 +38,7 @@ spt.Bernoulli.mean = property(_bernoulli_mean)
 
 class ExpConfig(spt.Config):
     # model parameters
-    z_dim = 20
+    z_dim = 13
     act_norm = False
     weight_norm = False
     l2_reg = 0.0002
@@ -53,7 +55,7 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 1000
     beta = 1e-8
     initial_xi = 0.0
-    pull_back_energy_weight = 10.0
+    pull_back_energy_weight = 0.0
 
     max_step = None
     batch_size = 128
@@ -76,9 +78,9 @@ class ExpConfig(spt.Config):
     train_n_pz = 128
     train_n_qz = 1
     test_n_pz = 1000
-    test_n_qz = 100
-    test_batch_size = 8
-    test_epoch_freq = 400
+    test_n_qz = 1000
+    test_batch_size = 1
+    test_epoch_freq = 1000
     plot_epoch_freq = 20
     grad_epoch_freq = 10
 
@@ -90,6 +92,8 @@ class ExpConfig(spt.Config):
     len_train = 50000
     sample_n_z = 100
     fid_samples = 5000
+
+    use_truncated = True
 
     epsilon = -20.0
     min_logstd_of_q = -5.0
@@ -177,12 +181,12 @@ class EnergyDistribution(spt.Distribution):
                            default_name=spt.utils.get_default_scope_name(
                                'log_prob', self),
                            values=[given]):
-            energy = config.pull_back_energy_weight * self.D(self.G(given)) * self.xi + 0.5 * tf.reduce_sum(
+            energy = config.pull_back_energy_weight * self.D(given) * self.xi + 0.5 * tf.reduce_sum(
                 tf.square(given), axis=-1)
             log_px = self.pz.log_prob(given=given, group_ndims=group_ndims)
             log_px.log_energy_prob = -energy - self.log_Z
             log_px.energy = energy
-            log_px.pure_energy = self.D(self.G(given))
+            log_px.pure_energy = self.D(given)
 
         return log_px
 
@@ -249,9 +253,9 @@ class EnergyDistribution(spt.Distribution):
         return t
 
     def get_sgld_proposal(self, z):
-        energy_z = config.pull_back_energy_weight * self.D(self.G(z)) * self.xi + 0.5 * tf.reduce_sum(tf.square(z),
+        energy_z = config.pull_back_energy_weight * self.D(z) * self.xi + 0.5 * tf.reduce_sum(tf.square(z),
                                                                                                       axis=-1)
-        pure_energy_z = self.D(self.G(z))
+        pure_energy_z = self.D(z)
         # energy_z = pure_energy_z  # TODO
         grad_energy_z = tf.gradients(energy_z, [z.tensor if hasattr(z, 'tensor') else z])[0]
         grad_energy_z = tf.reshape(grad_energy_z, shape=z.shape)
@@ -454,16 +458,22 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
     z_logstd = spt.layers.dense(h_x, config.z_dim, scope='z_logstd', kernel_initializer=tf.zeros_initializer())
 
     # sample z ~ q(z|x)
-    z_distribution = spt.FlowDistribution(
-        spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
-        posterior_flow
-    )
+    if config.use_truncated:
+        z_distribution = TruncatedNormal(mean=z_mean,
+                                         logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q))
+        print(z_distribution.batch_shape)
+    else:
+        z_distribution = spt.Normal(mean=z_mean,
+                                    logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q))
     if config.use_flow:
+
+        z_distribution = spt.FlowDistribution(
+            z_distribution,
+            posterior_flow
+        )
         z = net.add('z', z_distribution, n_samples=n_z)
     else:
-        z = net.add('z',
-                    spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q)),
-                    n_samples=n_z, group_ndims=1)
+        z = net.add('z', z_distribution, n_samples=n_z, group_ndims=1)
 
     return net
 
@@ -704,9 +714,9 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
 
 def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None):
     with tf.name_scope('adv_prior_loss'):
-        gp_omega = get_gradient_penalty(q_net['z'] if config.use_flow else q_net['z'].distribution.mean,
-                                        pn_omega['f_z'].distribution.mean, D=D_kappa, space='f_z')
-        gp_theta = get_gradient_penalty(q_net['z'], pn_theta['z'], D=D_psi, space='f_z')
+        gp_omega = get_gradient_penalty(q_net['z'] if config.use_flow else q_net['z'].distribution.mean, pn_omega['f_z'].distribution.mean, D=D_kappa,
+                                        space='f_z')
+        gp_theta = get_gradient_penalty(q_net['z'], pn_theta['z'], space='f_z')
         if config.use_dg:
             gp_dg = get_gradient_penalty(q_net['z'], pn_theta['z'], space='z')
         else:
@@ -732,7 +742,7 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None
         )
 
         p_net['z'].distribution.set_log_Z(train_log_Z)
-        train_recon_pure_energy = tf.reduce_mean(D_psi(p_net['x'].distribution.mean, p_net['x']))
+        train_recon_pure_energy = tf.reduce_mean(D_psi(q_net['z']))
         train_recon_energy = p_net['z'].log_prob().energy
         train_kl = tf.reduce_mean(
             -p_net['z'].distribution.log_prob(p_net['z'], group_ndims=1, y=p_net['x']).log_energy_prob +
@@ -875,11 +885,8 @@ def main():
         test_q_net = q_net(input_origin_x, posterior_flow, n_z=config.test_n_qz)
         # test_pd_net = p_net(n_z=config.test_n_pz // 20, mcmc_iterator=20, beta=beta, log_Z=get_log_Z())
         test_pn_net = p_net(n_z=config.test_n_pz, mcmc_iterator=0, beta=beta, log_Z=get_log_Z())
-        test_chain = test_q_net.chain(p_net, observed={'x': input_origin_x}, n_z=config.test_n_qz, latent_axis=0,
+        test_chain = test_q_net.chain(p_net, observed={'x': tf.to_float(input_x)}, n_z=config.test_n_qz, latent_axis=0,
                                       beta=beta, log_Z=get_log_Z())
-        test_recon = tf.reduce_mean(
-            test_chain.model['x'].log_prob()
-        )
         test_mse = tf.reduce_sum(
             (tf.round(test_chain.model['x'].distribution.mean * 255.0) - tf.round(
                 tf.to_float(test_chain.model['x']) * 255.0)) ** 2,
@@ -894,14 +901,19 @@ def main():
             )
         )
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
+        test_recon = test_chain.model['x'].log_prob()
+        p_z = test_chain.model['z'].distribution.log_prob(
+            test_chain.model['z'], group_ndims=1, y=test_chain.model['x']
+        ).log_energy_prob
+        q_z_given_x = test_q_net['z'].log_prob()
+
 
         vi = spt.VariationalInference(
-            log_joint=test_chain.model['x'].log_prob() + test_chain.model['z'].distribution.log_prob(
-                test_chain.model['z'], group_ndims=1, y=test_chain.model['x']
-            ).log_energy_prob,
-            latent_log_probs=[test_q_net['z'].log_prob()],
+            log_joint=test_recon + p_z,
+            latent_log_probs=[q_z_given_x],
             axis=0
         )
+        test_recon = tf.reduce_mean(test_recon)
         adv_test_nll = -tf.reduce_mean(
             tf.reshape(
                 vi.evaluation.is_loglikelihood(), (-1, config.test_x_samples,)
@@ -909,18 +921,13 @@ def main():
         )
         adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
 
-        real_energy = tf.reduce_mean(D_psi(input_origin_x))
-        reconstruct_energy = tf.reduce_mean(D_psi(test_chain.model['x'].distribution.mean))
-        pd_energy = tf.reduce_mean(
-            D_psi(test_pn_net['x'].distribution.mean) * tf.exp(
-                test_pn_net['z'].log_prob().log_energy_prob - test_pn_net['z'].log_prob()))
-        pn_energy = tf.reduce_mean(D_psi(test_pn_net['x'].distribution.mean))
         log_Z_compute_op = spt.ops.log_mean_exp(
             -test_pn_net['z'].log_prob().energy - test_pn_net['z'].log_prob())
-        q_z_given_x = test_q_net['z'].log_prob()
+
+        p_z_energy = test_chain.model['z'].log_prob().energy
 
         another_log_Z_compute_op = spt.ops.log_mean_exp(
-            -test_chain.model['z'].log_prob().energy - q_z_given_x + np.log(config.len_train)
+            -p_z_energy - q_z_given_x + np.log(config.len_train)
         )
         kl_adv_and_gaussian = tf.reduce_mean(
             test_pn_net['z'].log_prob() - test_pn_net['z'].log_prob().log_energy_prob
@@ -983,7 +990,6 @@ def main():
                 p_net(observed={'z': reconstruct_z}, beta=beta)['x'].distribution.mean,
                 (-1,) + config.x_shape
             )
-            plot_reconstruct_energy = D_psi(reconstruct_plots)
             gan_z_pure_energy = plot_net['z'].distribution.log_prob(gan_z).pure_energy
             gan_z_energy = plot_net['z'].distribution.log_prob(gan_z).energy
             gan_plots = tf.clip_by_value(gan_plots, 0, 255)
@@ -1075,11 +1081,8 @@ def main():
                                         print(e)
 
                         mala_images = images
-                    else:
-                        mala_images = gan_images
 
                     return mala_images
-                return images
 
     # prepare for training and testing data
     (_x_train, _y_train), (_x_test, _y_test) = \
@@ -1145,9 +1148,6 @@ def main():
                 loop,
                 metrics={'test_nll': test_nll, 'test_lb': test_lb,
                          'adv_test_nll': adv_test_nll, 'adv_test_lb': adv_test_lb,
-                         'reconstruct_energy': reconstruct_energy,
-                         'real_energy': real_energy,
-                         'pd_energy': pd_energy, 'pn_energy': pn_energy,
                          'test_recon': test_recon, 'kl_adv_and_gaussian': kl_adv_and_gaussian, 'test_mse': test_mse},
                 inputs=[input_x, input_origin_x],
                 data_flow=test_flow,
@@ -1190,14 +1190,11 @@ def main():
                             loop.collect_metrics(train_kl=batch_train_kl)
                             loop.collect_metrics(train_grad_penalty=batch_train_grad_penalty)
 
-                        [_, batch_D_loss, batch_D_real, batch_G_loss] = session.run(
-                            [VAE_D_train_op, VAE_D_loss, VAE_D_real, VAE_G_loss], feed_dict={
+                            _ = session.run(VAE_D_train_op, feed_dict={
                                 input_x: x,
                                 input_origin_x: origin_x,
+                                warm: 1.0  # min(1.0, 1.0 * epoch / config.warm_up_epoch)
                             })
-                        loop.collect_metrics(VAE_D_loss=batch_D_loss)
-                        loop.collect_metrics(VAE_D_real=batch_D_real)
-                        loop.collect_metrics(VAE_G_loss=batch_G_loss)
                 else:
                     step_iterator = MyIterator(train_flow)
                     while step_iterator.has_next:
@@ -1227,6 +1224,33 @@ def main():
                     plot_samples(loop)
 
                 if epoch % config.test_epoch_freq == 0:
+                    with loop.timeit('compute_Z_time'):
+                        # log_Z_list = []
+                        # for i in range(config.log_Z_times):
+                        #     log_Z_list.append(session.run(log_Z_compute_op))
+                        # from scipy.misc import logsumexp
+                        # log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
+                        # print('log_Z_list:{}'.format(log_Z_list))
+                        # print('log_Z:{}'.format(log_Z))
+
+                        log_Z_list = []
+                        for [batch_x, batch_origin_x] in Z_compute_flow:
+                            log_Z_list.append(session.run(another_log_Z_compute_op, feed_dict={
+                                input_x: batch_x,
+                                input_origin_x: batch_origin_x
+                            }))
+                        from scipy.misc import logsumexp
+                        another_log_Z = logsumexp(np.asarray(log_Z_list)) - np.log(len(log_Z_list))
+                        # print('log_Z_list:{}'.format(log_Z_list))
+                        print('another_log_Z:{}'.format(another_log_Z))
+                        # final_log_Z = logsumexp(np.asarray([log_Z, another_log_Z])) - np.log(2)
+                        final_log_Z = another_log_Z  # TODO
+                        get_log_Z().set(final_log_Z)
+
+                    with loop.timeit('eval_time'):
+                        evaluator.run()
+
+                if epoch == config.max_epoch:
                     dataset_img = np.tile(_x_train, (1, 1, 1, 3))
                     mala_img = []
                     for i in range(config.fid_samples // config.sample_n_z):
