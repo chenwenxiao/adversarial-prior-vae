@@ -16,7 +16,7 @@ from tfsnippet.examples.utils import (MLResults,
                                       bernoulli_flow,
                                       bernoulli_flow,
                                       print_with_title)
-from code.experiments.utils import get_inception_score, get_fid
+from code.experiment.utils import get_inception_score, get_fid
 import numpy as np
 from scipy.misc import logsumexp
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
@@ -24,7 +24,7 @@ from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_prec
 
 from tfsnippet.preprocessing import UniformNoiseSampler
 
-from code.experiments.datasets.svhn import load_svhn
+from code.experiment.datasets.svhn import load_svhn
 
 class ExpConfig(spt.Config):
     len_train = 50000

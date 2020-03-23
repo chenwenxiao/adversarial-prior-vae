@@ -10,7 +10,7 @@ from matplotlib import pyplot
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
-from code.experiments.datasets.celeba import load_celeba
+from code.experiment.datasets.celeba import load_celeba
 from tfsnippet import DiscretizedLogistic
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
@@ -18,7 +18,7 @@ from tfsnippet.examples.utils import (MLResults,
                                       bernoulli_flow,
                                       bernoulli_flow,
                                       print_with_title)
-from code.experiments.utils import get_inception_score, get_fid
+from code.experiment.utils import get_inception_score, get_fid
 import numpy as np
 from scipy.misc import logsumexp
 
