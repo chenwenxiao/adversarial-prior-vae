@@ -751,7 +751,7 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, input_origin_x=None):
         )
 
         p_net['z'].distribution.set_log_Z(train_log_Z)
-        train_recon_pure_energy = tf.reduce_mean(D_psi(p_net['x'].distribution.mean, p_net['x']))
+        train_recon_pure_energy = tf.reduce_mean(D_psi(q_net['z']))
         train_recon_energy = p_net['z'].log_prob().energy
         train_kl = tf.reduce_mean(
             -p_net['z'].distribution.log_prob(p_net['z'], group_ndims=1, y=p_net['x']).log_energy_prob +

@@ -96,6 +96,8 @@ class ExpConfig(spt.Config):
     epsilon = -20.0
     min_logstd_of_q = -5.0
 
+    truncated_sigma = 1.0
+
     @property
     def x_shape(self):
         return (28, 28, 1)
@@ -626,7 +628,7 @@ def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, i
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
     normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
-                        logstd=tf.zeros([1, config.z_dim]))
+                        std=tf.zeros([1, config.z_dim]) * config.truncated_sigma)
     normal = normal.batch_ndims_to_value(1)
     z = net.add('z', normal, n_samples=n_z)
     x_mean = G_omega(z)
