@@ -55,7 +55,7 @@ class ExpConfig(spt.Config):
     warm_up_epoch = 1000
     beta = 1e-8
     initial_xi = 0.0
-    pull_back_energy_weight = 0.0
+    pull_back_energy_weight = 10.0
 
     max_step = None
     batch_size = 128
@@ -752,8 +752,8 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, warm=1.0, input_origin_x=None
         train_kl = tf.maximum(train_kl, 0.0)  # TODO
         VAE_nD_loss = -train_recon + train_kl
         VAE_loss = VAE_nD_loss + train_grad_penalty
-        VAE_G_loss = tf.reduce_mean(D_psi(pn_theta['z']))
-        VAE_D_real = tf.reduce_mean(D_psi(q_net['z']))
+        VAE_G_loss = tf.reduce_mean(D_psi(q_net['z']))
+        VAE_D_real = tf.reduce_mean(D_psi(pn_theta['z']))
         VAE_D_loss = -VAE_G_loss + VAE_D_real + train_grad_penalty
 
         energy_fake = D_kappa(pn_omega['f_z'].distribution.mean)
