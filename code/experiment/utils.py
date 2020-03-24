@@ -451,17 +451,12 @@ def init_tf(random_seed=1234):
 
 def V_pre(images,height=224,width=224,scope=None):
     '''
-    the model trained for 224x224
-    images are in tf tensor
     '''
-    resized = []
-    for img in images:
-        resized.append(transform.resize(img, (width, height), order=3,
-            anti_aliasing=False,mode='constant',).transpose(2,0,1)
-        )
-    resized=np.array(resized)
-    print(resized.shape)
-    return resized
+    if len(images.shape)==3:
+        images=np.array((images,images,images)).transpose(1,0,2,3)
+    else:
+        images=images.transpose(0,3,1,2)
+    return images
 
 def initialize_feature_extractor():
     """Load VGG-16 network pickle (returns features from FC layer with shape=(n, 4096))."""
@@ -476,7 +471,7 @@ def initialize_feature_extractor():
 
 def precision_recall(real_images,gen_images,num_images,batch_size=20,num_gpus=1):
     '''accept two numpy arrat of images'''
-    #reshape
+    # reshape
     real_images = V_pre(real_images)
     gen_images = V_pre(gen_images)
 
