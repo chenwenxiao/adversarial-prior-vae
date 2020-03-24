@@ -22,9 +22,13 @@ import os, sys
 import functools
 import numpy as np
 import time
+import tensorflow.python.ops as ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import math_ops
 import tfsnippet as spt
+'''
 
 tfgan = tf.contrib.gan
 
@@ -43,7 +47,7 @@ inception_images = tf.placeholder(tf.float32, [BATCH_SIZE, None, None, 3])
 activations1 = tf.placeholder(tf.float32, [None, None], name='activations1')
 activations2 = tf.placeholder(tf.float32, [None, None], name='activations2')
 fcd = tfgan.eval.frechet_classifier_distance_from_activations(activations1, activations2)
-
+'''
 '''
 get_fid_tf and get_inception_score_tf,
 images form must be tensor of tf as 
@@ -52,7 +56,7 @@ or "[batch, height, width, channels]"(for 3 channel)
 value of image must be in [0,255]
 '''
 
-
+'''
 def get_fid_tf(real_img, sample_img):
     print('debug/real_img type')
     print(real_img)
@@ -420,9 +424,92 @@ def get_fid_sngan(sample, real, batchsize=100):
 
 
 get_fid = get_fid_compare_gan
+'''
+
+#adapted from https://github.com/kynkaat/improved-precision-and-recall-metric
+
+import os
+import io
+import pickle
+import re
+import requests
+import html
+import hashlib
+import glob
+import uuid
+import dnnlib
+import dnnlib.tflib.tfutil as tfutil
+
+from skimage import transform
+from typing import Any, List, Tuple, Union
+sys.path.append('experiment')
+from pnr import knn_precision_recall_features
+
+def init_tf(random_seed=1234):
+    """Initialize TF."""
+    print('Initializing TensorFlow...\n')
+    np.random.seed(random_seed)
+    tfutil.init_tf({'graph_options.place_pruned_graph': True,
+                    'gpu_options.allow_growth': True})
+
+def V_pre(images,height=224,width=224,scope=None):
+    '''
+    the model trained for 224x224
+    images are in tf tensor
+    '''
+    resized = transform.resize(
+        images, (width, height, 3), order=3,
+        anti_aliasing=False,
+        mode='constant',)
+    return resized
+
+def initialize_feature_extractor():
+    """Load VGG-16 network pickle (returns features from FC layer with shape=(n, 4096))."""
+    print('Initializing VGG-16 model...')
+    url = 'https://drive.google.com/uc?id=1fk6r8vetqpRShtEODXm9maDytbMkHLfa' # vgg16.pkl
+    with dnnlib.util.open_url(url, cache_dir=os.path.join(os.path.dirname(__file__), '_cache')) as f:
+        _, _, net = pickle.load(f)
+    # local='code/experiment/_cache/q.pkl'
+    # with open(local, "rb") as f:
+    #     _, _, net = pickle.load(f)
+    return net
+
+def precision_recall(real_images,gen_images,num_images,batch_size=20,num_gpus=1):
+
+    #reshape
+    real_images = V_pre(real_images)
+    gen_images = V_pre(gen_images)
+
+    init_tf()
+    feature_net=initialize_feature_extractor()
+
+    print('compute for real images...')
+    real_features = np.zeros([num_images, feature_net.output_shape[1]], dtype=np.float32)
+    for begin in range(0, num_images, batch_size):
+        end = min(begin + batch_size, num_images)
+        real_batch = real_images[begin:end]
+        real_features[begin:end] = feature_net.run(real_batch, num_gpus=num_gpus, assume_frozen=True)
+
+    # Calculate VGG-16 features for generated images.
+    print('compute for generating images')
+    gen_features = np.zeros([num_images, feature_net.output_shape[1]], dtype=np.float32)
+    for begin in range(0, num_images, batch_size):
+        end = min(begin + batch_size, num_images)
+        gen_batch = gen_images[begin:end]
+        gen_features[begin:end] = feature_net.run(gen_batch, num_gpus=num_gpus, assume_frozen=True)
+
+    state = knn_precision_recall_features(real_features, gen_features, num_gpus=num_gpus)
+    return state['precision'], state['recall']
 
 if __name__ == '__main__':
-
+    (train_x, train_y), (test_x, test_y) = spt.datasets.load_cifar10(channels_last=True)
+    r=train_x[:100]
+    g=test_x[:100]
+    r=np.array(r)
+    g=np.array(g)
+    print('r',type(r),r.shape)
+    precision_recall(r,g,20,100,1)
+    '''
     (train_x, train_y), (test_x, test_y) = spt.datasets.load_cifar10(channels_last=True)
     from code.experiment.datasets import celeba
     train_x, validate_x, test_x = celeba.load_celeba()
@@ -456,3 +543,4 @@ if __name__ == '__main__':
 
     # print(get_inception_score_tf(test_x))
     # print(get_fid_tf(test_x, test_x))
+    '''
