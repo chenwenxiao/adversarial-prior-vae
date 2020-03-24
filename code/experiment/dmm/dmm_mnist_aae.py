@@ -1214,8 +1214,8 @@ def main():
                     with loop.timeit('eval_time'):
                         evaluator.run()
 
-                if epoch % config.test_epoch_freq == 0:
-                    dataset_img = np.tile(_x_train, (1, 1, 1, 3))
+                if epoch == config.max_epoch:
+                    dataset_img = _x_train
                     mala_img = []
                     for i in range(config.fid_samples // config.sample_n_z):
                         mala_images = plot_samples(loop, 10000 + i)
@@ -1224,7 +1224,6 @@ def main():
 
                     mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
                     mala_img = np.asarray(mala_img)
-                    mala_img = np.tile(mala_img, (1, 1, 1, 3))
                     FID = get_fid(mala_img, dataset_img)
                     IS_mean, IS_std = get_inception_score(mala_img)
                     loop.collect_metrics(FID=FID)

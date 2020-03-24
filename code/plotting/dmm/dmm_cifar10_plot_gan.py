@@ -17,7 +17,7 @@ from tfsnippet.examples.utils import (MLResults,
                                       bernoulli_flow,
                                       bernoulli_flow,
                                       print_with_title)
-from code.experiment.utils import get_inception_score, get_fid
+from code.experiment.utils import get_inception_score, get_fid_google
 import numpy as np
 from scipy.misc import logsumexp
 
@@ -55,7 +55,6 @@ class ExpConfig(spt.Config):
     lr_anneal_epoch_freq = [200, 400, 600, 800, 1000, 1200, 1400, 1600]
     lr_anneal_step_freq = None
 
-    use_flow = False
     use_dg = False
     gradient_penalty_algorithm = 'interpolate'  # both or interpolate
     gradient_penalty_weight = 2
@@ -74,7 +73,7 @@ class ExpConfig(spt.Config):
     grad_epoch_freq = 10
 
     test_fid_n_pz = 5000
-    test_x_samples = 1
+    test_x_samples = 8
     log_Z_times = 100000
     log_Z_x_samples = 8
 
@@ -85,6 +84,7 @@ class ExpConfig(spt.Config):
 
     epsilon = -20.0
     min_logstd_of_q = -3.0
+    truncated_sigma = 1.0
 
     @property
     def x_shape(self):
@@ -448,16 +448,13 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
         z_logstd = spt.ops.reshape_tail(z_logstd, ndims=3, shape=[-1])
 
     # sample z ~ q(z|x)
-    z_distribution = spt.FlowDistribution(
-        spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
-        posterior_flow
-    )
-    if config.use_flow:
-        z = net.add('z', z_distribution, n_samples=n_z)
-    else:
-        z = net.add('z', spt.Normal(mean=z_mean,
-                                    logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q)),
-                    n_samples=n_z, group_ndims=1)
+    # z_distribution = spt.FlowDistribution(
+    #     spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.epsilon)),
+    #     posterior_flow
+    # )
+    # z = net.add('z', z_distribution, n_samples=n_z)
+    z = net.add('z', spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q)),
+                n_samples=n_z, group_ndims=1)
 
     return net
 
@@ -636,7 +633,7 @@ def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, i
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
     normal = spt.Normal(mean=tf.zeros([1, 128]),
-                        logstd=tf.zeros([1, 128]))
+                        std=tf.zeros([1, 128]) * config.truncated_sigma)
     normal = normal.batch_ndims_to_value(1)
     z = net.add('z', normal, n_samples=n_z)
     z_channel = 16 * config.z_dim // config.x_shape[0] // config.x_shape[1]
@@ -724,11 +721,11 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
 
 def get_all_loss(q_net, p_net, pn_omega, pn_theta, input_origin_x=None):
     with tf.name_scope('adv_prior_loss'):
-        gp_omega = get_gradient_penalty(q_net['z'] if config.use_flow else q_net['z'].distribution.mean, pn_omega['f_z'].distribution.mean, D=D_kappa,
+        gp_omega = get_gradient_penalty(q_net['z'].distribution.mean, pn_omega['f_z'].distribution.mean, D=D_kappa,
                                         space='f_z')
         gp_theta = get_gradient_penalty(input_origin_x, pn_theta['x'].distribution.mean)
         if config.use_dg:
-            gp_dg = get_gradient_penalty(q_net['z'], pn_theta['z'], space='z')
+            gp_dg = get_gradient_penalty(q_net['z'].distribution.mean, pn_theta['z'], space='z')
         else:
             gp_dg = 0.0
 
@@ -767,7 +764,7 @@ def get_all_loss(q_net, p_net, pn_omega, pn_theta, input_origin_x=None):
         VAE_D_loss = -VAE_G_loss + VAE_D_real + train_grad_penalty
 
         energy_fake = D_kappa(pn_omega['f_z'].distribution.mean)
-        energy_real = D_kappa(q_net['z'] if config.use_flow else q_net['z'].distribution.mean)
+        energy_real = D_kappa(q_net['z'].distribution.mean)
 
         adv_D_loss = -tf.reduce_mean(energy_fake) + tf.reduce_mean(
             energy_real) + gp_omega
@@ -920,7 +917,7 @@ def main():
         )
         adv_test_lb = tf.reduce_mean(vi.lower_bound.elbo())
 
-        real_energy = tf.reduce_mean(D_psi(input_origin_x))
+        real_energy = tf.reduce_mean(D_psi(test_chain.model['x']))
         reconstruct_energy = tf.reduce_mean(D_psi(test_chain.model['x'].distribution.mean))
         pd_energy = tf.reduce_mean(
             D_psi(test_pn_net['x'].distribution.mean) * tf.exp(
@@ -1178,19 +1175,19 @@ def main():
                 mala_img = np.asarray(mala_img)
                 np.savez('sample_store', gan_img=gan_img, ori_img=ori_img, mala_img=mala_img)
                 for i in range(config.fid_test_times):
-                    FID = get_fid(gan_img, dataset_img)
+                    FID = get_fid_google(gan_img, dataset_img)
                     IS_mean, IS_std = get_inception_score(gan_img)
                     loop.collect_metrics(FID_gan=FID)
                     loop.collect_metrics(IS_gan=IS_mean)
 
-                    FID = get_fid(mala_img, dataset_img)
+                    FID = get_fid_google(mala_img, dataset_img)
                     IS_mean, IS_std = get_inception_score(mala_img)
                     loop.collect_metrics(FID=FID)
                     loop.collect_metrics(IS=IS_mean)
 
                     # ori_img = np.concatenate(ori_img, axis=0).astype('uint8')
                     # ori_img = np.asarray(ori_img)
-                    # FID = get_fid(ori_img, dataset_img)
+                    # FID = get_fid_google(ori_img, dataset_img)
                     # IS_mean, IS_std = get_inception_score(ori_img)
                     # loop.collect_metrics(FID_ori=FID)
                     # loop.collect_metrics(IS_ori=IS_mean)

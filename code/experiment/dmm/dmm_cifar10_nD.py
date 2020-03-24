@@ -454,8 +454,9 @@ def q_net(x, posterior_flow, observed=None, n_z=None):
     if config.use_flow:
         z = net.add('z', z_distribution, n_samples=n_z)
     else:
-        z = net.add('z', spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q)),
-                n_samples=n_z, group_ndims=1)
+        z = net.add('z',
+                    spt.Normal(mean=z_mean, logstd=spt.ops.maybe_clip_value(z_logstd, min_val=config.min_logstd_of_q)),
+                    n_samples=n_z, group_ndims=1)
 
     return net
 
@@ -469,7 +470,6 @@ def get_log_Z():
     if __log_Z is None:
         __log_Z = spt.ScheduledVariable('log_Z', dtype=tf.float32, initial_value=1., model_var=True)
     return __log_Z
-
 
 
 @add_arg_scope
@@ -722,7 +722,8 @@ def get_gradient_penalty(input_origin_x, sample_x, space='x', D=D_psi):
 
 def get_all_loss(q_net, p_net, pn_omega, pn_theta, input_origin_x=None):
     with tf.name_scope('adv_prior_loss'):
-        gp_omega = get_gradient_penalty(q_net['z'] if config.use_flow else q_net['z'].distribution.mean, pn_omega['f_z'].distribution.mean, D=D_kappa,
+        gp_omega = get_gradient_penalty(q_net['z'] if config.use_flow else q_net['z'].distribution.mean,
+                                        pn_omega['f_z'].distribution.mean, D=D_kappa,
                                         space='f_z')
         gp_theta = get_gradient_penalty(input_origin_x, pn_theta['x'].distribution.mean)
         if config.use_dg:
@@ -1241,7 +1242,6 @@ def main():
 
                     with loop.timeit('eval_time'):
                         evaluator.run()
-
 
                 if epoch == config.max_epoch:
                     dataset_img = _x_train
