@@ -22,11 +22,8 @@ import os, sys
 import functools
 import numpy as np
 import time
-import tensorflow.python.ops as ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import functional_ops
-from tensorflow.python.ops import math_ops
 import tfsnippet as spt
 
 
@@ -437,13 +434,13 @@ import html
 import hashlib
 import glob
 import uuid
-import dnnlib
-import dnnlib.tflib.tfutil as tfutil
+import code.experiment.dnnlib as dnnlib
+import code.experiment.dnnlib.tflib.tfutil as tfutil
 
 from skimage import transform
 from typing import Any, List, Tuple, Union
 sys.path.append('experiment')
-from pnr import knn_precision_recall_features
+from code.experiment.pnr import knn_precision_recall_features
 
 def init_tf(random_seed=1234):
     """Initialize TF."""
