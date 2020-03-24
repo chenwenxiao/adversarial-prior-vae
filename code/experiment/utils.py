@@ -451,14 +451,12 @@ def init_tf(random_seed=1234):
 
 def V_pre(images,height=224,width=224,scope=None):
     '''
-    the model trained for 224x224
-    images are in tf tensor
     '''
-    resized = transform.resize(
-        images, (width, height, 3), order=3,
-        anti_aliasing=False,
-        mode='constant',)
-    return resized
+    if len(images.shape)==3:
+        images=np.array((images,images,images)).transpose(1,0,2,3)
+    else:
+        images=images.transpose(0,3,1,2)
+    return images
 
 def initialize_feature_extractor():
     """Load VGG-16 network pickle (returns features from FC layer with shape=(n, 4096))."""
@@ -473,10 +471,11 @@ def initialize_feature_extractor():
 
 def precision_recall(real_images,gen_images,num_images,batch_size=20,num_gpus=1):
     '''accept two numpy arrat of images'''
-    #reshape
+    # reshape
     real_images = V_pre(real_images)
     gen_images = V_pre(gen_images)
 
+    print(real_images.shape)
     init_tf()
     feature_net=initialize_feature_extractor()
 
@@ -505,7 +504,8 @@ if __name__ == '__main__':
     r=np.array(r)
     g=np.array(g)
     print('r',type(r),r.shape)
-    precision_recall(r,g,100,20,1)
+    precision,recall= precision_recall(r,g,100,20,1)
+    print('precision',precision,'recall',recall)
     '''
     (train_x, train_y), (test_x, test_y) = spt.datasets.load_cifar10(channels_last=True)
     from code.experiment.datasets import celeba
