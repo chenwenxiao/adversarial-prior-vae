@@ -633,7 +633,7 @@ def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, i
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
     normal = spt.Normal(mean=tf.zeros([1, 128]),
-                        std=tf.zeros([1, 128]) * config.truncated_sigma)
+                        std=tf.ones([1, 128]) * config.truncated_sigma)
     normal = normal.batch_ndims_to_value(1)
     z = net.add('z', normal, n_samples=n_z)
     z_channel = 16 * config.z_dim // config.x_shape[0] // config.x_shape[1]
@@ -974,7 +974,7 @@ def main():
             initial_z = tf.placeholder(
                 dtype=tf.float32, shape=(sample_n_z, 1, config.z_dim), name='initial_z')
             gan_plots = 256.0 * gan_plots / 2 + 127.5
-            plot_net = p_net(n_z=sample_n_z, mcmc_iterator=20, beta=beta, initial_z=initial_z)
+            plot_net = p_net(n_z=sample_n_z, mcmc_iterator=5, beta=beta, initial_z=initial_z)
             plot_origin_net = p_net(n_z=sample_n_z, mcmc_iterator=0, beta=beta, initial_z=initial_z)
             plot_history_e_z = plot_net['z'].history_e_z
             plot_history_z = plot_net['z'].history_z
