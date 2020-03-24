@@ -475,7 +475,7 @@ def initialize_feature_extractor():
     return net
 
 def precision_recall(real_images,gen_images,num_images,batch_size=20,num_gpus=1):
-
+    '''accept two numpy arrat of images'''
     #reshape
     real_images = V_pre(real_images)
     gen_images = V_pre(gen_images)
@@ -508,7 +508,7 @@ if __name__ == '__main__':
     r=np.array(r)
     g=np.array(g)
     print('r',type(r),r.shape)
-    precision_recall(r,g,20,100,1)
+    precision_recall(r,g,100,20,1)
     '''
     (train_x, train_y), (test_x, test_y) = spt.datasets.load_cifar10(channels_last=True)
     from code.experiment.datasets import celeba
