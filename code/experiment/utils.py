@@ -28,7 +28,7 @@ from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 import tfsnippet as spt
-'''
+
 
 tfgan = tf.contrib.gan
 
@@ -48,7 +48,7 @@ activations1 = tf.placeholder(tf.float32, [None, None], name='activations1')
 activations2 = tf.placeholder(tf.float32, [None, None], name='activations2')
 fcd = tfgan.eval.frechet_classifier_distance_from_activations(activations1, activations2)
 '''
-'''
+
 get_fid_tf and get_inception_score_tf,
 images form must be tensor of tf as 
 "[batch, height, width]"(for 1 channel) 
@@ -56,7 +56,7 @@ or "[batch, height, width, channels]"(for 3 channel)
 value of image must be in [0,255]
 '''
 
-'''
+
 def get_fid_tf(real_img, sample_img):
     print('debug/real_img type')
     print(real_img)
@@ -424,7 +424,7 @@ def get_fid_sngan(sample, real, batchsize=100):
 
 
 get_fid = get_fid_compare_gan
-'''
+
 
 #adapted from https://github.com/kynkaat/improved-precision-and-recall-metric
 
