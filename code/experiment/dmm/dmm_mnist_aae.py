@@ -80,7 +80,7 @@ class ExpConfig(spt.Config):
 
     len_train = 50000
     sample_n_z = 100
-    fid_samples = 5000
+    fid_samples = 50000
 
     epsilon = -20.0
     min_logstd_of_q = -3.0
@@ -1093,7 +1093,7 @@ def main():
         # elif config.z_dim == 3072:
         #     restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/5d/19/6f9d69b5d1936fb2d2d5/checkpoint/checkpoint/checkpoint.dat-390000'
         # else:
-        restore_checkpoint = None
+        restore_checkpoint = '/mnt/mfs/mlstorage-experiments/cwx17/b6/2c/d445f4f80a9f498697e5/checkpoint/checkpoint/checkpoint.dat-327600'
 
         # train the network
         with spt.TrainLoop(tf.trainable_variables(),
@@ -1215,15 +1215,16 @@ def main():
                         evaluator.run()
 
                 if epoch == config.max_epoch:
-                    dataset_img = _x_train
+                    dataset_img = np.tile(_x_train, (1, 1, 1, 3))
                     mala_img = []
                     for i in range(config.fid_samples // config.sample_n_z):
                         mala_images = plot_samples(loop, 10000 + i)
                         mala_img.append(mala_images)
                         print('{}-th sample finished...'.format(i))
-
                     mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
                     mala_img = np.asarray(mala_img)
+                    np.savez('sample_store', mala_img=mala_img)
+                    mala_img = np.tile(mala_img, (1, 1, 1, 3))
                     FID = get_fid(mala_img, dataset_img)
                     IS_mean, IS_std = get_inception_score(mala_img)
                     loop.collect_metrics(FID=FID)

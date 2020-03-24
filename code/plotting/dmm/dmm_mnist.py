@@ -628,7 +628,7 @@ def p_omega_net(observed=None, n_z=None, beta=1.0, mcmc_iterator=0, log_Z=0.0, i
     net = spt.BayesianNet(observed=observed)
     # sample z ~ p(z)
     normal = spt.Normal(mean=tf.zeros([1, config.z_dim]),
-                        std=tf.zeros([1, config.z_dim]) * config.truncated_sigma)
+                        std=tf.ones([1, config.z_dim]) * config.truncated_sigma)
     normal = normal.batch_ndims_to_value(1)
     z = net.add('z', normal, n_samples=n_z)
     x_mean = G_omega(z)
