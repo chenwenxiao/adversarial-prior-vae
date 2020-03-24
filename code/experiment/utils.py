@@ -454,10 +454,13 @@ def V_pre(images,height=224,width=224,scope=None):
     the model trained for 224x224
     images are in tf tensor
     '''
-    resized = transform.resize(
-        images, (width, height, 3), order=3,
-        anti_aliasing=False,
-        mode='constant',)
+    resized = []
+    for img in images:
+        resized.append(transform.resize(img, (width, height), order=3,
+            anti_aliasing=False,mode='constant',).transpose(2,0,1)
+        )
+    resized=np.array(resized)
+    print(resized.shape)
     return resized
 
 def initialize_feature_extractor():
@@ -477,6 +480,7 @@ def precision_recall(real_images,gen_images,num_images,batch_size=20,num_gpus=1)
     real_images = V_pre(real_images)
     gen_images = V_pre(gen_images)
 
+    print(real_images.shape)
     init_tf()
     feature_net=initialize_feature_extractor()
 
@@ -505,7 +509,8 @@ if __name__ == '__main__':
     r=np.array(r)
     g=np.array(g)
     print('r',type(r),r.shape)
-    precision_recall(r,g,100,20,1)
+    precision,recall= precision_recall(r,g,100,20,1)
+    print('precision',precision,'recall',recall)
     '''
     (train_x, train_y), (test_x, test_y) = spt.datasets.load_cifar10(channels_last=True)
     from code.experiment.datasets import celeba
