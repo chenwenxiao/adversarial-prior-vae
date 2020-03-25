@@ -8,6 +8,7 @@ from pprint import pformat
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
 
 import tfsnippet as spt
+from code.experiment.utils import get_fid, get_inception_score
 from tfsnippet.examples.utils import (MLResults,
                                       save_images_collection,
                                       bernoulli_as_pixel,
@@ -31,17 +32,23 @@ class ExpConfig(spt.Config):
     # training parameters
     result_dir = None
     write_summary = False
-    max_epoch = 1000
+    max_epoch = 300
     max_step = None
     batch_size = 128
     initial_lr = 0.001
     lr_anneal_factor = 0.5
-    lr_anneal_epoch_freq = 300
+    lr_anneal_epoch_freq = 100
     lr_anneal_step_freq = None
+    use_q_z_given_e = False
+    use_origin_x_as_observe = False
 
     # evaluation parameters
-    test_n_z = 1000
-    test_batch_size = 1
+    test_n_z = 10
+    test_batch_size = 64
+
+    fid_samples = 50000
+    sample_n_z = 100
+    truncated_sigma = 1.0
 
     @property
     def x_shape(self):
@@ -49,6 +56,15 @@ class ExpConfig(spt.Config):
 
 
 config = ExpConfig()
+
+
+def _bernoulli_mean(self):
+    if not hasattr(self, '_mean'):
+        self._mean = tf.sigmoid(self.logits)
+    return self._mean
+
+
+spt.Bernoulli.mean = property(_bernoulli_mean)
 
 
 @spt.global_reuse
@@ -102,7 +118,7 @@ def p_net(observed=None, n_z=None, is_training=False, is_initializing=False):
 
     # sample z ~ p(z)
     z = net.add('z', spt.Normal(mean=tf.zeros([1, config.z_dim]),
-                                logstd=tf.zeros([1, config.z_dim])),
+                                std=tf.ones([1, config.z_dim]) * config.truncated_sigma),
                 group_ndims=1, n_samples=n_z)
 
     # compute the hidden features
@@ -129,7 +145,7 @@ def p_net(observed=None, n_z=None, is_training=False, is_initializing=False):
         h_z, 1, (1, 1), padding='same', name='feature_map_to_pixel',
         channels_last=config.channels_last
     )  # output: (1, 28, 28)
-    x = net.add('x', spt.Bernoulli(logits=x_logits), group_ndims=3)
+    x = net.add('x', spt.Bernoulli(logits=x_logits, dtype=tf.float32), group_ndims=3)
 
     return net
 
@@ -158,20 +174,23 @@ def main():
         dtype=tf.float32, shape=(None,) + config.x_shape, name='input_origin_x')
     learning_rate = spt.AnnealingVariable(
         'learning_rate', config.initial_lr, config.lr_anneal_factor)
+    input_x = tf.to_float(input_x)
 
     # derive the loss for initializing
     with tf.name_scope('initialization'), \
-            arg_scope([p_net, q_net], is_initializing=True), \
-            spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
-        init_q_net = q_net(input_x)
-        init_chain = init_q_net.chain(p_net, observed={'x': input_x})
+         arg_scope([p_net, q_net], is_initializing=True), \
+         spt.utils.scoped_set_config(spt.settings, auto_histogram=False):
+        init_q_net = q_net(input_origin_x if config.use_q_z_given_e else input_x)
+        init_chain = init_q_net.chain(p_net,
+                                      observed={'x': input_origin_x if config.use_origin_x_as_observe else input_x})
         init_loss = tf.reduce_mean(init_chain.vi.training.sgvb())
 
     # derive the loss and lower-bound for training
     with tf.name_scope('training'), \
-            arg_scope([p_net, q_net], is_training=True):
-        train_q_net = q_net(input_x)
-        train_chain = train_q_net.chain(p_net, observed={'x': input_x})
+         arg_scope([p_net, q_net], is_training=True):
+        train_q_net = q_net(input_origin_x if config.use_q_z_given_e else input_x)
+        train_chain = train_q_net.chain(p_net,
+                                        observed={'x': input_origin_x if config.use_origin_x_as_observe else input_x})
         train_loss = (
             tf.reduce_mean(train_chain.vi.training.sgvb()) +
             tf.losses.get_regularization_loss()
@@ -179,11 +198,16 @@ def main():
 
     # derive the nll and logits output for testing
     with tf.name_scope('testing'):
-        test_q_net = q_net(input_x, n_z=config.test_n_z)
+        test_q_net = q_net(input_origin_x if config.use_q_z_given_e else input_x, n_z=config.test_n_z)
         test_chain = test_q_net.chain(
-            p_net, latent_axis=0, observed={'x': input_x})
+            p_net, latent_axis=0, observed={'x': tf.to_float(input_x)})
         test_nll = -tf.reduce_mean(test_chain.vi.evaluation.is_loglikelihood())
         test_lb = tf.reduce_mean(test_chain.vi.lower_bound.elbo())
+        test_mse = tf.reduce_sum(
+            (tf.round(test_chain.model['x'].distribution.mean * 128 + 127.5) - tf.round(
+                input_origin_x * 128 + 127.5)) ** 2, axis=[-1, -2, -3])  # (sample_dim, batch_dim)
+        test_mse = tf.reduce_min(test_mse, axis=[0])
+        test_mse = tf.reduce_mean(test_mse)
 
     # derive the optimizer
     with tf.name_scope('optimizing'):
@@ -220,6 +244,8 @@ def main():
     bernouli_sampler = BernoulliSampler()
     train_flow = spt.DataFlow.arrays([x_train, x_train], config.batch_size, shuffle=True, skip_incomplete=True)
     train_flow = train_flow.map(lambda x, y: [bernouli_sampler.sample(x), y])
+    Z_compute_flow = spt.DataFlow.arrays([x_train, x_train], config.test_batch_size, shuffle=True, skip_incomplete=True)
+    Z_compute_flow = Z_compute_flow.map(lambda x, y: [bernouli_sampler.sample(x), y])
     reconstruct_train_flow = spt.DataFlow.arrays(
         [x_train], 100, shuffle=True, skip_incomplete=False)
     reconstruct_test_flow = spt.DataFlow.arrays(
@@ -244,38 +270,48 @@ def main():
         # train the network
         with spt.TrainLoop(params,
                            var_groups=['q_net', 'p_net'],
-                           max_epoch=config.max_epoch,
+                           max_epoch=config.max_epoch + 1,
                            max_step=config.max_step,
                            summary_dir=(results.system_path('train_summary')
                                         if config.write_summary else None),
                            summary_graph=tf.get_default_graph(),
-                           early_stopping=False) as loop:
-            trainer = spt.Trainer(
-                loop, train_op, [input_x, input_origin_x], train_flow,
-                metrics={'loss': train_loss},
-                summaries=tf.summary.merge_all(spt.GraphKeys.AUTO_HISTOGRAM)
-            )
-            trainer.anneal_after(
-                learning_rate,
-                epochs=config.lr_anneal_epoch_freq,
-                steps=config.lr_anneal_step_freq
-            )
-            evaluator = spt.Evaluator(
-                loop,
-                metrics={'test_nll': test_nll, 'test_lb': test_lb},
-                inputs=[input_x, input_origin_x],
-                data_flow=test_flow,
-                time_metric_name='test_time'
-            )
-            evaluator.events.on(
-                spt.EventKeys.AFTER_EXECUTION,
-                lambda e: results.update_metrics(evaluator.last_metrics_dict)
-            )
-            trainer.evaluate_after_epochs(evaluator, freq=1000)
-            trainer.evaluate_after_epochs(
-                functools.partial(plot_samples, loop), freq=1000)
-            trainer.log_after_epochs(freq=1)
-            trainer.run()
+                           checkpoint_dir=results.system_path('checkpoint'),
+                           checkpoint_epoch_freq=100,
+                           early_stopping=False,
+                           restore_checkpoint="/mnt/mfs/mlstorage-experiments/cwx17/10/1c/d4e63c432be97afba7e5/checkpoint/checkpoint/checkpoint.dat-140400"
+                           ) as loop:
+
+            loop.print_training_summary()
+            spt.utils.ensure_variables_initialized()
+
+            epoch_iterator = loop.iter_epochs()
+            for epoch in epoch_iterator:
+                dataset_img = np.tile(_x_train, (1, 1, 1, 3))
+                mala_img = []
+                for i in range(config.fid_samples // config.sample_n_z):
+                    mala_images = session.run(x_plots)
+                    mala_img.append(mala_images)
+                    print('{}-th sample finished...'.format(i))
+
+                mala_img = np.concatenate(mala_img, axis=0).astype('uint8')
+                mala_img = np.asarray(mala_img)
+                mala_img = np.tile(mala_img, (1, 1, 1, 3))
+                np.savez('sample_store', mala_img=mala_img)
+
+                FID = get_fid(mala_img, dataset_img)
+                IS_mean, IS_std = get_inception_score(mala_img)
+                loop.collect_metrics(FID=FID)
+                loop.collect_metrics(IS=IS_mean)
+
+                # ori_img = np.concatenate(ori_img, axis=0).astype('uint8')
+                # ori_img = np.asarray(ori_img)
+                # FID = get_fid_google(ori_img, dataset_img)
+                # IS_mean, IS_std = get_inception_score(ori_img)
+                # loop.collect_metrics(FID_ori=FID)
+                # loop.collect_metrics(IS_ori=IS_mean)
+
+                loop.collect_metrics(lr=learning_rate.get())
+                loop.print_logs()
 
     # print the final metrics and close the results object
     print_with_title('Results', results.format_metrics(), before='\n')
