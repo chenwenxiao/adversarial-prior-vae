@@ -496,7 +496,8 @@ def precision_recall(real_images,gen_images,num_images,batch_size=20,num_gpus=1)
 
     print(gen_features.shape,real_features.shape)
     newway = compute_prd_from_embedding(gen_features,real_features)
-    state = knn_precision_recall_features(real_features, gen_features, num_gpus=num_gpus)
+    # state = knn_precision_recall_features(real_features, gen_features, num_gpus=num_gpus)
+    state={'precision':'none','recall':'none'}
     return (state['precision'], state['recall'], newway[0],newway[1])
 
 import sklearn.cluster
