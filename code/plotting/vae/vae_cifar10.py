@@ -705,6 +705,8 @@ def main():
                                         if config.write_summary else None),
                            summary_graph=tf.get_default_graph(),
                            early_stopping=False,
+                           checkpoint_dir=results.system_path('checkpoint'),
+                           checkpoint_epoch_freq=100,
                            restore_checkpoint="/mnt/mfs/mlstorage-experiments/cwx17/83/19/6f3b6c3ef49d6d6c81d5/checkpoint/checkpoint/checkpoint.dat-585000"
                            ) as loop:
 
@@ -718,10 +720,9 @@ def main():
 
             loop.print_training_summary()
             spt.utils.ensure_variables_initialized()
-
             epoch_iterator = loop.iter_epochs()
             for epoch in epoch_iterator:
-                evaluator.run()
+                plot_samples(loop)
                 dataset_img = _x_train
                 mala_img = []
                 for i in range(config.fid_samples // config.sample_n_z):
