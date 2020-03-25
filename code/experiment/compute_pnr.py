@@ -52,15 +52,17 @@ def compute(img_path,dataset_name,savename='',savedir=None):
 
 import os
 
-def plot_in_one(path,picname='total'):
+def plot_in_one(path,prefix='PREFIX',picname='NAME'):
     names = os.listdir(path)
     pr_pairs=[]
     labels=[]
     for name in names:
         if 'npz' in name:
+            print(f'find {name}')
             pr_pair = np.load(os.path.join(path,name))
             pr_pairs.append((pr_pair['precision'],pr_pair['recall']))
-            labels.append(name[:-4])
+            print(f'add line: {prefix}-{name[4:-4]}-{name[0:3]}')
+            labels.append(f'{prefix}-{name[4:-4]}-{name[0:3]}')
     # plot
     utils.plot(pr_pairs,labels,name=picname)
 

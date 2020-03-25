@@ -682,15 +682,15 @@ def plot(precision_recall_pairs, labels=None, out_path=None,
     for i in range(len(precision_recall_pairs)):
         precision, recall = precision_recall_pairs[i]
         label = labels[i] if labels is not None else None
-        plt.plot(recall, precision, label=label, alpha=0.5, linewidth=3)
+        plt.plot(recall, precision, label=label, alpha=0.5, linewidth=1)
 
     if labels is not None:
-        plt.legend(loc=legend_loc)
+        plt.legend(loc=legend_loc,fontsize=5)
 
     plt.xlim([0, 1])
     plt.ylim([0, 1])
-    plt.xlabel('Recall', fontsize=12)
-    plt.ylabel('Precision', fontsize=12)
+    plt.xlabel('Recall', fontsize=10)
+    plt.ylabel('Precision', fontsize=10)
     plt.tight_layout()
     plt.savefig(f'./prd-{name}', bbox_inches='tight', dpi=dpi)
     plt.close()
