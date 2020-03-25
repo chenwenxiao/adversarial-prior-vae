@@ -30,9 +30,8 @@ def compute(img_path,dataset_name,savename='',savedir=None):
     print(gen_images[12])
     print(real_images.shape,gen_images.shape)
     result = utils.precision_recall(real_images,gen_images,limit,batch_size=20)
-    print(result)
     print('2 precision ',result[2],'\nrecall ',result[3])
-    utils.plot([(result[2],result[3])],name=f'{savename}-{dataset_name}')
+    # utils.plot([(result[2],result[3])],name=f'{savename}-{dataset_name}')
     # utils.plot([(result[0],result[1])],name=f'{savename}-{dataset_name}-2')
     if savedir != None:
         if not os.path.exists(f'./{savedir}'):
@@ -44,6 +43,7 @@ def compute(img_path,dataset_name,savename='',savedir=None):
         np.savez(f'./{savedir}/{savename}-{dataset_name}', precision=result[2], recall=result[3])
     else:
         np.savez(f'./{savename}-{dataset_name}',precision=result[2],recall=result[3])
+    return result[2],result[3]
     # np.savez(f'./{savename}-{dataset_name}-2',precision=result[0],recall=result[1])
     # for i in result[2]:
     #     print(i,end ='')
@@ -112,6 +112,66 @@ vae_generated_samples_cifar = [
     "/mnt/mfs/mlstorage-experiments/cwx17/94/2c/d4747dc47d24501da7e5/sample_store.npz", # 0.2 FID: 326.83
     "/mnt/mfs/mlstorage-experiments/cwx17/84/2c/d4747dc47d24dc0da7e5/sample_store.npz", # 0.1 FID: 365.31
 ]
+
+def draw(list_num):
+    idtn=['1.0','0.8','0.5','0.2','0.1']
+    if list_num == 0:
+        print('++vaepp mnist')
+        pairs=[]
+        labels=[]
+        for idx,path in enumerate(vaepp_generated_samples_mnist):
+            res = compute(path,'mnist',savename=f'{idtn[idx]}',savedir=None)
+            pairs.append(res)
+            labels.append(f'vaepp-mnist-{idtn[idx]}')
+            utils.plot(pairs,labels)
+    elif list_num == 1:
+        print('++vaepp cifar')
+        pairs=[]
+        labels=[]
+        for idx,path in enumerate(vaepp_generated_samples_cifar10):
+            res = compute(path,'cifar10',savename=f'{idtn[idx]}',savedir=None)
+            pairs.append(res)
+            labels.append(f'vaepp-cifar10-{idtn[idx]}')
+            utils.plot(pairs,labels)
+    elif list_num ==2:
+        print('++aae mnist')
+        pairs=[]
+        labels=[]
+        for idx,path in enumerate(aae_generated_samples_mnist):
+            res = compute(path,'mnist',savename=f'{idtn[idx]}',savedir=None)
+            pairs.append(res)
+            labels.append(f'aae-mnist-{idtn[idx]}')
+            utils.plot(pairs,labels)
+    elif list_num ==3:
+        print('++aae cifar')
+        pairs=[]
+        labels=[]
+        for idx,path in enumerate(aae_generated_samples_cifar):
+            res = compute(path,'cifar10',savename=f'{idtn[idx]}',savedir=None)
+            pairs.append(res)
+            labels.append(f'aae-cifar10-{idtn[idx]}')
+            utils.plot(pairs,labels)
+    elif list_num ==4:
+        print('++vae mnist')
+        pairs=[]
+        labels=[]
+        for idx,path in enumerate(vae_generated_samples_mnist):
+            res = compute(path,'mnist',savename=f'{idtn[idx]}',savedir=None)
+            pairs.append(res)
+            labels.append(f'vae-mnist-{idtn[idx]}')
+            utils.plot(pairs,labels)
+    elif list_num ==5:
+        print('++vae mnist')
+        pairs=[]
+        labels=[]
+        for idx,path in enumerate(vae_generated_samples_cifar):
+            res = compute(path,'cifar10',savename=f'{idtn[idx]}',savedir=None)
+            pairs.append(res)
+            labels.append(f'vae-cifar10-{idtn[idx]}')
+            utils.plot(pairs,labels)
+    else:
+        print('list_num should be in [0,5]')
+
 
 if __name__ == '__main__':
     mnist_test='/mnt/mfs/mlstorage-experiments/cwx17/ae/1c/d4747dc47d24cf35d1e5/sample_store.npz'
