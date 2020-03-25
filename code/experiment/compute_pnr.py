@@ -40,6 +40,20 @@ def compute(img_path,dataset_name,savename=''):
     # for i in result[3]:
     #     print(i,end='')
 
+import os
+
+def plot_in_one(path):
+    names = os.listdir(path)
+    pr_pairs=[]
+    labels=[]
+    for name in names:
+        if 'npz' in name:
+            pr_pair = np.load(os.path.join(path,name))
+            pr_pairs.append((pr_pair['precision'],pr_pair['recall']))
+            labels.append(name[:-4])
+    # plot
+    utils.plot(pr_pairs,labels,name='total')
+
 if __name__ == '__main__':
     mnist_test='/mnt/mfs/mlstorage-experiments/cwx17/ae/1c/d4747dc47d24cf35d1e5/sample_store.npz'
     cifar_test='/mnt/mfs/mlstorage-experiments/cwx17/f5/1c/d445f4f80a9f68b140e5/sample_store.npz'
